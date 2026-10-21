@@ -141,7 +141,10 @@ npm run ci:full        # 全部 24 步门禁（约 4 分钟 = 静态 12 步 + �
 
 **容器化（Docker Compose）**：`deploy/Dockerfile` + `deploy/docker-compose.yml`（MySQL 8 / Redis 7 / 应用镜像），
 一键起服与自检清单见 [`docs/DEPLOY-CONTAINERS.md`](docs/DEPLOY-CONTAINERS.md)。
-> 注意：**本机没有 Docker 守护进程**（BIOS 关闭 VT-x → WSL2 / Hyper-V 不可用），容器运行时未在本机实测。
+> **容器运行时已实测通过**：Docker Desktop 4.96（Engine 29.9.1）+ WSL2（内核 6.18.40），
+> `docker compose up -d --build` → 三服务 healthy、`run --rm seed` 灌入 12 用户 / 4 片区 / 16 组规则、
+> 四个入口（`/api/health`、`/admin-vue/`、`/m/`、`/parent`）全 200、四角色登录成功、容器库 37 表且一致性巡检 12/12。
+> 注意：本机**无法直连 Docker Hub**（`registry-1.docker.io` 超时），已通过 `~/.docker/daemon.json` 的 `registry-mirrors` 指向可达镜像源。
 > 已完成的等价校验：`npm run deploy:check`（严格 YAML + 路径/端口/安全开关一致性）、
 > `npm run deploy:schema`（**官方 compose-spec JSON Schema**，固定 commit 随仓库提交，负向验证退出码 1）、
 > `npm run image:check`（镜像运行阶段 COPY 布局 vs `main.ts` 静态托管约定）、

@@ -1,10 +1,11 @@
 # 容器化部署（Docker Compose）
 
 > 交付说明：本仓库提供 **MySQL 8 + Redis 7 + 应用镜像** 的 compose 编排与构建文件。
-> **本机连容器运行时都不具备**：`docker` 不在 PATH、无 Docker Desktop，且 BIOS 关闭 VT-x
+> **容器运行时已在本机实测通过**（2026-10-21）：Docker Desktop 4.96 / Engine 29.9.1 + WSL2 内核 6.18.40；
 > （`VirtualizationFirmwareEnabled=False`）、Hyper-V / VirtualMachinePlatform / WSL / Containers 组件全 `Disabled`
-> —— dockerd 起不来。因此下面这些文件只做过**静态与契约级校验**（`deploy:check`、`deploy:schema`、`image:check`、
-> `image:runtime` 生产模式真起服 32 项），**容器本身未在本机启动过**。首次在具备 Docker 的机器上执行时，请按第 5 节自检。
+> 实测结果：`up -d --build` 三服务 healthy、`run --rm seed` 成功、四入口全 200、四角色登录 OK、容器库 37 表 + 巡检 12/12。
+> 另有静态与契约级校验：`deploy:check`、`deploy:schema`、`image:check`、`image:runtime`（生产模式真起服 **33 项**）。
+> ⚠️ 本机**无法直连 Docker Hub**（`registry-1.docker.io` / `auth.docker.io` 超时），需在 `~/.docker/daemon.json` 配 `registry-mirrors`。
 
 ## 1. 文件
 
@@ -126,7 +127,7 @@ npm run nest:health:mysql                       # 12 项一致性巡检
 
 | # | 限制 | 说明 |
 | --- | --- | --- |
-| 1 | **容器运行时未实测（两道硬前置，均需人工操作）** | ① **BIOS 关闭 VT-x**：`VirtualizationFirmwareEnabled=False`、`systeminfo` → `Virtualization Enabled In Firmware: No`、`HypervisorPresent=False`；② **Windows 为 10 Pro 21H1（build 19043）**，低于 Docker Desktop 4.96 官方要求（Win10 **22H2 build 19045+**，取自 docs.docker.com「Windows 10 64-bit: Enterprise, Pro, or Education version 22H2 (build 19045)」）。当前组件实测：WSL `Enabled`（`LxssManager` 运行中）、`VirtualMachinePlatform` `Disabled`、`Microsoft-Hyper-V-All` `Disabled`、无 `vmcompute`，`wsl --status` 明确回「当前计算机配置不支持 WSL2」。已用不依赖守护进程的方式验证：`deploy:check`、`deploy:schema`（官方 compose-spec Schema）、`image:check`、`image:runtime`（**生产模式真起服 32 项**）；镜像 tag 联网校验仍被网络阻断 |
+| 1 | **容器运行时：已实测通过** | 2026-10-21 在本机跑通：Docker Desktop 4.96 / Engine 29.9.1 + WSL2 内核 6.18.40（BIOS 已开 VT-x、系统升至 22H2 19045）。实测结果：`up -d --build` 三服务 healthy（首次构建 16.2 分钟）、`run --rm seed` 灌入 12 用户 / 4 片区 / 16 组规则、四入口全 200、四角色登录成功、容器库 37 表且一致性巡检 **12/12**。过程中修掉两个只有容器才暴露的缺陷：① 镜像缺 `server/core/defaults.js` → `seed` 报 `ERR_MODULE_NOT_FOUND`；② `seed` 服务缺 `AUTH_SECRET` → 镜像内 `NODE_ENV=production` 直接拒绝启动。两项都已加进门禁（`image:runtime` 33 项、`deploy:schema` 约定断言）。 |
 | 2 | 基础镜像 tag 联网校验被阻断 | `auth.docker.io` / `registry-1.docker.io` 在本机超时；在有外网的机器上执行 `node tools/check-image.mjs --online` 会逐个校验 `node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 是否可拉取 |
 | 3 | 官方 actionlint：**已解决**；compose 官方二进制：**未取到** | 官方 `actionlint v1.7.12 + shellcheck 0.11.0` 已装入 `tools/bin/`（`download.docker.com`、`github.com` 可达），`npm run workflow:check` 会自动优先调用官方 actionlint，实测**无告警**。`docker compose` 官方二进制（33MB）在本机 ~14KB/s 带宽下多次续传残缺 → 改用**官方 compose-spec JSON Schema** 校验：`npm run deploy:schema`（schema 固定 commit `de28432` 随仓库提交于 `deploy/compose-spec.schema.json`，结构 + 本项目约定双向校验，负向验证退出码 1） |
 | 4 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
@@ -148,4 +149,4 @@ npm run ci:full          # 全量 24 步门禁（静态 12 + verify/e2e/security
 
 `deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；
 **GitHub Actions 已真实执行并通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)：static 13s、integration 206s，共 484 项断言全绿。
-剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」（本机 BIOS 关闭 VT-x + Windows 21H1 低于 Docker Desktop 要求，见第 6 节限制 1）。
+**容器运行时也已实测**：本机 `docker compose up -d --build` → 三服务 healthy、`run --rm seed` 成功、四入口 200、四角色登录、容器库巡检 12/12（见第 6 节限制 1）。唯一外部依赖是**镜像源**：本机直连 Docker Hub 超时，需在 `~/.docker/daemon.json` 配 `registry-mirrors`。

@@ -1,8 +1,9 @@
 // ============================================================
 // 镜像运行阶段契约校验（Dockerfile runtime stage 的宿主机等价复演）
 //
-//   背景：本机 BIOS 关闭 VT-x（VirtualizationFirmwareEnabled=False）、Hyper-V/WSL
-//   组件全 Disabled → dockerd 起不来，无法 `docker run` 真实容器。
+//   背景：本机早期 BIOS 关闭 VT-x、组件全 Disabled，dockerd 起不来，无法 `docker run` 真实容器。
+//   现状（2026-10-21）：WSL2 + Docker Desktop 4.96 已就绪，容器跑通；本门禁仍保留，
+//   因为它能在**无需 Docker 的机器/CI** 上快速复演运行契约（33 项，十几秒）。
 //   这里把「容器里会发生什么」在宿主机按同一份 Dockerfile 复演：
 //     A. 运行阶段声明：ENV / WORKDIR / COPY 集合 / USER / EXPOSE / HEALTHCHECK / CMD
 //     B. 产物依赖：dist 里 require 的包必须都在 dependencies（否则 npm prune --omit=dev 后运行即崩）
@@ -206,6 +207,42 @@ const devOnly = [...used.keys()].filter((d) => devDeps.has(d) && !prodDeps.has(d
 ok("dist 引用的第三方包全部在 dependencies", missing.length === 0, `引用 ${used.size} 个包` + (missing.length ? "；缺：" + missing.join("、") : ""));
 ok("没有「只在 devDependencies 却被运行时引用」的包", devOnly.length === 0, devOnly.length ? "违规：" + devOnly.join("、") : "");
 ok("compose seed 服务的入口存在（db/seed-min.mjs）", fs.existsSync(path.join(APP, "db", "seed-min.mjs")));
+
+/* ---------- B2. seed 脚本的相对 import 必须在镜像 COPY 覆盖范围内 ----------
+   真实缺陷：db/seed-min.mjs 里 `import ... from "../../../server/core/defaults.js"`
+   在容器内解析为 /app/server/core/defaults.js，而运行镜像没 COPY 该目录 →
+   `docker compose run --rm seed` 直接 ERR_MODULE_NOT_FOUND（本机开发永远不暴露）。 */
+{
+  const WORKDIR = "/app/apps/api-nest";
+  const seedFile = path.join(APP, "db", "seed-min.mjs");
+  const seedSrc = fs.existsSync(seedFile) ? fs.readFileSync(seedFile, "utf8") : "";
+  const relImports = [...seedSrc.matchAll(/from\s+"(\.[^"]+)"/g)].map((m) => m[1]);
+
+  // 收集运行阶段的 COPY 目标（相对目标按 WORKDIR 解析）
+  const copyDests = [];
+  for (const line of runtimeActive.split(/\r?\n/)) {
+    const m = /^\s*COPY\s+(?:--from=\S+\s+)?(\S+)\s+(\S+)\s*$/.exec(line);
+    if (!m) continue;
+    const dest = m[2];
+    copyDests.push(dest.startsWith("/") ? dest : path.posix.join(WORKDIR, dest));
+  }
+
+  const covered = (containerPath) =>
+    copyDests.some((d) => containerPath === d || containerPath.startsWith(d.replace(/\/$/, "") + "/"));
+
+  const unresolved = [];
+  for (const rel of relImports) {
+    const containerPath = path.posix.normalize(path.posix.join(WORKDIR, "db", rel));
+    if (!covered(containerPath)) unresolved.push(`${rel} → ${containerPath}`);
+  }
+  ok(
+    "seed 脚本的跨目录 import 在镜像内可解析",
+    unresolved.length === 0,
+    relImports.length === 0
+      ? "seed 无相对 import"
+      : `检查 ${relImports.length} 条` + (unresolved.length ? "；未覆盖：" + unresolved.join("、") : ""),
+  );
+}
 
 /* ============ C. 生产模式真起服 ============ */
 let server = spawnServer(containerEnv, PORT);

@@ -74,6 +74,11 @@ services:
       dockerfile: deploy/Dockerfile
     profiles: ["seed"]
     environment:
+      # 镜像内 NODE_ENV=production，config.ts 会强制要求 AUTH_SECRET，
+      # 否则 seed 容器直接抛「生产环境必须配置 AUTH_SECRET」而退出（真实踩过）
+      AUTH_SECRET: ${AUTH_SECRET:?请在 deploy/.env 或环境变量中设置 AUTH_SECRET（>=32 字符）}
+      NODE_ENV: production
+      DEV_SMS: "0"
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       MYSQL_USER: root

@@ -156,6 +156,10 @@ for (const key of ["AUTH_SECRET", "NODE_ENV", "MYSQL_HOST", "REDIS_HOST", "DEV_S
   if (!(key in appEnv)) problems.push(`app.environment 缺少 ${key}`);
 }
 if (!/\$\{AUTH_SECRET:\?/.test(String(appEnv.AUTH_SECRET ?? ""))) problems.push("AUTH_SECRET 应使用 ${AUTH_SECRET:?...} 强制必填");
+// seed 服务复用同一镜像（NODE_ENV=production），config.ts 强制要求 AUTH_SECRET，
+// 缺了会让 `docker compose run --rm seed` 直接抛错退出（真实踩过）
+const seedEnv = doc?.services?.seed?.environment ?? {};
+if (!("AUTH_SECRET" in seedEnv)) problems.push("seed.environment 缺少 AUTH_SECRET（镜像内 NODE_ENV=production，seed 会被拒绝启动）");
 
 if (problems.length) {
   console.error(`\n✗ 结构合法但不符合本项目约定：${problems.length} 处`);
@@ -164,4 +168,4 @@ if (problems.length) {
 }
 
 console.log("\n✓ 符合 compose 官方 Schema（结构与本项目约定均通过）");
-console.log("  说明：仍无法验证的是「容器真正起来」——需要 Docker 守护进程（本机 BIOS 关闭 VT-x）");
+console.log("  说明：结构校验之外，容器运行已实测（Docker Desktop 4.96 + WSL2：三服务 healthy、seed 成功、四角色登录 OK）");

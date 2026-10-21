@@ -44,6 +44,9 @@ COPY --from=api /app/apps/api-nest/node_modules ./node_modules
 COPY --from=api /app/apps/api-nest/dist ./dist
 COPY --from=api /app/apps/api-nest/package.json ./package.json
 COPY apps/api-nest/db ./db
+# db/seed-min.mjs 需要参考实现的默认规则常量（../../../server/core/defaults.js）
+# 该文件无任何依赖，单独拷入 /app/server/core 让 import 在镜像内可解析
+COPY server/core/defaults.js /app/server/core/defaults.js
 COPY --from=web-admin /app/apps/web-admin/dist /app/apps/web-admin/dist
 COPY --from=web-mobile /app/apps/web-mobile/dist/build/h5 /app/apps/web-mobile/dist/build/h5
 COPY web /app/web
