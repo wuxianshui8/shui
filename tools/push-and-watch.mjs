@@ -68,7 +68,15 @@ if (repoSlug) console.log(`仓库：${repoSlug}`);
 const basic = Buffer.from(`x-access-token:${TOKEN}`).toString("base64");
 const push = spawnSync(
   GIT,
-  ["-c", `http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}`, "push", "-u", REMOTE, `${localBranch}:${BRANCH}`],
+  [
+    "-c",
+    `http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}`,
+    "push",
+    ...(process.env.FORCE === "1" ? ["--force-with-lease"] : []),
+    "-u",
+    REMOTE,
+    `${localBranch}:${BRANCH}`,
+  ],
   { cwd: ROOT, encoding: "utf8" },
 );
 const pushOut = `${push.stdout ?? ""}${push.stderr ?? ""}`;
