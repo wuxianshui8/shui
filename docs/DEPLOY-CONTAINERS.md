@@ -146,4 +146,6 @@ npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 �
 npm run ci:full          # 全量 24 步门禁（静态 12 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
 ```
 
-`deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。
+`deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；
+**GitHub Actions 已真实执行并通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)：static 13s、integration 206s，共 484 项断言全绿。
+剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」（本机 BIOS 关闭 VT-x + Windows 21H1 低于 Docker Desktop 要求，见第 6 节限制 1）。

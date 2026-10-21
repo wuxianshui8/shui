@@ -97,7 +97,7 @@ for (const { line, cmd } of commands) {
 }
 
 console.log("GitHub Actions 工作流 · 证据映射");
-console.log("（本机无 Docker 守护进程、无仓库远端 → Runner 未真实执行；下面只核验「命令是否都有本地等价证据」）\n");
+console.log("（Runner 侧已真实跑通：Actions run #3 两 job 全绿；下面仍核验「每条命令是否都有本机等价证据」）\n");
 const w = Math.max(...rows.map((r) => r.cmd.length), 20);
 for (const r of rows) {
   console.log("  " + r.cmd.padEnd(Math.min(w, 60)) + "  [" + r.kind + "]  " + r.evidence);
