@@ -473,9 +473,11 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
 | P13 接口清单自动生成 + 文档漂移门禁 | ✅ | `api:doc` / `api:doc:check`：删行→退出码 1、重生成→0（双向验证） |
 | P14 需求追溯矩阵（新后端）+ 汇总 CI 门禁 | ✅ | `docs/TRACEABILITY-NEST.md`：接口引用全部有效、覆盖 **140/140**；`trace:check` / `ci` / `ci:quick` / `ci:full` |
 | P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交，推送需远端与凭据 |
+| P18 CI 工作流证据映射 | ⚠️ | `tools/check-workflow-proof.mjs`：把 workflow 每条命令映射到本机已通过的门禁（21 条需证据 + 6 条 Runner 专属，未覆盖即失败）；**Runner 环境本身仍未执行**（无 Docker / 无远端） |
+| P17 细粒度权限矩阵（需求 4.5.9 角色权限分配） | ✅ | 新增规则组 `permissions`（4 个高危权限点）+ `@Perm` 装饰器 + `GET/PUT /api/admin/permissions`；`check-permissions` **17/17**（授予即时生效、撤销即失效、admin 不可移除、未知权限点被拒、审计留痕） |
 | P16 补齐后台需求池与管理员账号（需求 4.5.3 / 4.5.9） | ✅ | 新增 4 条路由（接口 136→**140**）：需求池分页筛选；管理员列表 / 新建（一次性强口令 + 首登改密）/ 启停（禁止禁自己、保底一个启用、禁用即失效令牌）；`check-admin-spa` 29→**35** |
 
-**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 35 + 39 + 27 + 38 + 15(P1) = 445 项断言全绿；
+**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 35 + 39 + 27 + 38 + 17 + 15(P1) = 462 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**
 
 ### 1.17 P10：对抗式评审与缺陷修复

@@ -20,7 +20,6 @@
     "bench": "node scripts/bench.mjs",
     "check:browser": "node scripts/browser-check.mjs",
     "healthcheck": "node scripts/healthcheck.mjs",
-
     "nest:verify": "node tools/verify-nest.mjs",
     "serve": "node tools/run.mjs",
     "serve:detach": "node tools/serve.mjs",
@@ -48,13 +47,12 @@
     "nest:concurrency": "node tools/concurrency-mysql.mjs",
     "nest:health:mysql": "node tools/healthcheck-mysql.mjs",
     "nest:migrate": "node tools/migrate-sqlite.mjs",
-
     "web:admin:install": "npm --prefix apps/web-admin install",
     "web:admin:build": "npm --prefix apps/web-admin run build",
     "web:admin:check": "node tools/check-admin-spa.mjs",
     "web:mobile:install": "npm --prefix apps/web-mobile install",
-    "web:mobile:build": "npm --prefix apps/web-mobile run build:h5",
-    "web:mobile:check": "node tools/check-mobile-spa.mjs"
+    "web:mobile:check": "node tools/check-mobile-spa.mjs",
+    "nest:gate:permissions": "node tools/gate-permissions.mjs"
   },
   "dependencies": {}
 }

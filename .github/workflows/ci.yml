@@ -122,6 +122,9 @@ jobs:
       - name: 隐私与账号安全 privacy（38）
         run: node tools/check-privacy-auth.mjs
 
+      - name: 细粒度权限矩阵 permissions（17）
+        run: node tools/check-permissions.mjs
+
       - name: 并发验收 concurrency（23）
         working-directory: apps/api-nest
         run: node ../tools/concurrency-mysql.mjs

@@ -53,6 +53,21 @@ for (const [key, def] of Object.entries(DEFAULT_RULES)) {
   ruleCount++;
 }
 
+// 细粒度权限矩阵（仅 NestJS 版，需求 4.5.9「角色权限分配」）：
+// 权限点 → 允许调用的角色；admin 必须始终在列表内（后台保存时会强制校验，防自锁）
+const PERMISSIONS_DEFAULT = {
+  "order.price": ["admin"],
+  "order.close": ["admin"],
+  "refund.review": ["admin"],
+  "withdraw.review": ["admin"],
+};
+await conn.execute(
+  "INSERT INTO `rule_configs` (`key`,`grp`,`label`,`value`,`editable`,`updated_at`) VALUES (?,?,?,?,1,?) " +
+    "ON DUPLICATE KEY UPDATE `grp`=VALUES(`grp`), `label`=VALUES(`label`)",
+  ["permissions", "permissions", "细粒度权限矩阵（权限点 → 角色）", JSON.stringify(PERMISSIONS_DEFAULT), now],
+);
+ruleCount++;
+
 const [[u]] = await conn.query("SELECT COUNT(*) AS c FROM `users`");
 const [[rg]] = await conn.query("SELECT COUNT(*) AS c FROM `regions`");
 const [[rc]] = await conn.query("SELECT COUNT(*) AS c FROM `rule_configs`");

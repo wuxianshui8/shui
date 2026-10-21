@@ -9,6 +9,7 @@ import { pagedResult, paging } from "../common/paging";
 import { hashPassword } from "../common/password";
 import { randomCode, randomPassword } from "../common/codes";
 import { audit, notify } from "../common/audit";
+import { PERMISSION_KEYS } from "../common/access";
 import { escrowMove, walletAdd, walletUnfreezeIncoming } from "../common/ledger";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { OrdersService } from "../order/orders.service";
@@ -377,6 +378,32 @@ export class AdminOpsService {
       await audit(m, ctx, "admin.admin.toggle", "users:" + target.id, { status: next });
     });
     return { status: next };
+  }
+
+  /* ---------------- 细粒度权限矩阵（需求 4.5.9）---------------- */
+  async permissions() {
+    const matrix = ((await this.rules.get("permissions")) as any) || {};
+    return { keys: [...PERMISSION_KEYS], roles: ["admin", "agent", "sales", "teacher", "parent"], matrix };
+  }
+
+  async updatePermissions(ctx: any, body: any) {
+    const input = body?.matrix;
+    if (!input || typeof input !== "object") throw bad("请提交权限矩阵");
+    const allowedRoles = ["admin", "agent", "sales", "teacher", "parent"];
+    const clean: Record<string, string[]> = {};
+    for (const key of Object.keys(input)) {
+      if (!(PERMISSION_KEYS as readonly string[]).includes(key)) throw bad("未知权限点：" + key);
+      const roles = Array.isArray(input[key]) ? input[key].map(String) : [];
+      const valid = [...new Set(roles.filter((r) => allowedRoles.includes(r)))];
+      // 防自锁：admin 必须保留每个权限点，否则可能把后台彻底锁死
+      if (!valid.includes("admin")) throw forbidden("权限点 " + key + " 必须保留 admin");
+      clean[key] = valid;
+    }
+    // 未提交的权限点回落为「仅 admin」
+    for (const key of PERMISSION_KEYS) if (!clean[key]) clean[key] = ["admin"];
+    await this.rules.set("permissions", clean, Number(ctx?.user?.uid) || null);
+    await audit(this.ds, ctx, "admin.permissions.update", "rule_configs:permissions", clean);
+    return { matrix: clean };
   }
 
   /* ---------------- 代理管理 ---------------- */

@@ -86,6 +86,7 @@
 | 4.5.7 风控事件处置、差评仲裁、客诉终审（家长/教员发起工单） | `GET /api/admin/risks`、`POST /api/admin/risks/:id/handle`、`POST /api/admin/appeals/:id/arbitrate`、`POST /api/admin/complaints/:id/close`、`POST /api/complaints`、`GET /api/complaints/mine` | e2e §12、`admin` |
 | 4.5.8 运营工具（Banner/公告/优惠券增删改启停） | `GET|POST /api/admin/banners`、`PUT|DELETE /api/admin/banners/:id`、`POST /api/admin/banners/:id/toggle`、`GET|POST /api/admin/announcements`、`PUT|DELETE /api/admin/announcements/:id`、`POST /api/admin/announcements/:id/toggle`、`POST /api/admin/announcements/:id/pin`、`GET|POST /api/admin/coupons`、`PUT /api/admin/coupons/:id`、`POST /api/admin/coupons/:id/toggle` | e2e §15、`admin` |
 | 4.5.9 管理员账号管理（列表/新建/启停，一次性口令 + 首登改密 + 禁用即失效令牌） | `GET /api/admin/admins`、`POST /api/admin/admins`、`POST /api/admin/admins/:id/toggle` | `admin`（4 条断言） |
+| 4.5.9 细粒度权限矩阵（4 个高危权限点可按角色授予，admin 不可被移除） | `GET /api/admin/permissions`、`PUT /api/admin/permissions` | `permissions`（17 条断言） |
 | 4.5.9 操作日志与基础参数 | `GET /api/admin/audit-logs`、`GET /api/meta/dictionary`、`GET /api/meta/rules-public` | e2e §16、`sec` |
 | 4.5.9 运维指标（用户数/订单数/担保资金） | `GET /api/health/detail`（仅 admin）、`GET /api/health`（匿名仅可用性） | `priv`（信息分级） |
 
@@ -145,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 140 路由）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + admin 35 + mobile 39 + verify 15 + hc 12 = **445** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 35 + mobile 39 + verify 15 + hc 12 = **462** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）
@@ -153,7 +154,7 @@
 | # | 偏离 | 原因与现状 |
 | --- | --- | --- |
 | 1 | **（已补齐）** 后台需求池独立列表接口 | P16 新增 `GET /api/admin/demands`（分页 + 状态/科目/学段/片区/加急筛选，含报名数与待处理报名数，家长手机号脱敏），`check-admin-spa` 覆盖 2 条断言 |
-| 2 | **（已补齐）** 管理员账号管理仅内置单账号 | P16 新增 `GET /api/admin/admins`、`POST /api/admin/admins`（一次性强口令 + 首登强制改密）、`POST /api/admin/admins/:id/toggle`（禁止禁用自己、必须保留至少一个启用管理员、禁用即自增 `token_version` 使旧令牌失效）；`check-admin-spa` 覆盖 4 条断言。**细粒度权限矩阵仍未做**（内置五角色 + 管理员 RBAC） |
+| 2 | **（已补齐）** 管理员账号管理仅内置单账号 | P16 新增 `GET /api/admin/admins`、`POST /api/admin/admins`（一次性强口令 + 首登强制改密）、`POST /api/admin/admins/:id/toggle`（禁止禁用自己、必须保留至少一个启用管理员、禁用即自增 `token_version` 使旧令牌失效）；`check-admin-spa` 覆盖 4 条断言。细粒度权限矩阵已由 P17 补齐（4 个高危权限点：改价 / 强制关闭 / 退款审批 / 提现审核，可按角色授予，admin 不可移除） |
 | 3 | 跨区订单收益归属固定为「**需求发布地址所在片区**」 | 需求 5.5 有明文，故未做成可切换；`e2e §20` 做了跨区断言（西湖家长在滨江发单 → 滨江代理计提） |
 | 4 | 微信支付 / 短信 / 地图 SDK 为**模拟实现** | 与参考实现一致：支付走担保台账真实记账、验证码本地生成（生产需接真实通道并把 `devCode` 关闭）、距离与围栏为真实 Haversine/多边形算法 |
 | 5 | 并发计数与规则内存缓存为**单实例实现** | 规则缓存已加 300s TTL（与 Redis 对齐）；多实例需将验证码/失败计数迁到 Redis，见 `docs/SECURITY.md` §8 第 11 条 |

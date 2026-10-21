@@ -43,11 +43,11 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **140** 个路由，分布在 **16** 个控制器。
+总计 **142** 个路由，分布在 **16** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
-| `admin/admin-ops.controller.ts` | 44 |
+| `admin/admin-ops.controller.ts` | 46 |
 | `teacher/teacher.controller.ts` | 17 |
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
@@ -98,9 +98,11 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | POST | `/api/admin/coupons/:id/toggle` | admin | 200 |
 | GET | `/api/admin/demands` | admin |  |
 | GET | `/api/admin/orders` | admin |  |
-| POST | `/api/admin/orders/:id/close` | admin | 200 |
-| POST | `/api/admin/orders/:id/price` | admin | 200 |
+| POST | `/api/admin/orders/:id/close` | admin / agent | 200 |
+| POST | `/api/admin/orders/:id/price` | admin / agent | 200 |
 | GET | `/api/admin/orders/export` | admin |  |
+| GET | `/api/admin/permissions` | admin |  |
+| PUT | `/api/admin/permissions` | admin |  |
 | GET | `/api/admin/regions` | admin |  |
 | POST | `/api/admin/regions` | admin | 200 |
 | GET | `/api/admin/risks` | admin |  |
@@ -121,11 +123,11 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | POST | `/api/admin/invoices/:id/review` | admin | 200 |
 | GET | `/api/admin/overview` | admin |  |
 | GET | `/api/admin/refunds` | admin |  |
-| POST | `/api/admin/refunds/:id/review` | admin | 200 |
+| POST | `/api/admin/refunds/:id/review` | admin / agent | 200 |
 | POST | `/api/admin/reminders/run` | admin | 200 |
 | POST | `/api/admin/rewards/settle` | admin | 200 |
 | POST | `/api/admin/settlement/run` | admin | 200 |
-| POST | `/api/admin/withdrawals/:id/review` | admin | 200 |
+| POST | `/api/admin/withdrawals/:id/review` | admin / agent / sales | 200 |
 
 ### `agent/agent.controller.ts`
 

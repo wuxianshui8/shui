@@ -5,7 +5,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { verifyToken } from "../common/token";
 import { forbidden, unauthorized } from "../common/errors";
 import { IS_PUBLIC } from "../public.decorator";
-import { ROLES_KEY } from "../common/access";
+import { PERM_KEY, ROLES_KEY } from "../common/access";
 
 /** 「必须改初始口令」状态下仍可访问的路由（否则用户无法自救） */
 const PASSWORD_CHANGE_ALLOWLIST = [
@@ -54,6 +54,22 @@ export class AuthGuard implements CanActivate {
 
     const roles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [ctx.getHandler(), ctx.getClass()]);
     if (roles && roles.length && !roles.includes(rows[0].role)) throw forbidden();
+
+    // 细粒度权限点（需求 4.5.9）：以规则 `permissions`（权限点 → 角色列表）为准。
+    // 注意：@Perm 只会在 @Roles 通过之后再判断，两者同时存在时等价于「角色 ∩ 权限矩阵」。
+    const perms = this.reflector.getAllAndOverride<string[]>(PERM_KEY, [ctx.getHandler(), ctx.getClass()]);
+    if (perms && perms.length) {
+      const cfg = await this.ds.query("SELECT `value` FROM `rule_configs` WHERE `key` = 'permissions' LIMIT 1");
+      let matrix: Record<string, string[]> = {};
+      try {
+        matrix = cfg.length ? JSON.parse(cfg[0].value) : {};
+      } catch {
+        matrix = {};
+      }
+      const role = rows[0].role;
+      const missing = perms.filter((k) => !Array.isArray(matrix[k]) || !matrix[k].includes(role));
+      if (missing.length) throw forbidden("当前角色无「" + missing.join("、") + "」权限，请联系管理员在权限矩阵中授予");
+    }
     return true;
   }
 }

@@ -25,6 +25,7 @@ const FULL = [
   { name: "concurrency（23）", cmd: ["node", "tools/gate-p7.mjs"] },
   { name: "races（27）", cmd: ["node", "tools/gate-races.mjs"] },
   { name: "privacy（38）", cmd: ["node", "tools/gate-privacy.mjs"] },
+  { name: "permissions（17）", cmd: ["node", "tools/gate-permissions.mjs"] },
   { name: "admin SPA（35）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
   { name: "mobile SPA（39）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
   { name: "迁移 + MySQL 巡检（12）", cmd: ["node", "tools/gate-p9.mjs"] },

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
-import { Roles } from "../common/access";
+import { Perm, Roles } from "../common/access";
 import { ok, nowIso } from "../common/reply";
 import { bad, biz, notFound } from "../common/errors";
 import { audit, notify } from "../common/audit";
@@ -75,6 +75,8 @@ export class AdminController {
     return ok(list);
   }
 
+  @Roles("admin", "agent")
+  @Perm("refund.review")
   @Post("refunds/:id/review")
   @HttpCode(200)
   async refundReview(@Param("id") id: string, @Body() body: any, @Req() req: any) {
@@ -113,6 +115,8 @@ export class AdminController {
   }
 
   /* ---------------- 提现审核 ---------------- */
+  @Roles("admin", "agent", "sales")
+  @Perm("withdraw.review")
   @Post("withdrawals/:id/review")
   @HttpCode(200)
   async withdrawalReview(@Param("id") id: string, @Body() body: any, @Req() req: any) {

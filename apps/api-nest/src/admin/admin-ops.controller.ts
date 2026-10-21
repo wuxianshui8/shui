@@ -1,6 +1,6 @@
 // 平台后台路由（需求 4.5）：与 admin.controller.ts 共用 /api/admin 前缀
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, Res } from "@nestjs/common";
-import { Roles } from "../common/access";
+import { Perm, Roles } from "../common/access";
 import { ok } from "../common/reply";
 import { audit } from "../common/audit";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -74,12 +74,16 @@ export class AdminOpsController {
     res.end(csv);
   }
 
+  @Roles("admin", "agent")
+  @Perm("order.price")
   @Post("orders/:id/price")
   @HttpCode(200)
   async priceOrder(@Param("id") id: string, @Body() body: any, @Req() req: any) {
     return ok(await this.svc.priceOrder(req, Number(id), body));
   }
 
+  @Roles("admin", "agent")
+  @Perm("order.close")
   @Post("orders/:id/close")
   @HttpCode(200)
   async closeOrder(@Param("id") id: string, @Body() body: any, @Req() req: any) {
@@ -252,6 +256,17 @@ export class AdminOpsController {
   @HttpCode(200)
   async createRegion(@Body() body: any, @Req() req: any) {
     return ok(await this.svc.createRegion(req, body));
+  }
+
+  /* ---------------- 细粒度权限矩阵（需求 4.5.9）---------------- */
+  @Get("permissions")
+  async permissions() {
+    return ok(await this.svc.permissions());
+  }
+
+  @Put("permissions")
+  async updatePermissions(@Body() body: any, @Req() req: any) {
+    return ok(await this.svc.updatePermissions(req, body));
   }
 
   /* ---------------- 需求池（需求 4.5.3）---------------- */
