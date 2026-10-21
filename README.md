@@ -107,7 +107,7 @@ npm run nest:gate:races     # 资金并发对抗回归（行锁/状态守卫/分
 npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / health 分级 / 改密与令牌失效）→ 38/38
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
-npm run web:admin:check     # PC 后台（Vue3+Element Plus，15 页）→ 29/29
+npm run web:admin:check     # PC 后台（Vue3+Element Plus，15 页）→ 35/35
 npm run web:mobile:check    # 移动四端（uni-app H5 + 小程序，9 页）→ 39/39
 ```
 
@@ -121,9 +121,9 @@ npm run web:mobile:build:mp                             # → apps/web-mobile/di
 
 接口文档、追溯矩阵与汇总门禁：
 ```bash
-npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（136 路由 / 16 控制器）
+npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（140 路由 / 16 控制器）
 npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期）
-npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（136/136 覆盖）
+npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（140/140 覆盖）
 npm run ci             # 静态门禁：tsc + 接口文档 + 追溯矩阵（约 2 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
 npm run ci:full        # 全部 13 步门禁（约 15 分钟）
@@ -139,7 +139,7 @@ npm run ci:full        # 全部 13 步门禁（约 15 分钟）
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / 部署配置）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-  e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 29 + 39
+  e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 35 + 39
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
 
 启用方式（需仓库远端与推送凭据）：

@@ -274,6 +274,111 @@ export class AdminOpsService {
     });
   }
 
+  /* ---------------- 需求池（需求 4.5.3：需求列表 / 状态筛选 / 报名数）---------------- */
+  async demands(query: any) {
+    const DEMAND_TEXT: Record<string, string> = {
+      published: "招募中", paused: "已暂停", matched: "已匹配", cancelled: "已取消", closed: "已关闭",
+    };
+    let where = " WHERE 1=1";
+    const params: any[] = [];
+    if (query.status) { where += " AND d.`status` = ?"; params.push(String(query.status)); }
+    if (query.subject) { where += " AND d.`subject` = ?"; params.push(String(query.subject)); }
+    if (query.stage) { where += " AND d.`stage` = ?"; params.push(String(query.stage)); }
+    if (query.regionId) { where += " AND d.`region_id` = ?"; params.push(Number(query.regionId)); }
+    if (String(query.urgent) === "1") where += " AND d.`urgent` = 1";
+
+    const pg = paging(query, { defaultSize: 50 });
+    const total = await this.cnt("SELECT COUNT(*) AS c FROM `demands` d" + where, params);
+    const rows = await this.ds.query(
+      "SELECT d.*, u.`nickname` AS parentName, u.`phone` AS parentPhone, r.`name` AS regionName, " +
+        "(SELECT COUNT(*) FROM `applications` a WHERE a.`demand_id` = d.`id`) AS applications, " +
+        "(SELECT COUNT(*) FROM `applications` a WHERE a.`demand_id` = d.`id` AND a.`status` = 'pending') AS pendingApplications " +
+        "FROM `demands` d LEFT JOIN `users` u ON u.id = d.`parent_id` LEFT JOIN `regions` r ON r.id = d.`region_id`" +
+        where + " ORDER BY d.`id` DESC LIMIT ? OFFSET ?",
+      [...params, pg.pageSize, pg.offset],
+    );
+    const list = rows.map((d: any) => ({
+      id: Number(d.id),
+      stage: d.stage,
+      subject: d.subject,
+      address: d.address,
+      lat: Number(d.lat),
+      lng: Number(d.lng),
+      budget: Number(d.budget),
+      urgent: !!d.urgent,
+      urgentFee: Number(d.urgent_fee),
+      status: d.status,
+      statusText: DEMAND_TEXT[d.status] || d.status,
+      regionId: d.region_id == null ? null : Number(d.region_id),
+      regionName: d.regionName || null,
+      parentId: Number(d.parent_id),
+      parentName: d.parentName || null,
+      parentPhone: maskPhone(d.parentPhone), // 后台展示也脱敏，需要完整号码走客服流程
+      remark: d.remark || "",
+      applications: Number(d.applications),
+      pendingApplications: Number(d.pendingApplications),
+      createdAt: d.created_at,
+      updatedAt: d.updated_at,
+    }));
+    return pagedResult(list, total, pg);
+  }
+
+  /* ---------------- 管理员账号（需求 4.5.9：账号管理，不再是内置单管理员）---------------- */
+  async admins() {
+    const rows = await this.ds.query(
+      "SELECT `id`,`nickname`,`phone`,`status`,`created_at`,`last_login_at` FROM `users` WHERE `role` = 'admin' ORDER BY `id`",
+    );
+    return rows.map((a: any) => ({
+      id: Number(a.id),
+      nickname: a.nickname,
+      phone: maskPhone(a.phone),
+      status: a.status,
+      createdAt: a.created_at,
+      lastLoginAt: a.last_login_at,
+    }));
+  }
+
+  async createAdmin(ctx: any, b: any) {
+    const nickname = String(b?.nickname || "").trim();
+    const phone = String(b?.phone || "").trim();
+    if (!nickname) throw bad("请填写管理员姓名");
+    if (!/^1\d{10}$/.test(phone)) throw bad("请填写正确的手机号");
+    if (await this.one("SELECT `id` FROM `users` WHERE `phone` = ?", [phone])) throw biz("PHONE_EXISTS", "该手机号已被注册");
+    // 一次性初始口令 + 首登强制改密（与代理/业务员开通一致，避免全站统一口令）
+    const initialPassword = randomPassword();
+    const r = await this.ds.query(
+      "INSERT INTO `users` (`phone`,`password_hash`,`nickname`,`role`,`status`,`must_change_password`,`created_at`) VALUES (?,?,?,?,?,?,?)",
+      [phone, hashPassword(initialPassword), nickname, "admin", "active", 1, nowIso()],
+    );
+    const id = Number(r.insertId);
+    await this.ds.query("INSERT IGNORE INTO `wallets` (`user_id`,`updated_at`) VALUES (?,?)", [id, nowIso()]);
+    await audit(this.ds, ctx, "admin.admin.create", "users:" + id, { phone: maskPhone(phone) });
+    return { id, initialPassword, mustChangePassword: true };
+  }
+
+  async toggleAdmin(ctx: any, id: number) {
+    const target = await this.one("SELECT * FROM `users` WHERE `id` = ?", [id]);
+    if (!target || target.role !== "admin") throw notFound("管理员账号不存在");
+    const self = Number(ctx.user.uid) === Number(target.id);
+    const activeAdmins = await this.cnt("SELECT COUNT(*) AS c FROM `users` WHERE `role` = 'admin' AND `status` = 'active'");
+    if (target.status === "active") {
+      if (self) throw forbidden("不能禁用当前登录的管理员账号");
+      if (activeAdmins <= 1) throw biz("LAST_ADMIN", "至少保留一个启用状态的管理员");
+    }
+    const next = target.status === "active" ? "disabled" : "active";
+    await this.ds.transaction(async (m) => {
+      // 禁用时同时自增 token_version：已签发的令牌立即失效
+      await m.query(
+        next === "disabled"
+          ? "UPDATE `users` SET `status` = ?, `token_version` = `token_version` + 1 WHERE `id` = ?"
+          : "UPDATE `users` SET `status` = ? WHERE `id` = ?",
+        [next, target.id],
+      );
+      await audit(m, ctx, "admin.admin.toggle", "users:" + target.id, { status: next });
+    });
+    return { status: next };
+  }
+
   /* ---------------- 代理管理 ---------------- */
   async agents() {
     const rows = await this.ds.query(

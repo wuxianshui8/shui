@@ -253,4 +253,28 @@ export class AdminOpsController {
   async createRegion(@Body() body: any, @Req() req: any) {
     return ok(await this.svc.createRegion(req, body));
   }
+
+  /* ---------------- 需求池（需求 4.5.3）---------------- */
+  @Get("demands")
+  async demands(@Query() q: any) {
+    return ok(await this.svc.demands(q));
+  }
+
+  /* ---------------- 管理员账号（需求 4.5.9）---------------- */
+  @Get("admins")
+  async admins() {
+    return ok(await this.svc.admins());
+  }
+
+  @Post("admins")
+  @HttpCode(200)
+  async createAdmin(@Body() body: any, @Req() req: any) {
+    return ok(await this.svc.createAdmin(req, body));
+  }
+
+  @Post("admins/:id/toggle")
+  @HttpCode(200)
+  async toggleAdmin(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.svc.toggleAdmin(req, Number(id)));
+  }
 }

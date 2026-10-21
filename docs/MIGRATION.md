@@ -435,8 +435,8 @@ apps/web-admin:  npm install（54 包）→ vite build ✓ 15 个页面分包（
 apps/web-mobile: npm install（669 + 78 包）→ uni build ✓ H5；uni build -p mp-weixin ✓ 小程序
                  （app.json 注册 9 个页面，产出 wxml/wxss，可直接导入微信开发者工具）
 
-tools/check-admin-spa.mjs  29/29   （入口与 assets 200、15 个页面分包、13 个模块接口、
-                                    区域管理新建片区写闭环、Banner 启停闭环、
+tools/check-admin-spa.mjs  35/35   （入口与 assets 200、15 个页面分包、13 个模块接口、区域管理写闭环、
+                                    需求池与管理员账号（P16）、Banner 启停闭环、
                                     规则热更新 500→800m 并回滚、CSV 导出、非管理员 403）
 tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history 回落、四角色登录+接口、
                                     业务员奖励明细 / 代理客诉工单 / 教员钱包提现规则断言、教员端抢单闭环、
@@ -465,16 +465,17 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
 | P5 业务员端 + 区域代理端 | ✅ | e2e §1–§10 55/55 |
 | P6 平台后台域 | ✅ | e2e 全套 **153/153** |
 | P7 并发与安全加固 | ✅ | `concurrency-mysql` **23/23**、`security` **53/53**、`rules` **50/50** |
-| P8 前端框架迁移（Vue3 + Element Plus / uni-app） | ✅ | `check-admin-spa` **29/29**、`check-mobile-spa` **39/39** |
+| P8 前端框架迁移（Vue3 + Element Plus / uni-app） | ✅ | `check-admin-spa` **35/35**、`check-mobile-spa` **39/39** |
 | P9 SQLite → MySQL 迁移与双跑 | ✅ | `gate-p9`：37 表行数一致、6 项汇总一致、迁移后巡检 **12/12** |
 | P10 对抗式评审与缺陷修复（安全 + 资金并发） | ✅ | `check-money-races` **27/27**；e2e 153 / security 53 / rules 50 / concurrency 23 全绿 |
 | P11 隐私与账号安全加固 | ✅ | `check-privacy-auth` **38/38**；e2e 153 / security 53 / verify-nest 15 全绿 |
 | P12 性能基线与热点优化 | ✅ | `nest:bench`（500 次 × 并发 20 × 12 读接口 + 抢单写路径）→ `docs/PERF.md`；修复 2 处串行取数/N+1 |
-| P13 接口清单自动生成 + 文档漂移门禁 | ✅ | `api:doc` / `api:doc:check`：136 路由 / 16 控制器；删行→退出码 1、重生成→0（双向验证） |
-| P14 需求追溯矩阵（新后端）+ 汇总 CI 门禁 | ✅ | `docs/TRACEABILITY-NEST.md`：**136/136 路由全覆盖**、148 处接口引用全部有效；`trace:check` / `ci` / `ci:quick` / `ci:full` |
-| P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交（190 文件），推送需远端与凭据 |
+| P13 接口清单自动生成 + 文档漂移门禁 | ✅ | `api:doc` / `api:doc:check`：删行→退出码 1、重生成→0（双向验证） |
+| P14 需求追溯矩阵（新后端）+ 汇总 CI 门禁 | ✅ | `docs/TRACEABILITY-NEST.md`：接口引用全部有效、覆盖 **140/140**；`trace:check` / `ci` / `ci:quick` / `ci:full` |
+| P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交，推送需远端与凭据 |
+| P16 补齐后台需求池与管理员账号（需求 4.5.3 / 4.5.9） | ✅ | 新增 4 条路由（接口 136→**140**）：需求池分页筛选；管理员列表 / 新建（一次性强口令 + 首登改密）/ 启停（禁止禁自己、保底一个启用、禁用即失效令牌）；`check-admin-spa` 29→**35** |
 
-**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 29 + 39 + 27 + 38 + 15(P1) = 439 项断言全绿；
+**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 35 + 39 + 27 + 38 + 15(P1) = 445 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**
 
 ### 1.17 P10：对抗式评审与缺陷修复
@@ -543,8 +544,7 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
   这样「交付文档里的接口」不可能悄悄落后于代码，也不需要人工盘点。
 - 修复了生成器的一个真实判定错误：首版把「第一个方法上的 `@Public()`」误判为**类级**注解，
   导致 `POST /api/auth/change-password` 与 `GET /api/health/detail` 被标成公开；改为「类级注解只认 `export class` 之前的位置」后，
-  公开接口收敛为 9 个（登录×2 / 发码 / health / 字典 / 公开运营×4），与 `@Public()` 的实际分布一致。
-- 本轮未改后端源码，既有 439 项断言门禁不受影响。
+- 本轮未改后端源码，既有断言门禁不受影响（当时为 439 项）。
 
 ### 1.20 P14：需求追溯矩阵（新后端）与汇总 CI 门禁
 
@@ -554,7 +554,8 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
   - 带 HTTP 方法的接口引用必须存在于 `docs/API-NEST.md`（该文档又由 `api:doc:check` 保证与源码一致）；
   - `e2e §n` 的序号必须在 `test/e2e.test.js` 实际分段范围内（当前 §1–§20）；
   - 引用的门禁脚本文件必须存在。
-  实测：**148 处接口引用 / 去重 136 个接口，与接口清单 136 条一一对应（覆盖 136/136）**；
+  实测（P14 落地时）：148 处接口引用 / 去重 136 个接口，与当时的接口清单一一对应；
+  P16 新增 4 条后台路由后，覆盖更新为 **140/140**（`npm run trace:check` 每次都会重新核对）；
   把其中一处改成不存在的 `POST /api/orders/:id/payyy` 后，校验立即报错并退出码 1。
 - 新增 **`tools/ci-full.mjs`** 汇总门禁，三个档位：
   `npm run ci`（静态三连，约 2 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 13 步）。

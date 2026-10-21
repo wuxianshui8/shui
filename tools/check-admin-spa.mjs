@@ -112,6 +112,28 @@ const parentLogin = await api("POST", "/auth/login-password", { body: { phone: "
 const deny = await api("GET", "/admin/overview", { token: parentLogin.body.data.token });
 assert(deny.status === 403, "后台接口对非管理员返回 403（" + deny.status + "）");
 
+/* ---------- 需求池与管理员账号（需求 4.5.3 / 4.5.9） ---------- */
+const demands = await api("GET", "/admin/demands?page=1&pageSize=10", { token });
+assert(demands.status === 200 && Array.isArray(demands.body.data.list),
+  "需求池页：/admin/demands 返回分页列表（" + (demands.body.data?.total ?? 0) + " 条）");
+const demandRow = (demands.body.data?.list || [])[0];
+assert(!!demandRow && "statusText" in demandRow && "applications" in demandRow && String(demandRow.parentPhone || "").includes("*"),
+  "需求池页：含状态文案/报名数，且家长手机号脱敏（" + demandRow?.parentPhone + "）");
+
+const adminList = await api("GET", "/admin/admins", { token });
+assert(adminList.status === 200 && (adminList.body.data || []).some((a) => a.status === "active"),
+  "管理员账号页：/admin/admins 返回管理员列表（" + (adminList.body.data || []).length + " 个）");
+const newAdmin = await api("POST", "/admin/admins", { token, body: { nickname: "验收管理员", phone: "13900007701" } });
+const admPwd = newAdmin.body.data?.initialPassword;
+assert(newAdmin.status === 200 && typeof admPwd === "string" && admPwd !== PW && admPwd.length >= 10,
+  "管理员账号页：新建管理员返回一次性强口令（" + admPwd + "）");
+const newAdminId = newAdmin.body.data?.id;
+const disableNew = await api("POST", "/admin/admins/" + newAdminId + "/toggle", { token });
+assert(disableNew.status === 200 && disableNew.body.data.status === "disabled", "管理员账号页：可禁用其他管理员");
+const selfDisable = await api("POST", "/admin/admins/" + (login.body.data.user.id) + "/toggle", { token });
+assert(selfDisable.status === 403 && /当前登录/.test(selfDisable.body?.message || ""),
+  "管理员账号页：禁止禁用自己（" + selfDisable.body?.message + "）");
+
 console.log("\n=================================================");
 console.log("PC 管理后台验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {
