@@ -100,7 +100,7 @@ jobs:
         run: |
           nohup node dist/main.js > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -fsS "$BASE_URL/api/health" > /dev/null; then echo "API 就绪"; break; fi
+            if curl -fsS "$BASE_URL/api/health" > /dev/null; then echo "API 就绪（第 ${i} 次探活）"; break; fi
             sleep 2
           done
           curl -fsS "$BASE_URL/api/health"

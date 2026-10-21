@@ -1,6 +1,6 @@
 // ============================================================
-// GitHub Actions 工作流离线 lint（官方 actionlint / SchemaStore 在本机被网络阻断，
-// 这里用离线规则覆盖 Actions 最常见的真实错误）
+// GitHub Actions 工作流 lint：装了官方 actionlint（tools/bin/actionlint.exe）就以它为准，
+// 未装则退回离线规则（覆盖 Actions 最常见的真实错误）
 //   1. on / jobs / steps 结构完整，作业都有 runs-on
 //   2. 每个 step 恰有 uses 或 run 之一；uses 必须锁主版本（@vN）
 //   3. services 必须有 image；options 里的 health-cmd 有对应端口
@@ -10,6 +10,7 @@
 // 用法：node tools/check-workflow-lint.mjs
 // ============================================================
 import { readFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -99,13 +100,40 @@ for (const m of text.matchAll(/^.*run:.*\$\{\{\s*secrets\.[^}]+\}\}.*$/gm)) {
   fail("run 里直接插值 secrets（应改为 env 传入）：" + m[0].trim().slice(0, 80));
 }
 
+/* ---------- 官方 actionlint（若已安装则作为权威校验） ---------- */
+const official = ["tools/bin/actionlint.exe", "tools/bin/actionlint"]
+  .map((p) => path.join(ROOT, p))
+  .find((p) => existsSync(p));
+let officialRan = false;
+if (official) {
+  const sc = [path.join(ROOT, "tools", "bin", "shellcheck.exe")].find((p) => existsSync(p));
+  const args = ["-no-color", "-oneline", sc ? `-shellcheck=${sc}` : "-shellcheck=", WF];
+  const r = spawnSync(official, args, { encoding: "utf8" });
+  officialRan = true;
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
+  if (r.status !== 0) {
+    for (const line of out.split(/\r?\n/).filter(Boolean)) fail("actionlint: " + line);
+  }
+  notes.push(
+    `官方 actionlint${sc ? " + shellcheck" : ""}：已执行（${r.status === 0 ? "无告警" : "结果见下方问题"}）`,
+  );
+}
+
 /* ---------- 输出 ---------- */
-console.log("GitHub Actions 工作流 · 离线 lint");
-console.log("（官方 actionlint / SchemaStore / Docker Hub 在本机被网络阻断；此项为离线规则校验）");
+console.log("GitHub Actions 工作流 lint");
+console.log(
+  officialRan
+    ? "（已安装官方 actionlint → 以其结果为准，离线规则仅作补充）"
+    : "（未安装官方 actionlint → 仅离线规则校验；安装方式见 docs/DEPLOY-CONTAINERS.md）",
+);
 notes.forEach((n) => console.log("  · " + n));
 if (problems.length) {
   console.log("\n✗ 发现 " + problems.length + " 个问题：");
   problems.forEach((p) => console.log("  - " + p));
   process.exit(1);
 }
-console.log("\n✓ on / jobs / steps / services / working-directory / env / secrets 用法均符合 Actions 规范");
+console.log(
+  officialRan
+    ? "\n✓ 官方 actionlint 通过，且离线规则（on/jobs/steps/services/working-directory/env/secrets）无问题"
+    : "\n✓ on / jobs / steps / services / working-directory / env / secrets 用法均符合 Actions 规范",
+);

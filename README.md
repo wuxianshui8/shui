@@ -135,14 +135,17 @@ npm run ci:full        # 全部 13 步门禁（约 15 分钟）
 
 **容器化（Docker Compose）**：`deploy/Dockerfile` + `deploy/docker-compose.yml`（MySQL 8 / Redis 7 / 应用镜像），
 一键起服与自检清单见 [`docs/DEPLOY-CONTAINERS.md`](docs/DEPLOY-CONTAINERS.md)。
-> 注意：**本机没有 Docker 守护进程**（无硬件虚拟化 → WSL2 不可用），容器运行时未在本机实测；
-> 交付物只做了静态一致性校验 `npm run deploy:check`（严格 YAML 解析 + 路径/端口/安全开关一致性）。
+> 注意：**本机没有 Docker 守护进程**（BIOS 关闭 VT-x → WSL2 / Hyper-V 不可用），容器运行时未在本机实测。
+> 已完成的等价校验：`npm run deploy:check`（严格 YAML + 路径/端口/安全开关一致性）、
+> `npm run deploy:schema`（**官方 compose-spec JSON Schema**，固定 commit 随仓库提交，负向验证退出码 1）、
+> `npm run image:check`（镜像运行阶段 COPY 布局 vs `main.ts` 静态托管约定）。
 
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / 部署配置）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
   e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
+- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机另用 `npm run ci:full` 跑完整 19 步（203s）作为 Runner 命令的等价证据
 
 启用方式（需仓库远端与推送凭据）：
 ```bash
