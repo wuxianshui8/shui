@@ -155,11 +155,21 @@ npm run ci:full        # 全部 24 步门禁（约 4 分钟 = 静态 12 步 + �
 - workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机另用 `npm run ci:full` 跑完整 24 步作为 Runner 命令的等价证据
 
 启用方式（需仓库远端与推送凭据）：
-```bash
+```powershell
 node tools/check-deploy.mjs                 # 本地先过静态校验（已入库，随 ci 一起跑）
-git remote add origin <你的仓库地址>
-git push -u origin main                     # 推送后 Actions 自动执行
+git remote add origin https://github.com/<owner>/<repo>.git
+
+# 推荐：一条命令完成「推送 + 等 Actions 跑完 + 打印失败 job 日志」
+$env:GH_TOKEN = "<你的 classic PAT>"        # 必须同时具备 repo + workflow 两个 scope
+npm run git:push
 ```
+
+> **⚠️ PAT 必须带 `workflow` scope**：GitHub 不允许用缺该 scope 的 token 通过 HTTPS 推送
+> `.github/workflows/*`（会报 `refusing to allow a Personal Access Token to create or update workflow`）。
+> token 只从环境变量读取，脚本会把它作为单次 HTTP 头使用，**不会写进 `.git/config`**；
+> 若远端 URL 里已经带了凭据，脚本会自动改成干净地址。
+>
+> 手动等价写法（同样不落盘）：`git -c http.https://github.com/.extraheader="AUTHORIZATION: basic <base64(x-access-token:PAT)>" push -u origin main`
 
 > 迁移全过程、逐阶段门禁与偏离记录见 `docs/MIGRATION.md`；
 > 新后端接口清单见 [`docs/API-NEST.md`](docs/API-NEST.md)；需求逐条追溯见 [`docs/TRACEABILITY-NEST.md`](docs/TRACEABILITY-NEST.md)；

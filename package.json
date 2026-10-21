@@ -44,6 +44,7 @@
     "docs:check": "node tools/check-docs-shell.mjs",
     "windows:check": "node tools/check-windows-scripts.mjs",
     "gates:selftest": "node tools/check-gates-selftest.mjs",
+    "git:push": "node tools/push-and-watch.mjs",
     "deploy:check": "node tools/check-deploy.mjs",
     "deploy:schema": "node tools/check-compose-schema.mjs",
     "image:runtime": "node tools/check-image-runtime.mjs",
