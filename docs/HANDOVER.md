@@ -111,3 +111,4 @@ npm run db:backup        # 数据有变化 → 备份一份（产物在 backups/
 | 性能基线与优化记录 | `docs/PERF.md` |
 | 部署（容器 / 传统） | `docs/DEPLOY-CONTAINERS.md`、`docs/DEPLOY.md` |
 | 后台操作手册 | `docs/ADMIN-GUIDE.md` |
+| **上线还缺什么**（外部集成/运维/质量分类待办） | `docs/GO-LIVE-CHECKLIST.md` |

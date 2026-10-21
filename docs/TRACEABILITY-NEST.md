@@ -158,7 +158,7 @@
 | 3 | 跨区订单收益归属固定为「**需求发布地址所在片区**」 | 需求 5.5 有明文，故未做成可切换；`e2e §20` 做了跨区断言（西湖家长在滨江发单 → 滨江代理计提） |
 | 4 | 微信支付 / 短信 / 地图 SDK 为**模拟实现** | 与参考实现一致：支付走担保台账真实记账、验证码本地生成（生产需接真实通道并把 `devCode` 关闭）、距离与围栏为真实 Haversine/多边形算法 |
 | 5 | 并发计数与规则内存缓存为**单实例实现** | 规则缓存已加 300s TTL（与 Redis 对齐）；多实例需将验证码/失败计数迁到 Redis，见 `docs/SECURITY.md` §8 第 11 条 |
-| 6 | 未做容器化（Docker Compose） | 交付环境未安装 Docker，不提供无法验证的编排文件；本地一键启动为 `start.bat`，生产建议前置 Nginx + HTTPS |
+| 6 | **（已补齐）** 容器化交付 | 环境就绪后已交付并实测：`deploy/Dockerfile`（多阶段、`USER node`、`HEALTHCHECK`）+ `docker-compose.yml`（mysql/redis/app/seed）+ `.dockerignore`；三服务 healthy、四入口 200、四角色登录、容器库 37 表、**容器栈 9 套件 282 断言**全绿，另附 `verify:docker` 与备份/恢复脚本。生产仍建议前置 Nginx + HTTPS（见 `docs/DEPLOY-CONTAINERS.md`） |
 
 ## 校验
 
