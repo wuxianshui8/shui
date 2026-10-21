@@ -54,7 +54,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
     assert(Array.isArray(appJson.pages) && appJson.pages.length >= 6, "小程序 app.json 注册 " + (appJson.pages || []).length + " 个页面");
     const need = ["pages/login/index", "pages/parent/index", "pages/parent/publish/index", "pages/teacher/index",
       "pages/teacher/wallet/index", "pages/sales/index", "pages/sales/rewards/index",
-      "pages/agent/index", "pages/agent/complaints/index"];
+      "pages/agent/index", "pages/agent/complaints/index", "pages/messages/index"];
     const lack = need.filter((p) => !(appJson.pages || []).includes(p));
     assert(lack.length === 0, "小程序页面与 H5 一致（含家长发需求页）" + (lack.length ? "，缺 " + lack.join(",") : ""));
     assert(existsSync(mp + "/pages/parent/publish/index.wxml"), "小程序页面产物为 wxml/wxss（真实小程序工程）");
@@ -62,7 +62,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "登录页"], ["/m/pages/parent/index", "家长端"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"]]) {
+for (const [p, label] of [["/m/", "登录页"], ["/m/pages/parent/index", "家长端"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -70,7 +70,7 @@ for (const [p, label] of [["/m/", "登录页"], ["/m/pages/parent/index", "家�
 
 console.log("\n== 3. 四个角色页面依赖的接口 ==");
 const roles = [
-  { phone: "13900000301", role: "parent", label: "家长端", paths: ["/parent/home?lat=30.262&lng=120.133", "/parent/orders"] },
+  { phone: "13900000301", role: "parent", label: "家长端", paths: ["/parent/home?lat=30.262&lng=120.133", "/parent/orders", "/messages"] },
   { phone: "13900000201", role: "teacher", label: "教员端", paths: ["/teacher/dashboard", "/teacher/level", "/teacher/nearby-demands", "/wallet", "/withdrawals"] },
   { phone: "13900000101", role: "sales", label: "业务员端", paths: ["/sales/dashboard", "/sales/customers", "/sales/rewards"] },
   { phone: "13900000010", role: "agent", label: "区域代理端", paths: ["/agent/dashboard", "/agent/orders", "/agent/complaints"] },

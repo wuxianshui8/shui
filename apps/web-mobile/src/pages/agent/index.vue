@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 
 const dash = ref(null);
 const orders = ref([]);
+const unread = ref(0);
 const user = uni.getStorageSync("user") || {};
 
 function req(path) {
@@ -18,6 +19,8 @@ function req(path) {
 
 onMounted(async () => {
   dash.value = await req("/agent/dashboard");
+  const msgs = await req("/messages");
+  unread.value = (msgs && msgs.unread) || 0;
   const o = await req("/agent/orders");
   orders.value = (o && o.list) || [];
 });
@@ -27,10 +30,18 @@ const money = (c) => "¥" + (Number(c || 0) / 100).toFixed(2);
 function goComplaints() {
   uni.navigateTo({ url: "/pages/agent/complaints/index" });
 }
+
+function goMessages() {
+  uni.navigateTo({ url: "/pages/messages/index" });
+}
 </script>
 
 <template>
   <view class="wrap">
+    <view class="card" @tap="goMessages">
+      <view class="row"><view>消息中心</view><view class="tag">{{ unread ? unread + " 条未读" : "查看" }}</view></view>
+    </view>
+
     <view class="card">
       <view class="card-title">{{ user.nickname || "区域代理" }}</view>
       <view class="muted" v-if="dash && dash.region">{{ dash.region.name }}</view>

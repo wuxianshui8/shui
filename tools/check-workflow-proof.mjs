@@ -30,11 +30,11 @@ const PROOF = [
   { match: /node tools\/check-permissions\.mjs/, gate: "permissions → 17/17" },
   { match: /node \.\.\/tools\/concurrency-mysql\.mjs/, gate: "concurrency → 23/23" },
   { match: /node \.\.\/tools\/healthcheck-mysql\.mjs/, gate: "MySQL 巡检 → 12/12（gate-p9）" },
-  { match: /node tools\/check-admin-spa\.mjs/, gate: "admin SPA → 35/35" },
-  { match: /node tools\/check-mobile-spa\.mjs/, gate: "mobile SPA → 39/39" },
+  { match: /node tools\/check-admin-spa\.mjs/, gate: "admin SPA → 38/38" },
+  { match: /node tools\/check-mobile-spa\.mjs/, gate: "mobile SPA → 41/41" },
   { match: /npm --prefix apps\/web-admin run build/, gate: "web-admin vite build 本地多次通过（dist 存在）" },
   { match: /npm --prefix apps\/web-mobile run build:h5/, gate: "web-mobile uni build（H5）本地多次通过" },
-  { match: /npm --prefix apps\/web-mobile run build:mp/, gate: "web-mobile uni build -p mp-weixin 本地通过（app.json 9 页）" },
+  { match: /npm --prefix apps\/web-mobile run build:mp/, gate: "web-mobile uni build -p mp-weixin 本地通过（app.json 10 页）" },
   { match: /node tools\/ci-full\.mjs --static/, gate: "npm run ci（tsc + 接口文档 + 追溯矩阵 + 部署配置）" },
 ];
 

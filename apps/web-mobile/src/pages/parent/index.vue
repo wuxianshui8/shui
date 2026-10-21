@@ -5,6 +5,7 @@ const home = ref(null);
 const orders = ref([]);
 const user = uni.getStorageSync("user") || {};
 const busy = ref("");
+const unread = ref(0);
 
 function req(method, path, body) {
   return new Promise((resolve) => {
@@ -21,6 +22,8 @@ function req(method, path, body) {
 
 async function load() {
   home.value = await req("GET", "/parent/home?lat=30.262&lng=120.133");
+  const msgs = await req("GET", "/messages");
+  unread.value = (msgs && msgs.unread) || 0;
   const list = await req("GET", "/parent/orders");
   orders.value = (list && list.list) || [];
 }
@@ -65,10 +68,18 @@ async function review(o) {
 }
 
 const money = (c) => "¥" + (Number(c || 0) / 100).toFixed(2);
+
+function goMessages() {
+  uni.navigateTo({ url: "/pages/messages/index" });
+}
 </script>
 
 <template>
   <view class="wrap">
+    <view class="card" @tap="goMessages">
+      <view class="row"><view>消息中心</view><view class="tag">{{ unread ? unread + " 条未读" : "查看" }}</view></view>
+    </view>
+
     <view class="card">
       <view class="card-title">您好，{{ user.nickname || "家长" }}</view>
       <view class="muted" v-if="home">当前片区：{{ home.region ? home.region.name : "未定位" }}</view>

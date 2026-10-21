@@ -6,6 +6,7 @@ const level = ref(null);
 const demands = ref([]);
 const orders = ref([]);
 const busy = ref("");
+const unread = ref(0);
 const user = uni.getStorageSync("user") || {};
 
 function req(method, path, body) {
@@ -26,6 +27,8 @@ async function load() {
   level.value = await req("GET", "/teacher/level");
   const list = await req("GET", "/teacher/nearby-demands");
   demands.value = (list && list.list) || [];
+  const msgs = await req("GET", "/messages");
+  unread.value = (msgs && msgs.unread) || 0;
   const mine = await req("GET", "/teacher/orders");
   orders.value = (mine && mine.list) || [];
 }
@@ -74,10 +77,18 @@ const money = (c) => "¥" + (Number(c || 0) / 100).toFixed(2);
 function goWallet() {
   uni.navigateTo({ url: "/pages/teacher/wallet/index" });
 }
+
+function goMessages() {
+  uni.navigateTo({ url: "/pages/messages/index" });
+}
 </script>
 
 <template>
   <view class="wrap">
+    <view class="card" @tap="goMessages">
+      <view class="row"><view>消息中心</view><view class="tag">{{ unread ? unread + " 条未读" : "查看" }}</view></view>
+    </view>
+
     <view class="card">
       <view class="card-title">{{ user.nickname || "教员" }} · {{ dash && dash.overview ? dash.overview.level : "Lv" }}</view>
       <view class="muted" v-if="level">

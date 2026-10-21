@@ -4,7 +4,7 @@
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
 - **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：18**
-- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：9**
+- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：10**
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
 > 引用的后台路由都在 `router.js` 注册、侧栏菜单与路由自洽、声明的页面数与实际一致（漏写/写错即失败）。
@@ -22,6 +22,7 @@
 | （UI 说明书未单列业务员端） | `pages/sales/index` | `pages/sales/index.vue` | 按同规范扩展：本月注册/成交/GMV/待结奖励、双通道推广码、客户 |
 | （同上）奖励明细 | `pages/sales/rewards/index` | `pages/sales/rewards/index.vue` | 六类奖励按类型汇总与筛选、结算状态、钱包可用 |
 | 第 4 章 区域代理端界面（大盘/订单） | `pages/agent/index` | `pages/agent/index.vue` | 片区 GMV/订单/业务员、考核完成度、片区订单 |
+| （全角色共用）站内消息中心 | `pages/messages/index` | `pages/messages/index.vue` | 未读数、单条已读、全部已读；订单/资金/风控/系统四类通知，仅本人可见 |
 | 第 4 章客诉处理 | `pages/agent/complaints/index` | `pages/agent/complaints/index.vue` | 片区隔离工单、「已处理 / 上报平台 / 关闭」闭环 |
 
 ## 2. PC 管理后台（Vue3 + Element Plus）— 对应 UI 说明书第 4 章补充

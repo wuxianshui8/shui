@@ -433,14 +433,14 @@ apps/web-mobile/    uni-app（Vue3 语法）：H5 + 微信小程序双产物
 ```
 apps/web-admin:  npm install（54 包）→ vite build ✓ 15 个页面分包（含 Regions）
 apps/web-mobile: npm install（669 + 78 包）→ uni build ✓ H5；uni build -p mp-weixin ✓ 小程序
-                 （app.json 注册 9 个页面，产出 wxml/wxss，可直接导入微信开发者工具）
+                 （app.json 注册 10 个页面，产出 wxml/wxss，可直接导入微信开发者工具）
 
 tools/check-admin-spa.mjs  38/38   （入口与 assets 200、15 个页面分包、13 个模块接口、区域管理写闭环、
                                     需求池与管理员账号（P16）、Banner 启停闭环、
                                     规则热更新 500→800m 并回滚、CSV 导出、非管理员 403）
-tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history 回落、四角色登录+接口、
+tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history 回落、四角色登录+接口、
                                     业务员奖励明细 / 代理客诉工单 / 教员钱包提现规则断言、教员端抢单闭环、
-                                    微信小程序 app.json 与页面产物一致性）
+                                    消息中心未读与已读闭环、微信小程序 app.json 与页面产物一致性）
 ```
 
 关键实现点：
@@ -465,7 +465,7 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
 | P5 业务员端 + 区域代理端 | ✅ | e2e §1–§10 55/55 |
 | P6 平台后台域 | ✅ | e2e 全套 **153/153** |
 | P7 并发与安全加固 | ✅ | `concurrency-mysql` **23/23**、`security` **53/53**、`rules` **50/50** |
-| P8 前端框架迁移（Vue3 + Element Plus / uni-app） | ✅ | `check-admin-spa` **38/38**、`check-mobile-spa` **39/39** |
+| P8 前端框架迁移（Vue3 + Element Plus / uni-app） | ✅ | `check-admin-spa` **38/38**、`check-mobile-spa` **41/41** |
 | P9 SQLite → MySQL 迁移与双跑 | ✅ | `gate-p9`：37 表行数一致、6 项汇总一致、迁移后巡检 **12/12** |
 | P10 对抗式评审与缺陷修复（安全 + 资金并发） | ✅ | `check-money-races` **27/27**；e2e 153 / security 53 / rules 50 / concurrency 23 全绿 |
 | P11 隐私与账号安全加固 | ✅ | `check-privacy-auth` **38/38**；e2e 153 / security 53 / verify-nest 15 全绿 |
@@ -475,11 +475,12 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
 | P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交，推送需远端与凭据 |
 | P18 CI 工作流证据映射 | ⚠️ | `tools/check-workflow-proof.mjs`：把 workflow 每条命令映射到本机已通过的门禁（21 条需证据 + 6 条 Runner 专属，未覆盖即失败）；**Runner 环境本身仍未执行**（无 Docker / 无远端） |
 | P19 后台新增 3 页 UI（需求池 / 管理员账号 / 权限矩阵） | ✅ | `Demands.vue`（状态/学段/科目/片区/加急筛选 + 分页）、`Admins.vue`（新建显示一次性口令 + 启停护栏提示）、`Permissions.vue`（4 权限点 × 5 角色矩阵，admin 列锁定）；PC 后台 15 → **18 页**，`check-admin-spa` 35 → **38** |
-| P20 UI 追溯矩阵（UI 说明书 ↔ 新前端） | ✅ | `docs/TRACEABILITY-UI-NEST.md`：移动端 9 页 + 后台 18 页逐页映射到 UI 说明书章节；`npm run ui:check` 校验（缺条目 → 退出码 1，实测负向验证通过）；纳入 `npm run ci` |
+| P21 移动端补「消息中心」页（第 10 页） | ✅ | `pages/messages/index`：未读数、单条已读、全部已读（订单/资金/风控/系统四类）；4 个角色首页均加带未读数的入口；`check-mobile-spa` 39 → **41**（新增路由回落 + `/messages` 契约） |
+| P20 UI 追溯矩阵（UI 说明书 ↔ 新前端） | ✅ | `docs/TRACEABILITY-UI-NEST.md`：移动端 10 页 + 后台 18 页逐页映射到 UI 说明书章节；`npm run ui:check` 校验（缺条目 → 退出码 1，实测负向验证通过）；纳入 `npm run ci` |
 | P17 细粒度权限矩阵（需求 4.5.9 角色权限分配） | ✅ | 新增规则组 `permissions`（4 个高危权限点）+ `@Perm` 装饰器 + `GET/PUT /api/admin/permissions`；`check-permissions` **17/17**（授予即时生效、撤销即失效、admin 不可移除、未知权限点被拒、审计留痕） |
 | P16 补齐后台需求池与管理员账号（需求 4.5.3 / 4.5.9） | ✅ | 新增 4 条路由（接口 136→**140**）：需求池分页筛选；管理员列表 / 新建（一次性强口令 + 首登改密）/ 启停（禁止禁自己、保底一个启用、禁用即失效令牌）；`check-admin-spa` 29→**35** |
 
-**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 39 + 27 + 38 + 17 + 15(P1) = 465 项断言全绿；
+**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 41 + 27 + 38 + 17 + 15(P1) = 467 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**
 
 ### 1.17 P10：对抗式评审与缺陷修复

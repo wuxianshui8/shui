@@ -27,7 +27,7 @@
 | 4.1.6 担保支付（幂等）、消费/退款记录 | `POST /api/orders/:id/pay`、`GET /api/wallet`、`GET /api/wallet/txns` | e2e §4、`races`（幂等重放）、e2e §14 |
 | 4.1.6 发票申请 | `POST /api/invoices`（仅本人订单、唯一约束） | e2e §17、`hc`（发票唯一性） |
 | 4.1.7 评价（72h 窗口、1–5 星、信用加权） | `POST /api/orders/:id/review` | e2e §7、`rules`（加权与窗口） |
-| 4.1.8 个人中心、站内消息 | `GET /api/parent/profile`、`GET /api/messages`、`POST /api/messages/:id/read`、`POST /api/messages/read-all` | e2e §16、`priv`（消息只限本人） |
+| 4.1.8 个人中心、站内消息（移动端「消息中心」页：未读数 / 单条已读 / 全部已读） | `GET /api/parent/profile`、`GET /api/messages`、`POST /api/messages/:id/read`、`POST /api/messages/read-all` | e2e §16、`priv`（消息只限本人）、`mobile`（页路由与接口） |
 | （第 8 章）紧急求助 | `POST /api/orders/:id/sos` | e2e §19 |
 
 ### 4.2 教员端
@@ -114,7 +114,7 @@
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
 | 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（18 页，含需求池/管理员账号/权限矩阵） | `admin` 38 项 |
-| 6.1 移动端 uni-app | `apps/web-mobile/`（9 页，H5 + 微信小程序双产物） | `mobile` 39 项 |
+| 6.1 移动端 uni-app | `apps/web-mobile/`（10 页，H5 + 微信小程序双产物） | `mobile` 41 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
 ## 第 7 章 非功能需求
@@ -146,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 140 路由）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 39 + verify 15 + hc 12 = **465** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 41 + verify 15 + hc 12 = **467** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

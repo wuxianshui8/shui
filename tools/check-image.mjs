@@ -131,4 +131,4 @@ if (problems.length) {
   process.exit(1);
 }
 console.log("\n✓ 基础镜像/编排镜像声明完整，运行阶段 COPY 结果满足 main.ts 的静态托管约定与执行约定");
-console.log("  说明：仍无法验证的是「真正 запуск 容器」——本机 BIOS 关闭 VT-x 且未安装 Hyper-V/WSL，dockerd 起不来");
+console.log("  说明：仍无法验证的是「真正启动容器」——本机 BIOS 关闭 VT-x 且未安装 Hyper-V/WSL，dockerd 起不来");
