@@ -1,0 +1,65 @@
+/**
+ * 可信客户端 IP。
+ * 直连部署时只认 TCP 源地址；只有显式声明 TRUST_PROXY=1（前面确实有反向代理）时才采信 X-Forwarded-For，
+ * 否则攻击者可通过轮换 XFF 绕过「登录失败锁定」与「注册频次限制」。
+ */
+function clientIp(req: any): string {
+  if (process.env.TRUST_PROXY === "1") {
+    const xff = (req.headers?.["x-forwarded-for"] || "").toString().split(",")[0].trim();
+    if (xff) return xff;
+  }
+  return (req.socket?.remoteAddress || "").toString();
+}
+import { Body, Controller, Get, Post, Req, HttpCode } from "@nestjs/common";
+import { AuthService } from "./auth.service";
+import { Public } from "../public.decorator";
+import { ok } from "../common/reply";
+
+@Controller("auth")
+export class AuthController {
+  constructor(private readonly auth: AuthService) {}
+
+  @Public()
+  @HttpCode(200)
+  @Post("send-code")
+  sendCode(@Body() body: { phone?: string }) {
+    return ok(this.auth.sendCode(String(body.phone || "").trim()));
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post("login")
+  async login(@Body() body: { phone?: string; code?: string; inviteToken?: string }, @Req() req: any) {
+    const ip = clientIp(req);
+    const fp = (req.headers["x-device-fp"] || "").toString().slice(0, 128) || undefined;
+    return ok(await this.auth.loginByCode(String(body.phone || "").trim(), String(body.code || "").trim(), ip, body.inviteToken, fp));
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post("login-password")
+  async loginPassword(@Body() body: { phone?: string; password?: string }, @Req() req: any) {
+    const ip = clientIp(req);
+    return ok(await this.auth.loginByPassword(String(body.phone || "").trim(), String(body.password || ""), ip));
+  }
+
+  @Get("me")
+  async me(@Req() req: any) {
+    return ok({ user: await this.auth.me(req.user.uid) });
+  }
+
+  /** 账号注销（需求第 8 章）：匿名化个人信息，保留订单与资金流水 */
+  @HttpCode(200)
+  @Post("deactivate")
+  async deactivate(@Req() req: any) {
+    const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").toString().split(",")[0].trim();
+    return ok(await this.auth.deactivate({ user: req.user, ip }));
+  }
+
+  /** 修改口令（登录态；需要原口令） */
+  @HttpCode(200)
+  @Post("change-password")
+  async changePassword(@Body() body: { oldPassword?: string; newPassword?: string }, @Req() req: any) {
+    return ok(await this.auth.changePassword(Number(req.user.uid), String(body?.oldPassword || ""), String(body?.newPassword || "")));
+  }
+}

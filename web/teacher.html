@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>教员端 · 家教上门撮合平台</title>
+<link rel="stylesheet" href="/assets/css/base.css">
+<style>
+  /* ============ 教员端页面级补充样式（复用 base.css 令牌） ============ */
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+  .m-header .icon-btn:focus-visible, .back-btn:focus-visible { outline-color: #fff; }
+
+  /* 在线状态栏 */
+  .online-bar { display: flex; align-items: center; gap: 10px; width: 100%; }
+  .online-bar .ot { font-size: 22px; font-weight: 700; }
+  .online-bar .os { font-size: 11px; opacity: .86; margin-top: 1px; }
+  .online-bar .state { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, .22); }
+
+  /* 概览卡 */
+  .hero { background: linear-gradient(135deg, var(--brand), var(--brand-dark)); border-radius: var(--radius); padding: 16px; color: #fff;
+    box-shadow: 0 6px 18px rgba(16, 185, 139, .22); margin-bottom: var(--gap); }
+  .hero .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .hero .cell { background: rgba(255, 255, 255, .16); border-radius: var(--radius-sm); padding: 9px 8px; }
+  .hero .cell .l { font-size: 10px; opacity: .85; }
+  .hero .cell .v { font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 2px; }
+
+  /* 抢单卡片 */
+  .demand-card { border-left: 3px solid var(--brand); }
+  .demand-card.urgent { border-left-color: var(--danger); }
+  .demand-card .dist { font-size: 11px; color: var(--brand-dark); background: var(--brand-soft); border-radius: 8px; padding: 1px 7px; font-weight: 700; }
+  .demand-card .times { font-size: 11px; color: var(--ink-3); line-height: 1.7; margin-top: 4px; }
+
+  /* 收入行 */
+  .income-row { padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .income-row:last-child { border-bottom: none; }
+  .income-row .am { font-variant-numeric: tabular-nums; }
+
+  /* 等级头部 */
+  .level-hero { border-radius: var(--radius); padding: 18px; color: #fff; margin-bottom: var(--gap);
+    background: linear-gradient(135deg, #2d3b55, #16233a); box-shadow: var(--shadow); }
+  .level-hero .badge-lv { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
+    background: linear-gradient(135deg, #ffe7b3, #f7c463); color: #6a4300; padding: 2px 10px; border-radius: 999px; }
+  .level-hero .score { font-size: 30px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+  .level-hero .progress { background: rgba(255, 255, 255, .2); }
+  .level-hero .progress > i { background: linear-gradient(90deg, #ffd07a, #f5a623); }
+
+  /* 页头在线开关（teal 底上保持可见） */
+  .m-header .switch { background: rgba(255, 255, 255, .32); }
+  .m-header .switch.on { background: #fff; }
+  .m-header .switch.on::after { background: var(--brand); }
+
+  /* 日历 */
+  .cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-size: 11px; color: var(--ink-3); text-align: center; margin-bottom: 6px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-cell { position: relative; aspect-ratio: 1 / 1.06; border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px;
+    cursor: pointer; padding: 2px; transition: border-color .14s ease, background .14s ease; }
+  .cal-cell.mute { background: #fafbfd; color: var(--ink-3); border-color: transparent; cursor: default; }
+  .cal-cell .cn { font-weight: 600; }
+  .cal-cell .cdot { width: 5px; height: 5px; border-radius: 50%; background: var(--brand); }
+  .cal-cell.has { border-color: var(--brand); background: var(--brand-soft); }
+  .cal-cell.on { border-color: var(--brand-dark); box-shadow: inset 0 0 0 1.5px var(--brand); }
+  .cal-cell.today .cn { color: var(--brand-dark); font-weight: 800; }
+  .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .week-col { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 6px 4px; min-height: 96px; }
+  .week-col .wd { font-size: 10px; color: var(--ink-3); text-align: center; }
+  .week-col .lesson { font-size: 10px; background: var(--brand-soft); color: var(--brand-dark); border-radius: 6px; padding: 2px 4px; margin-top: 4px; line-height: 1.35; }
+
+  /* 表单提示 */
+  .form-hint { font-size: 11px; color: var(--ink-3); margin-top: 6px; line-height: 1.6; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .spec-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .spec-item:last-child { border-bottom: none; }
+
+  /* 我的：功能行 */
+  .q-item { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--line);
+    cursor: pointer; width: 100%; background: none; border-left: none; border-right: none; border-top: none; text-align: left; }
+  .q-item:last-child { border-bottom: none; }
+  .q-item .qi { width: 32px; height: 32px; border-radius: 10px; background: var(--brand-soft); display: grid; place-items: center; font-size: 15px; flex: 0 0 auto; }
+  .q-item .qz { flex: 1; font-size: 14px; color: var(--ink); }
+  .q-item .qv { font-size: 12px; color: var(--ink-3); }
+
+  /* 登录层 */
+  .login-layer { position: absolute; inset: 0; z-index: 80; overflow-y: auto; display: flex; flex-direction: column;
+    padding: 40px 24px calc(24px + env(safe-area-inset-bottom)); background: linear-gradient(165deg, #e6f8f2, #ffffff 46%); }
+  .login-layer .brandmark { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; font-size: 27px; color: #fff;
+    background: linear-gradient(135deg, var(--brand), var(--brand-dark)); box-shadow: 0 10px 24px rgba(16, 185, 139, .3); }
+  .login-layer h2 { font-size: 21px; font-weight: 800; margin-top: 18px; letter-spacing: -.3px; }
+  .login-layer .lead { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.7; }
+  .login-check { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: var(--ink-2); line-height: 1.65; }
+  .login-check input { margin-top: 2px; accent-color: var(--brand); width: 15px; height: 15px; }
+  .code-row { display: flex; gap: 8px; }
+  .code-row .btn { flex: 0 0 auto; padding: 0 14px; height: 44px; font-size: 13px; }
+  .code-row .input { flex: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    .m-body { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="m-stage">
+  <div class="m-shell" data-brand="op">
+    <header class="m-header" id="hdr"></header>
+    <main class="m-body" data-route></main>
+    <nav class="m-tabbar" id="tabbar"></nav>
+  </div>
+</div>
+<script type="module" src="/assets/js/teacher.js"></script>
+</body>
+</html>

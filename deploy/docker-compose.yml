@@ -1,0 +1,88 @@
+# ============================================================
+# 一键部署：MySQL 8 + Redis 7 + 应用（NestJS 托管 API 与两套前端）
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   首次灌演示数据：docker compose -f deploy/docker-compose.yml run --rm seed
+#   访问：http://localhost:4300/admin-vue/ 、http://localhost:4300/m/ 、http://localhost:4300/parent
+# 必需环境变量：AUTH_SECRET（≥32 字符；生产未设置时应用拒绝启动）
+# ============================================================
+name: jiajiao
+
+services:
+  mysql:
+    image: mysql:8.0
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: jiajiao
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动建表（37 张表）
+      - ../apps/api-nest/db/schema.mysql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "4300"
+      AUTH_SECRET: ${AUTH_SECRET:?请在 deploy/.env 或环境变量中设置 AUTH_SECRET（>=32 字符）}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ""
+      MYSQL_DATABASE: jiajiao
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # 生产必须关闭验证码回显；如前置了反向代理再打开 TRUST_PROXY
+      DEV_SMS: "0"
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      JOBS_ENABLED: ${JOBS_ENABLED:-1}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4300:4300"
+    restart: unless-stopped
+
+  # 一次性演示数据（不影响常驻服务）：docker compose run --rm seed
+  seed:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    profiles: ["seed"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ""
+      MYSQL_DATABASE: jiajiao
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["node", "db/seed-min.mjs"]
+
+volumes:
+  mysql-data:

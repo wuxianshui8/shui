@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家长端 · 家教上门撮合平台</title>
+<link rel="stylesheet" href="/assets/css/base.css">
+<style>
+  /* ============ 家长端页面级补充样式（不改动 base.css 令牌） ============ */
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+  .m-header .icon-btn:focus-visible, .back-btn:focus-visible { outline-color: #fff; }
+
+  /* 顶部定位栏 */
+  .loc { display: flex; align-items: center; gap: 10px; width: 100%; }
+  .loc .t1 { font-size: 22px; font-weight: 700; letter-spacing: .2px; }
+  .loc .t2 { font-size: 11px; opacity: .86; margin-top: 1px; }
+
+  /* Banner 横向滚动 */
+  .banner-scroll { display: flex; gap: 10px; overflow-x: auto; margin: -4px -4px 14px; padding: 0 4px 4px; scroll-snap-type: x mandatory; }
+  .banner-scroll::-webkit-scrollbar { height: 0; }
+  .banner-card { flex: 0 0 78%; scroll-snap-align: start; border-radius: var(--radius); padding: 14px 16px; color: #fff; position: relative; overflow: hidden;
+    background: linear-gradient(135deg, #3d86ff, #1a5fd0); box-shadow: var(--shadow-sm); }
+  .banner-card:nth-child(2n) { background: linear-gradient(135deg, #5b6cff, #257bff); }
+  .banner-card:nth-child(3n) { background: linear-gradient(135deg, #17b0a0, #0c9370); }
+  .banner-card .bt { font-size: 14px; font-weight: 700; }
+  .banner-card .bp { font-size: 11px; opacity: .9; margin-top: 4px; line-height: 1.5; }
+  .banner-card .em { position: absolute; right: 8px; bottom: -8px; font-size: 46px; opacity: .2; }
+
+  /* 优惠券入口 */
+  .coupon-strip { display: flex; align-items: center; gap: 10px; background: var(--gold-soft); border: 1px solid #f7e3c3;
+    border-radius: 14px; padding: 10px 14px; margin-bottom: 16px; cursor: pointer; }
+  .coupon-strip .ci { font-size: 20px; }
+  .coupon-strip .ct { flex: 1; font-size: 13px; font-weight: 600; color: #8a5a00; }
+  .coupon-strip .cn { font-weight: 800; color: #b06f00; }
+
+  /* 公告 */
+  .notice-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+  .notice-row .nt { flex: 1; }
+  .notice-row .pin { color: var(--danger); font-size: 10px; flex: 0 0 auto; margin-top: 2px; }
+
+  /* 地图气泡内的迷你头像 */
+  .map-pin .avatar { width: 18px; height: 18px; border-radius: 6px; font-size: 9px; }
+  .map-pin .level-badge { font-size: 9px; padding: 0 4px; border-radius: 6px; }
+  .map-pin .bubble b { font-size: 10px; color: var(--brand-dark); }
+
+  /* 时间行 */
+  .time-legend { display: grid; grid-template-columns: 1.15fr 1fr 1fr 32px; gap: 6px; font-size: 10px; color: var(--ink-3); margin-bottom: 5px; }
+  .time-row { display: grid; grid-template-columns: 1.15fr 1fr 1fr 32px; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .time-row .input { padding: 8px 9px; font-size: 12px; }
+
+  /* 评分分布 */
+  .star-dist { display: grid; grid-template-columns: 32px 1fr 28px; gap: 8px; align-items: center; font-size: 11px; color: var(--ink-3); margin-bottom: 5px; }
+
+  /* 评价条目 */
+  .review-item { padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .review-item:last-child { border-bottom: none; padding-bottom: 0; }
+
+  /* 信用卡 */
+  .credit-panel { border-radius: var(--radius); padding: 16px; color: #fff; margin-bottom: 16px;
+    background: linear-gradient(135deg, #26456f, #16233a); box-shadow: var(--shadow); }
+  .credit-panel .num { font-size: 26px; font-weight: 800; letter-spacing: -.5px; line-height: 1.1; }
+  .credit-panel .progress { background: rgba(255, 255, 255, .2); }
+  .credit-panel .progress > i { background: linear-gradient(90deg, #7fb4ff, #d4e5ff); }
+
+  /* 我的：功能行 */
+  .q-item { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--line); cursor: pointer; width: 100%; background: none; border-left: none; border-right: none; border-top: none; text-align: left; }
+  .q-item:last-child { border-bottom: none; }
+  .q-item .qi { width: 32px; height: 32px; border-radius: 10px; background: var(--brand-soft); display: grid; place-items: center; font-size: 15px; flex: 0 0 auto; }
+  .q-item .qz { flex: 1; font-size: 14px; color: var(--ink); }
+  .q-item .qv { font-size: 12px; color: var(--ink-3); }
+
+  /* 详情页卡片行 */
+  .t-row { cursor: pointer; }
+  .t-row:active { background: #fbfcfe; }
+  .form-hint { font-size: 11px; color: var(--ink-3); margin-top: 6px; line-height: 1.6; }
+  .spec-item { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .spec-item:last-child { border-bottom: none; }
+
+  /* 登录层 */
+  .login-layer { position: absolute; inset: 0; z-index: 80; overflow-y: auto; display: flex; flex-direction: column;
+    padding: 40px 24px calc(24px + env(safe-area-inset-bottom)); background: linear-gradient(165deg, #eaf2ff, #ffffff 46%); }
+  .login-layer .brandmark { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; font-size: 27px; color: #fff;
+    background: linear-gradient(135deg, var(--brand), var(--brand-dark)); box-shadow: 0 10px 24px rgba(37, 123, 255, .3); }
+  .login-layer h2 { font-size: 21px; font-weight: 800; margin-top: 18px; letter-spacing: -.3px; }
+  .login-layer .lead { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.7; }
+  .login-check { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: var(--ink-2); line-height: 1.65; }
+  .login-check input { margin-top: 2px; accent-color: var(--brand); width: 15px; height: 15px; }
+  .code-row { display: flex; gap: 8px; }
+  .code-row .btn { flex: 0 0 auto; padding: 0 14px; height: 44px; font-size: 13px; }
+  .code-row .input { flex: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    .m-body { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="m-stage">
+  <div class="m-shell" data-brand="parent">
+    <header class="m-header" id="hdr"></header>
+    <main class="m-body" data-route></main>
+    <nav class="m-tabbar" id="tabbar"></nav>
+  </div>
+</div>
+<script type="module" src="/assets/js/parent.js"></script>
+</body>
+</html>

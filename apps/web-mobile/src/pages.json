@@ -1,0 +1,19 @@
+{
+  "pages": [
+    { "path": "pages/login/index", "style": { "navigationBarTitleText": "登录" } },
+    { "path": "pages/parent/index", "style": { "navigationBarTitleText": "家长端" } },
+    { "path": "pages/parent/publish/index", "style": { "navigationBarTitleText": "发布需求" } },
+    { "path": "pages/teacher/index", "style": { "navigationBarTitleText": "教员端" } },
+    { "path": "pages/teacher/wallet/index", "style": { "navigationBarTitleText": "我的钱包" } },
+    { "path": "pages/sales/index", "style": { "navigationBarTitleText": "业务员端" } },
+    { "path": "pages/sales/rewards/index", "style": { "navigationBarTitleText": "奖励明细" } },
+    { "path": "pages/agent/index", "style": { "navigationBarTitleText": "区域代理端" } },
+    { "path": "pages/agent/complaints/index", "style": { "navigationBarTitleText": "客诉工单" } }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "家教平台",
+    "navigationBarBackgroundColor": "#1f6feb",
+    "backgroundColor": "#f5f7fa"
+  }
+}

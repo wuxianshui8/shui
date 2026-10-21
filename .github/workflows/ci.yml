@@ -1,0 +1,158 @@
+# ============================================================
+# CI：静态门禁 + 起真实 MySQL/Redis 跑全量 HTTP 门禁
+#   说明：仓库根目录无第三方依赖；apps/api-nest 与两套前端各自 npm ci。
+#   所有 test/*.test.js 与 tools/check-*.mjs 都是纯 HTTP 客户端，直接打 BASE_URL，
+#   因此 CI 里用 GitHub 服务容器提供 MySQL/Redis，而不是 Windows 门禁脚本里的便携二进制。
+# ============================================================
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_URL: http://127.0.0.1:4300
+  AUTH_SECRET: ci-only-secret-please-change-in-production-0123456789
+  DEV_SMS: "1"
+  JOBS_ENABLED: "0"
+
+jobs:
+  # ---------- 1) 静态门禁：编译 + 接口文档漂移 + 追溯矩阵 ----------
+  static:
+    name: 静态门禁（tsc / 接口文档 / 追溯矩阵）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 安装后端依赖（提供 tsc）
+        working-directory: apps/api-nest
+        run: npm install --no-audit --no-fund
+      - name: 静态三连
+        run: node tools/ci-full.mjs --static
+
+  # ---------- 2) 集成门禁：真实 MySQL 8 + Redis 7 + NestJS ----------
+  integration:
+    name: 集成门禁（e2e / 安全 / 规则 / 资金并发 / 隐私 / 前端产物）
+    runs-on: ubuntu-latest
+    needs: static
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: jiajiao
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=3s --health-retries=40
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装后端依赖并编译
+        working-directory: apps/api-nest
+        run: |
+          npm install --no-audit --no-fund
+          node node_modules/typescript/bin/tsc -p tsconfig.json
+
+      - name: 建库建表（37 张表）
+        working-directory: apps/api-nest
+        run: mysql -h 127.0.0.1 -P 3306 -u root --skip-password jiajiao < db/schema.mysql.sql
+
+      - name: 灌演示数据
+        working-directory: apps/api-nest
+        run: node db/seed-min.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+
+      - name: 启动 API 并等待健康检查
+        working-directory: apps/api-nest
+        env:
+          PORT: "4300"
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+        run: |
+          nohup node dist/main.js > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/api/health" > /dev/null; then echo "API 就绪"; break; fi
+            sleep 2
+          done
+          curl -fsS "$BASE_URL/api/health"
+
+      - name: e2e 全套 §1–§20（153）
+        run: node test/e2e.test.js
+        env:
+          E2E_MAX_SECTION: "20"
+
+      - name: security（53）
+        run: node test/security.test.js
+
+      - name: rules（50）
+        run: node test/rules.test.js
+
+      - name: 资金并发对抗 races（27）
+        run: node tools/check-money-races.mjs
+
+      - name: 隐私与账号安全 privacy（38）
+        run: node tools/check-privacy-auth.mjs
+
+      - name: 并发验收 concurrency（23）
+        working-directory: apps/api-nest
+        run: node ../tools/concurrency-mysql.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_DATABASE: jiajiao
+
+      - name: MySQL 一致性巡检（12）
+        working-directory: apps/api-nest
+        run: node ../tools/healthcheck-mysql.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_DATABASE: jiajiao
+
+      - name: 构建 PC 后台与移动端产物
+        run: |
+          npm --prefix apps/web-admin install --no-audit --no-fund
+          npm --prefix apps/web-admin run build
+          npm --prefix apps/web-mobile install --no-audit --no-fund
+          npm --prefix apps/web-mobile run build:h5
+          npm --prefix apps/web-mobile run build:mp
+
+      - name: PC 后台（29）与移动端（39）产物校验
+        run: |
+          node tools/check-admin-spa.mjs
+          node tools/check-mobile-spa.mjs
+
+      - name: 失败时输出服务日志
+        if: failure()
+        run: tail -n 200 /tmp/api.log || true

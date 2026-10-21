@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10b98b">
+<title>区域代理端 · 家教上门撮合平台</title>
+<link rel="stylesheet" href="/assets/css/base.css">
+<style>
+  /* 区域代理端页面级样式：只补充 base.css 未覆盖的局部结构，不改动设计令牌 */
+  :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 10px;
+  }
+  .m-shell.has-subb .m-body { padding-bottom: 164px; }
+  .sub-bar {
+    position: absolute; left: 0; right: 0; bottom: 64px; z-index: 26;
+    display: flex; gap: 10px; align-items: center;
+    background: rgba(255, 255, 255, .97); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line); padding: 10px var(--pad);
+    animation: slideUp .2s cubic-bezier(.22, 1, .36, 1);
+  }
+  .sub-bar .btn { flex: 1; min-width: 0; }
+  .sub-bar .grow { min-width: 0; }
+
+  /* 片区头图 */
+  .op-hero {
+    position: relative; overflow: hidden; color: #fff;
+    border-radius: var(--radius); padding: 18px; margin-bottom: var(--gap);
+    background: linear-gradient(135deg, #10b98b 0%, #0c9370 100%);
+    box-shadow: 0 10px 24px rgba(16, 185, 139, .24);
+  }
+  .op-hero::after {
+    content: ""; position: absolute; right: -46px; top: -66px; width: 156px; height: 156px;
+    border-radius: 50%; background: rgba(255, 255, 255, .14);
+  }
+  .op-hero .hero-kicker { font-size: 11px; letter-spacing: .4px; opacity: .86; }
+  .op-hero .hero-title { font-size: 20px; font-weight: 800; letter-spacing: .3px; margin-top: 2px; }
+  .op-hero .hero-sub { font-size: 12px; opacity: .92; margin-top: 4px; line-height: 1.6; }
+  .hero-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 10px;
+    background: rgba(255, 255, 255, .2); font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  .hero-stats > div {
+    background: rgba(255, 255, 255, .16); border-radius: 12px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 1px; min-width: 0;
+  }
+  .hero-stats b { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .hero-stats b.long { font-size: 13px; }
+  .hero-stats span { font-size: 10px; opacity: .86; }
+
+  .mini-stat { display: flex; flex-direction: column; background: var(--bg); border-radius: 10px; padding: 6px 9px; min-width: 0; }
+  .mini-stat b { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-stat span { font-size: 10px; color: var(--ink-3); }
+
+  /* 柱状图（留出柱顶百分比标签位置） */
+  .bars.tall { height: 142px; }
+  .bars .bar { padding: 0 1px; }
+  .bars .bar .v { font-size: 10px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bars .bar .d { font-size: 9px; color: var(--ink-3); }
+
+  /* 收益饼图图例 */
+  .donut-wrap { display: flex; align-items: center; gap: 14px; }
+  .donut .center-label b { font-size: 13px; font-weight: 800; letter-spacing: -.2px; }
+  .donut .center-label span { display: block; font-size: 9px; color: var(--ink-3); }
+  .legend { display: flex; flex-direction: column; gap: 9px; flex: 1; min-width: 0; }
+  .legend .lg { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+  .legend .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .legend .lg .val { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* 风险仪表盘 */
+  .gauge-panel { text-align: center; }
+  .gauge-wrap { position: relative; width: 140px; margin: 4px auto 0; }
+  .gauge-wrap .score {
+    font-size: 24px; font-weight: 800; letter-spacing: -.6px;
+    font-variant-numeric: tabular-nums; margin-top: 2px; line-height: 1.2;
+  }
+  .gauge-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+
+  /* 风险 / 工单条目 */
+  .risk-item { padding: 12px 10px; border-radius: 12px; }
+  .risk-item.sel { background: var(--brand-soft); }
+  .risk-item .tick {
+    width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #d5dde6; flex: 0 0 auto;
+    display: grid; place-items: center; font-size: 11px; color: #fff; background: #fff;
+  }
+  .risk-item.sel .tick { background: var(--brand); border-color: var(--brand); }
+  .gauge-wrap .score small { font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: 0; }
+
+  /* 订单卡片 */
+  .order-item { margin-bottom: 10px; }
+  .order-item .kv { padding: 4px 0; }
+  .order-item .addr { font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+
+  /* 公告条目 */
+  .notice { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .notice:last-child { border-bottom: none; }
+  .notice .t { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .notice .c { font-size: 12px; color: var(--ink-2); margin-top: 3px; line-height: 1.6; }
+  .notice .d { font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+
+  /* 折叠区 */
+  .rules { cursor: default; }
+  .rules > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 700;
+  }
+  .rules > summary::-webkit-details-marker { display: none; }
+  .rules > summary::after {
+    content: "展开"; margin-left: auto; font-size: 11px; font-weight: 600;
+    color: var(--brand-dark); background: var(--brand-soft); border-radius: 10px; padding: 2px 9px;
+  }
+  .rules[open] > summary::after { content: "收起"; }
+  .rules[open] > summary { margin-bottom: 10px; }
+
+  /* 列表入场：轻微错峰 */
+  .stagger > * { animation: popIn .24s cubic-bezier(.22, 1, .36, 1) both; }
+  .stagger > *:nth-child(2) { animation-delay: .02s; }
+  .stagger > *:nth-child(3) { animation-delay: .04s; }
+  .stagger > *:nth-child(4) { animation-delay: .06s; }
+  .stagger > *:nth-child(5) { animation-delay: .08s; }
+  .stagger > *:nth-child(6) { animation-delay: .1s; }
+  .stagger > *:nth-child(n+7) { animation-delay: .12s; }
+
+  .action-item {
+    display: flex; align-items: center; gap: 10px; padding: 13px 0; cursor: pointer;
+    border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-item .ico { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; background: var(--brand-soft); }
+  .action-item .arrow { margin-left: auto; color: var(--ink-3); font-size: 16px; }
+  .action-item.danger { color: var(--danger); }
+  .action-item.danger .ico { background: var(--danger-soft); }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .toolbar .input { flex: 1; min-width: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="m-stage"><div class="m-shell" data-brand="op">
+  <header class="m-header" id="hdr"></header>
+  <main class="m-body" data-route></main>
+  <nav class="m-tabbar" id="tabbar"></nav>
+</div></div>
+<script type="module" src="/assets/js/agent.js"></script>
+</body>
+</html>

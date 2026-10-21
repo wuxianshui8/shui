@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家教上门撮合平台 · 系统入口</title>
+<link rel="stylesheet" href="/assets/css/base.css">
+<style>
+  .portal-card .ico.parent { background: linear-gradient(135deg, #257bff, #1a5fd0); }
+  .portal-card .ico.teacher,
+  .portal-card .ico.agent,
+  .portal-card .ico.sales { background: linear-gradient(135deg, #10b98b, #0c9370); }
+  .portal-card .ico.admin { background: linear-gradient(135deg, #1f2937, #0f172a); }
+  .flowline { margin-top: 26px; background: #fff; border-radius: 18px; padding: 20px 22px; border: 1px solid #eef2f7; box-shadow: var(--shadow-sm); }
+  .flowline h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+  .flow .step { background: #f2f6fc; color: #1e4b8f; border-radius: 9px; padding: 7px 11px; font-weight: 600; }
+  .flow .arrow { color: #b9c6d8; }
+  .status-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: var(--ink-2); }
+  .status-strip .s { display: flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .status-strip .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+</style>
+</head>
+<body>
+<div class="portal">
+  <div class="portal-inner">
+    <div class="row between" style="align-items:flex-start;flex-wrap:wrap;gap:16px">
+      <div>
+        <h1>家教上门撮合平台</h1>
+        <p class="lead">滴滴式双向撮合 · 家长发单抢单 + 教员上架选购 · 担保交易 + 多级运营分成</p>
+        <div class="pill-row">
+          <span class="pill">家长端</span>
+          <span class="pill">教员端</span>
+          <span class="pill">业务员端</span>
+          <span class="pill">区域代理端</span>
+          <span class="pill">平台管理后台</span>
+        </div>
+        <div class="status-strip">
+          <span class="s"><i class="dot"></i>服务运行中 :4173</span>
+          <span class="s">规则配置中心已接入</span>
+          <span class="s">担保资金台账已开启</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="small faint">演示口令统一为</div>
+        <div class="bold" style="font-size:17px;letter-spacing:1px;color:#257bff">a123456</div>
+      </div>
+    </div>
+
+    <div class="portal-grid" id="grid"></div>
+
+    <div class="flowline">
+      <h3>核心业务闭环</h3>
+      <div class="flow">
+        <span class="step">家长发布需求</span><span class="arrow">→</span>
+        <span class="step">系统按距离×等级×响应推送</span><span class="arrow">→</span>
+        <span class="step">教员抢单报名</span><span class="arrow">→</span>
+        <span class="step">家长确认并担保支付</span><span class="arrow">→</span>
+        <span class="step">上门定位打卡</span><span class="arrow">→</span>
+        <span class="step">授课结束家长确认</span><span class="arrow">→</span>
+        <span class="step">T+7 扣除服务费结算</span><span class="arrow">→</span>
+        <span class="step">评价计成长分 / 升降级</span>
+      </div>
+      <div class="flow" style="margin-top:10px">
+        <span class="step">平台签约代理</span><span class="arrow">→</span>
+        <span class="step">代理新增业务员</span><span class="arrow">→</span>
+        <span class="step">专属推广码拉新</span><span class="arrow">→</span>
+        <span class="step">用户永久归属业务员与片区</span><span class="arrow">→</span>
+        <span class="step">成交自动计提奖励与代理分成</span><span class="arrow">→</span>
+        <span class="step">平台审核打款</span>
+      </div>
+    </div>
+
+    <div class="portal-foot">
+      本系统按《家教上门撮合平台项目开发需求说明书 V1.0》与《UI 界面设计说明书 V1.0》实现：
+      5 个角色端、13 组可配置业务规则、担保交易与分账台账、区域电子围栏与数据隔离、风控与差评仲裁。<br>
+      技术栈：Node.js 22 原生 HTTP 服务 + SQLite（node:sqlite）+ 零依赖前端（原生 ES Module + 自研设计系统）。
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const ENTRIES = [
+  {
+    key: "parent", title: "家长端", role: "家长 / 学生", href: "/parent",
+    icon: "👨‍👩‍👦", cls: "parent",
+    desc: "定位片区 · 发布家教需求 · 地图教员广场 · 担保支付 · 订单与评价",
+    acct: "13900000301",
+  },
+  {
+    key: "teacher", title: "教员端", role: "在职教师 / 大学生", href: "/teacher",
+    icon: "🎓", cls: "teacher",
+    desc: "接单大厅 · 抢单报名 · 服务上架 · 定位打卡 · 等级权益 · 收入提现",
+    acct: "13900000201",
+  },
+  {
+    key: "sales", title: "业务员端", role: "地推业务员", href: "/sales",
+    icon: "📣", cls: "sales",
+    desc: "专属推广码 / 海报 · 业绩看板 · 客户管理 · 奖励明细 · 提现",
+    acct: "13900000101",
+  },
+  {
+    key: "agent", title: "区域代理端", role: "区域代理商", href: "/agent",
+    icon: "🗺️", cls: "agent",
+    desc: "片区数据大盘 · 业务员管理 · 片区订单 · 收益结算 · 客诉风控",
+    acct: "13900000010",
+  },
+  {
+    key: "admin", title: "平台管理后台", role: "平台管理员 · PC", href: "/admin",
+    icon: "🛠️", cls: "admin",
+    desc: "全量用户 / 订单 / 资金 · 规则配置中心 · 代理管理 · 风控仲裁 · 运营工具",
+    acct: "13900000001",
+  },
+];
+
+document.getElementById("grid").innerHTML = ENTRIES.map((e) => `
+  <div class="portal-card" data-href="${e.href}">
+    <div class="top">
+      <div class="ico ${e.cls}">${e.icon}</div>
+      <div>
+        <h3>${e.title}</h3>
+        <div class="role">${e.role}</div>
+      </div>
+    </div>
+    <p>${e.desc}</p>
+    <div class="acct"><span>演示账号 ${e.acct}</span><span class="go">进入 →</span></div>
+  </div>
+`).join("");
+
+document.getElementById("grid").addEventListener("click", (e) => {
+  const card = e.target.closest("[data-href]");
+  if (card) location.href = card.dataset.href;
+});
+</script>
+</body>
+</html>
