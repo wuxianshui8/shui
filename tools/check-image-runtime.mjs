@@ -185,6 +185,8 @@ function walk(dir, out = []) {
 }
 
 const distDir = path.join(APP, "dist");
+// db/*.mjs 也要扫：seed 用到的第三方包同样必须在 dependencies（prune --omit=dev 后要能跑）
+const dbDir = path.join(APP, "db");
 const distOk = fs.existsSync(path.join(distDir, "main.js"));
 ok("dist 编译产物存在", distOk);
 if (!distOk) {
@@ -193,7 +195,8 @@ if (!distOk) {
 }
 
 const used = new Map();
-for (const file of walk(distDir)) {
+const scanFiles = [...walk(distDir), ...walk(dbDir)];
+for (const file of scanFiles) {
   // 只剔除注释（不能剔除字符串字面量，否则 require("x") 里的模块名会被一起清掉，
   // 结果扫到 0 个包却报「全部在 dependencies」——空检查比不检查更糟）
   const src = fs
@@ -229,14 +232,17 @@ ok("compose seed 服务的入口存在（db/seed-min.mjs）", fs.existsSync(path
   const WORKDIR = "/app/apps/api-nest";
   const seedFile = path.join(APP, "db", "seed-min.mjs");
   const seedSrc = fs.existsSync(seedFile) ? fs.readFileSync(seedFile, "utf8") : "";
-  const relImports = [...seedSrc.matchAll(/from\s+"(\.[^"]+)"/g)].map((m) => m[1]);
+  const relImports = [...seedSrc.matchAll(/\bfrom\s+["'](\.[^"']+)["']/g)].map((m) => m[1]);
 
   // 收集运行阶段的 COPY 目标（相对目标按 WORKDIR 解析）
   const copyDests = [];
-  for (const line of runtimeActive.split(/\r?\n/)) {
-    const m = /^\s*COPY\s+(?:--from=\S+\s+)?(\S+)\s+(\S+)\s*$/.exec(line);
-    if (!m) continue;
-    const dest = m[2];
+  for (const raw of runtimeActive.split(/\r?\n/)) {
+    const line = raw.replace(/\\\s*$/, "").trim(); // 去续行符
+    if (!/^COPY\s/i.test(line)) continue;
+    // 剥掉所有 --flag（--from= / --chown= …），剩下的最后一个 token 是目标
+    const tokens = line.replace(/^COPY\s+/i, "").replace(/--\S+\s+/g, "").trim().split(/\s+/);
+    if (tokens.length < 2) continue;
+    const dest = tokens[tokens.length - 1];
     copyDests.push(dest.startsWith("/") ? dest : path.posix.join(WORKDIR, dest));
   }
 
@@ -259,10 +265,12 @@ ok("compose seed 服务的入口存在（db/seed-min.mjs）", fs.existsSync(path
 
 /* ============ C. 生产模式真起服 ============ */
 // 起服前先确认测试端口空闲：否则会对着「别人」的服务做完断言（假通过）
-if (await portOpen(PORT)) {
-  console.error(`\n✗ 测试端口 ${PORT} 已被占用，可能是上次残留的进程。`);
-  console.error(`   请先释放该端口，或用 IMAGE_TEST_PORT=<其它端口> 重跑`);
-  process.exit(1);
+for (const [p, what] of [[PORT, "主测试端口"], [DEAD_PORT, "缺密钥验证端口"]]) {
+  if (await portOpen(p)) {
+    console.error(`\n✗ ${what} ${p} 已被占用，可能是上次残留的进程（会让断言打在别的服务上）。`);
+    console.error("   请先释放该端口，或用 IMAGE_TEST_PORT=<其它端口> 重跑");
+    process.exit(1);
+  }
 }
 let server = spawnServer(containerEnv, PORT);
 let up = await waitPort(PORT, 80);
@@ -362,6 +370,7 @@ await sleep(800);
 // 第二道防线：只靠 NODE_ENV=production、不设 DEV_SMS，同样不得回显
 const noDevSmsEnv = { ...containerEnv };
 delete noDevSmsEnv.DEV_SMS;
+for (let i = 0; i < 25 && (await portOpen(PORT)); i++) await sleep(200); // 等旧进程释放端口（最多 5s）
 const server2 = server = spawnServer(noDevSmsEnv, PORT);
 if (!(await waitPort(PORT, 80))) {
   console.error("\n[准备失败] 第二道防线起服超时，日志：\n" + server2.log.join(""));

@@ -1,4 +1,6 @@
 # 家教上门撮合平台
+[![ci](https://github.com/wuxianshui8/shui/actions/workflows/ci.yml/badge.svg)](https://github.com/wuxianshui8/shui/actions/workflows/ci.yml)
+[![v1.0.0](https://img.shields.io/badge/release-v1.0.0-1f6feb)](https://github.com/wuxianshui8/shui/releases/tag/v1.0.0)
 
 滴滴式「家教上门撮合」全栈系统，严格依据两份文档实现：
 
