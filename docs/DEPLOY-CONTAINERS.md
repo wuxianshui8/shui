@@ -89,8 +89,21 @@ BASE_URL=http://localhost:4300 node tools/check-privacy-auth.mjs   # 隐私与�
 
 | # | 限制 | 说明 |
 | --- | --- | --- |
-| 1 | 容器运行时未实测 | 本机无 Docker 守护进程；仅做了静态校验（`npm run deploy:check`） |
-| 2 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
-| 3 | 未包含微信小程序构建 | compose 只产出 H5；小程序需本地 `npm run web:mobile:build:mp` 后用微信开发者工具上传 |
-| 4 | 无内置 HTTPS / 证书管理 | 需外部反向代理或云 LB |
-| 5 | 单实例 | 验证码/失败计数与规则内存缓存为单实例实现；水平扩容前需按 `docs/SECURITY.md` §8 第 11 条迁移到 Redis |
+| 1 | **容器运行时未实测** | 本机 `VirtualizationFirmwareEnabled=False`（BIOS 关闭 VT-x）+ 未安装 Hyper-V/WSL 组件 → dockerd 起不来。已用不依赖守护进程的方式验证：`npm run deploy:check`（compose/Dockerfile/workflow 一致性，严格 YAML）、`npm run image:check`（运行阶段 COPY 布局 vs `main.ts` 静态托管约定）、镜像 tag 联网校验（本机被网络阻断，跳过） |
+| 2 | 基础镜像 tag 联网校验被阻断 | `auth.docker.io` / `registry-1.docker.io` 在本机超时；在有外网的机器上执行 `node tools/check-image.mjs --online` 会逐个校验 `node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 是否可拉取 |
+| 3 | 官方 actionlint / SchemaStore 不可用 | GitHub Release 与 schemastore 下载均超时；改为离线规则 lint `npm run workflow:check`（on/jobs/steps/services/working-directory/env/secrets 六类常见错误） |
+| 4 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
+| 5 | 未包含微信小程序构建 | compose 只产出 H5；小程序需本地 `npm run web:mobile:build:mp` 后用微信开发者工具上传 |
+| 6 | 无内置 HTTPS / 证书管理 | 需外部反向代理或云 LB |
+| 7 | 单实例 | 验证码/失败计数与规则内存缓存为单实例实现；水平扩容前需按 `docs/SECURITY.md` §8 第 11 条迁移到 Redis |
+
+## 7. 交付前已执行的验证（本机实跑）
+
+```bash
+npm run deploy:check     # compose/Dockerfile/workflow 的路径、端口、脚本、安全开关一致（严格 YAML 解析）
+npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 个目录 + WORKDIR/USER/HEALTHCHECK/CMD
+npm run workflow:check   # 工作流离线 lint（21 步 / 2 作业 / 2 服务容器）
+npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（22 需证据 + 6 Runner 专属）
+```
+
+`deploy/` 与 `.github/` 的**内容**已被上述四项覆盖；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。
