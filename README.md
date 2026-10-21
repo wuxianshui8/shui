@@ -131,9 +131,10 @@ npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期�
 npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（142/142 覆盖）
 npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 18 页 + 移动 10 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
-npm run ci             # 静态门禁：tsc + 接口文档 + 追溯矩阵 + 文档 shell 写法（约 4 秒）
+npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
+npm run ci             # 静态门禁：tsc + 接口 + 追溯 + Windows 脚本 + 文档写法（约 7 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
-npm run ci:full        # 全部 21 步门禁（约 4 分钟 = 静态 9 步 + 业务 12 步）
+npm run ci:full        # 全部 22 步门禁（约 4 分钟 = 静态 10 步 + 业务 12 步）
 ```
 
 ## 4. 容器化部署与 CI
@@ -151,7 +152,7 @@ npm run ci:full        # 全部 21 步门禁（约 4 分钟 = 静态 9 步 + 业
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
   e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17；镜像运行契约 31
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
-- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机另用 `npm run ci:full` 跑完整 21 步作为 Runner 命令的等价证据
+- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机另用 `npm run ci:full` 跑完整 22 步作为 Runner 命令的等价证据
 
 启用方式（需仓库远端与推送凭据）：
 ```bash

@@ -478,7 +478,7 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
 | P14 需求追溯矩阵（新后端）+ 汇总 CI 门禁 | ✅ | `docs/TRACEABILITY-NEST.md`：接口引用全部有效、覆盖 **142/142**；`trace:check` / `ci` / `ci:quick` / `ci:full` |
 | P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML），compose 结构另由**官方 compose-spec Schema** 校验（`deploy:schema`，负向验证退出码 1）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交，推送需远端与凭据 |
 | P18 CI 工作流证据映射 | ⚠️ | `tools/check-workflow-proof.mjs`：把 workflow 每条命令映射到本机已通过的门禁（22 条需证据 + 6 条 Runner 专属，未覆盖即失败）；官方 `actionlint v1.7.12 + shellcheck 0.11.0` 已接入 `workflow:check` 并实测无告警；**Runner 环境本身仍未执行**（无 Docker / 无远端） |
-| P22 官方校验器接入（替代离线等价校验） | ✅ | 官方 `actionlint v1.7.12` + `shellcheck 0.11.0`（Windows 官方产物，`tools/bin/` 已 gitignore）接入 `npm run workflow:check`，对 `ci.yml` 实测**无告警**；官方 `compose-spec` JSON Schema（固定 commit `de284328`）随仓库提交，`npm run deploy:schema` 做「结构 + 本项目约定」双向校验（负向验证退出码 1）；`npm run ci:full` 全量 **21/21 步**复跑通过。仍 ⚠️：容器运行时与托管 Runner 未实测 |
+| P22 官方校验器接入（替代离线等价校验） | ✅ | 官方 `actionlint v1.7.12` + `shellcheck 0.11.0`（Windows 官方产物，`tools/bin/` 已 gitignore）接入 `npm run workflow:check`，对 `ci.yml` 实测**无告警**；官方 `compose-spec` JSON Schema（固定 commit `de284328`）随仓库提交，`npm run deploy:schema` 做「结构 + 本项目约定」双向校验（负向验证退出码 1）；`npm run ci:full` 全量 **22/22 步**复跑通过。仍 ⚠️：容器运行时与托管 Runner 未实测 |
 | P23 镜像运行契约门禁（Dockerfile 宿主机等价复演） | ✅ | `tools/check-image-runtime.mjs` **31/31**：解析运行阶段（ENV/WORKDIR/7 条 COPY/USER node/EXPOSE/HEALTHCHECK/CMD）、校验 `dist` 引用的 6 个包全部在 `dependencies`（`npm prune --omit=dev` 后仍可跑）、以 `NODE_ENV=production + AUTH_SECRET + DEV_SMS=0` 真起服并验证 `/api/health`、HEALTHCHECK 原始命令 exit 0、`/admin-vue/` `/m/` `/parent` 三站点、生产验证码不回显、缺 `AUTH_SECRET` 拒绝启动；负向验证（改 `USER root`、删 db/web COPY、删 HEALTHCHECK）→ 5 项失败退出码 1。已接入 `ci:full` 与 GitHub Actions integration job |
 | P19 后台新增 3 页 UI（需求池 / 管理员账号 / 权限矩阵） | ✅ | `Demands.vue`（状态/学段/科目/片区/加急筛选 + 分页）、`Admins.vue`（新建显示一次性口令 + 启停护栏提示）、`Permissions.vue`（4 权限点 × 5 角色矩阵，admin 列锁定）；PC 后台 15 → **18 页**，`check-admin-spa` 35 → **38** |
 | P21 移动端补「消息中心」页（第 10 页） | ✅ | `pages/messages/index`：未读数、单条已读、全部已读（订单/资金/风控/系统四类）；4 个角色首页均加带未读数的入口；`check-mobile-spa` 39 → **41**（新增路由回落 + `/messages` 契约） |
@@ -569,7 +569,7 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
   P16/P17/P19 陆续新增后台路由后，接口总数增至 **142**，覆盖同步为 **142/142**（`npm run trace:check` 每次都会重新核对）；
   把其中一处改成不存在的 `POST /api/orders/:id/payyy` 后，校验立即报错并退出码 1。
 - 新增 **`tools/ci-full.mjs`** 汇总门禁，三个档位：
-  `npm run ci`（静态九步，约 4 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 21 步）。
+  `npm run ci`（静态十步，约 7 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 22 步）。
   失败即中止并打印逐项耗时汇总。实测静态档：tsc 2.1s + 接口文档 0.1s + 追溯矩阵 0.1s，3 步全绿。
 
 ## 2. 后续迁移计划（按模块推进，以既有测试套件为门禁）

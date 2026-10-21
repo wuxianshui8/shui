@@ -143,7 +143,7 @@ npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 �
 npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 31 项
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
 npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
-npm run ci:full          # 全量 21 步门禁（静态 9 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
+npm run ci:full          # 全量 22 步门禁（静态 10 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
 ```
 
 `deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。

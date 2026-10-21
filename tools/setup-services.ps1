@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 一次性安装本地开发依赖：MySQL 8.4（便携版）+ Redis 5（Windows 移植版）
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup-services.ps1
 # 产物在 D:\shui\tools\ 下，已被 .gitignore 忽略

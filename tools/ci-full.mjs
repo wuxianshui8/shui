@@ -15,6 +15,7 @@ const STEPS = [
   { name: "静态：接口文档", cmd: ["node", "tools/gen-api-doc.mjs", "--check"] },
   { name: "静态：追溯矩阵", cmd: ["node", "tools/check-trace-nest.mjs"] },
   { name: "静态：UI 追溯", cmd: ["node", "tools/check-ui-trace.mjs"] },
+  { name: "静态：Windows 脚本", cmd: ["node", "tools/check-windows-scripts.mjs"] },
   { name: "静态：文档 shell 写法", cmd: ["node", "tools/check-docs-shell.mjs"] },
   { name: "静态：部署与 CI 配置", cmd: ["node", "tools/check-deploy.mjs"] },
   { name: "静态：镜像布局", cmd: ["node", "tools/check-image.mjs"] },
