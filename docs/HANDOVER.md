@@ -70,6 +70,8 @@ npm start                      # → http://localhost:4173
 | 静态门禁 | `npm run ci` | **12 步**，约 14 秒（含门禁自检 10 用例） |
 | 托管 Runner | push 到 `main` 自动跑 | **6 次全绿**（static 13s / integration 206~210s，484 断言/次） |
 | 容器栈功能验收 | `npm run verify:docker` | **9 套件 282 断言** |
+| 容器栈性能基线 | `docs/PERF.md §6` | 读接口 p95 ≤ 73.5ms、错误 0；抢单并发 成功 1 / 被拒 49 |
+| 备份/恢复回环 | `npm run db:backup` / `db:restore` | 删表后恢复：orders 3、users 12、表 37，巡检 12/12 |
 | 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/142 路由**、需求逐条、后台 18 页 + 移动 10 页 |
 | 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | **12/12 全绿** |
 
@@ -89,6 +91,7 @@ npm run ci               # 14 秒：改接口/文档/脚本都该先过这个
 npm run api:doc          # 动了控制器 → 重新生成接口总表（否则 api:doc:check 会红）
 npm run ci:full          # 动了业务逻辑/资金/权限 → 必须跑
 npm run verify:docker    # 动了 Dockerfile / compose / seed → 必须跑
+npm run db:backup        # 数据有变化 → 备份一份（产物在 backups/，已 gitignore）
 ```
 
 **门禁的设计原则**：文档与代码同等对待——接口清单、需求追溯、UI 追溯、部署配置、镜像布局、工作流、Markdown 写法、Windows 脚本、门禁自检，全部有机器校验；门禁自检本身还会验证「门禁在非法输入下真的会失败」。

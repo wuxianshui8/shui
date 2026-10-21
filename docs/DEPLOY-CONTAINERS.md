@@ -143,6 +143,21 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 > 而镜像内 `NODE_ENV=production` 会永久关闭该回显（安全设计）。这两条由 CI 的主机栈覆盖（run #5 全绿）。
 > 容器栈上的 9 个套件已足以证明「镜像里的 API + MySQL + Redis 组合与业务规则等价」。
 
+### 备份与恢复（容器栈 / 本机便携 MySQL 通用）
+
+```powershell
+npm run db:backup                                        # → backups/jiajiao-<时间戳>.sql.gz
+npm run db:restore -- backups/jiajiao-xxx.sql.gz --yes    # ⚠️ 破坏性：会 DROP 库后导入
+```
+
+- 自动探测模式：容器 `mysql` 在跑 → 走 `docker compose exec -T mysql mysqldump`；
+  否则用 `tools/mysql-8.4.0-winx64/bin/mysqldump.exe` 连 `127.0.0.1:3307`（可用 `MYSQL_MODE=docker|host` 强制）。
+- **备份自检**：导出后立即解压校验「表数 = 37」且含 `orders` 表，不满足直接判失败（避免产出看似成功却不可用的备份）。
+- **恢复保护**：文件表数 < 30 直接中止（不动库）；恢复后复核「表 37 + users 非空」。
+- 实测回环（本机容器栈）：备份 → 删掉全部订单/支付/台账/评价/流水并把钱包清零（orders 3 → 0）→ 恢复 →
+  **orders 3、users 12、表 37**，随后 `healthcheck-mysql` **12/12 异常 0**。
+- 产物目录 `backups/` 已在 `.gitignore` 中，不会误提交。
+
 ## 6. 已知限制（如实记录）
 
 | # | 限制 | 说明 |

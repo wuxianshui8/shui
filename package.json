@@ -63,7 +63,9 @@
     "web:mobile:install": "npm --prefix apps/web-mobile install",
     "web:mobile:check": "node tools/check-mobile-spa.mjs",
     "nest:gate:permissions": "node tools/gate-permissions.mjs",
-    "verify:docker": "node tools/verify-docker.mjs"
+    "verify:docker": "node tools/verify-docker.mjs",
+    "db:backup": "node tools/db-backup.mjs",
+    "db:restore": "node tools/db-restore.mjs"
   },
   "dependencies": {}
 }
