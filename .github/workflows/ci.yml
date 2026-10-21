@@ -118,7 +118,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -134,7 +134,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -150,7 +150,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -166,7 +166,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -179,7 +179,7 @@ jobs:
           RESTART_API: "1"
       - name: 并发验收 concurrency（23）
         working-directory: apps/api-nest
-        run: node ../tools/concurrency-mysql.mjs
+        run: node ../../tools/concurrency-mysql.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -188,7 +188,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -201,7 +201,7 @@ jobs:
           RESTART_API: "1"
       - name: MySQL 一致性巡检（12）
         working-directory: apps/api-nest
-        run: node ../tools/healthcheck-mysql.mjs
+        run: node ../../tools/healthcheck-mysql.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -218,7 +218,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
@@ -236,7 +236,7 @@ jobs:
 
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
-        run: node ../tools/ci-reset.mjs
+        run: node ../../tools/ci-reset.mjs
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: "3306"
