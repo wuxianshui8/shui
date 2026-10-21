@@ -247,7 +247,7 @@ jobs:
           REDIS_PORT: "6379"
           PORT: "4300"
           RESTART_API: "1"
-      - name: 镜像运行契约（32）
+      - name: 镜像运行契约（33）
         working-directory: apps/api-nest
         run: node ../../tools/check-image-runtime.mjs
         env:

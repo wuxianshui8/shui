@@ -488,13 +488,14 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
 | P29 二次对抗式评审（验收脚本）+ 交接文档 | ✅ | 只读评审针对 `verify-docker.mjs` / `ci-reset.mjs` / `check-image-runtime.mjs` 提出 **7 条必须修 + 多条可选**，全部为真缺陷，已逐一修复并复验：**① Windows 上 `RESET_TARGET=local` 假成功**（`pkill` 不存在 → 旧进程未被杀，新进程绑不上端口，而 `waitHealth` 由**旧进程**应答 200）→ 直接拒绝并提示改用 docker/none；**② `deploy/.env` 在存在性检查之前读取**（首次运行抛 ENOENT，友好提示是死代码）→ 调整顺序；**③ AUTH_SECRET 解析不剥引号 + 优先级与 compose 相反** → 增加 `printenv` 与容器内实际值**严格比对**，不一致即中止（避免本地签 token 全 401）；**④ 首个套件跳过重置**（`mysql-data` 是持久卷，新一轮首个套件跑在上一轮脏数据上）→ 去掉特例，**每个**套件前重置；**⑤ 重置失败仍继续**导致连环误判 → 改为 fail-fast；**⑥ 先 DROP 后读 schema**（文件缺失会留下空库）→ schema 先读入内存；**⑦ 破坏窗口内 app 仍在跑**（定时任务可能写半建好的表并污染精确金额断言）→ 改为 `stop app → 重建/灌种/清缓存 → up -d --wait app`。另修：Redis 清理失败由「静默跳过」改为**失败即失败**、`compose up` 加 `--wait-timeout 180`、宿主机 `dist`/`node_modules` 前置检查、`VERBOSE=1` 失败套件全文输出、重置后 1.5s 稳定等待。`check-image-runtime` 增：`DEAD_PORT` 预检、二次起服等端口释放、COPY 解析支持 `--chown`/续行/多源、依赖扫描纳入 `db/*.mjs`、`from` 支持单引号。新增 `docs/HANDOVER.md`（一页式交接：三种启动方式、账号、验证清单、限制、改动后跑什么）与 README CI/版本徽章。**容器栈连跑 2 轮各 9 套件 282 断言全绿**；本地 `ci:full` 24/24（233s）。 |
 | P30 容器栈性能基线 + 备份/恢复 | ✅ | ① **性能基线**：同一压测脚本打容器内 API（Docker Desktop 4.96 + WSL2，三容器 healthy，500 次 × 并发 20）→ 12 个读接口 **p95 ≤ 73.5ms、错误 0**、抢单写路径并发 50 次 **成功 1 / 被拒 49**；对比宿主机基线延迟高 25%~40%，归因于 Docker Desktop 在 WSL2 之上的端口转发（NAT），非应用退化，仍满足需求书「常规查询 < 200ms」。已作为 `docs/PERF.md §6` 入库。② **备份/恢复**：新增 `tools/db-backup.mjs`（`npm run db:backup`）与 `tools/db-restore.mjs`（`db:restore --yes`），自适应容器 / 本机便携 MySQL；备份后立即解压**自检「表数=37 且含 orders」**，恢复前校验表数下限、恢复后复核「表 37 + users 非空」。实测破坏性回环：备份 → 删光订单/支付/台账/评价/流水并清零钱包（orders 3→0）→ 恢复 → **orders 3、users 12、表 37**，`healthcheck-mysql` **12/12 异常 0**。产物目录 `backups/` 已 gitignore。 |
 | P31 上线待办清单 + 偏离项纠偏 | ✅ | 新增 `docs/GO-LIVE-CHECKLIST.md`：把「需求书验收之外、真上线还缺什么」按 **A 外部集成（短信/支付/地图/对象存储/小程序上架/推送/电子合同/电子发票）、B 部署运维（HTTPS/多实例/备份自动化与演练/监控告警/日志集中/灰度回滚/密钥管理/镜像 SBOM）、C 数据发布（schema 版本化迁移/冷归档/渠道对账/API 版本化）、D 测试质量（单测缺失/覆盖率/依赖扫描/UI E2E/压测常态化/混沌演练）、E 环境限制** 五类逐条列出，每项标注 ✅/🟡/❌ 现状 + 补齐条件 + 三件优先事项。同时纠正 `TRACEABILITY-NEST.md` 偏离 #6（原写「未做容器化」，实际已交付并实测）——该类文档漂移靠人工发现，`trace:check` 只校验接口/脚本存在性。 |
+| P32 单元测试 + 覆盖率门槛（清单 D1/D2） | ✅ | 新增 `apps/api-nest/test/unit/*.test.mjs`（9 个测试文件 + 1 个 fixtures 加载器）→ **82 个用例**，覆盖 `common/{codes,errors,geo,paging,password,reply,token}`、`config`、`rule-engine`：**分账 784 组组合**校验两条恒等式（教员实收 + 服务费 = 成交额、代理 + 业务员 + 平台 = 服务费）与「超额按代理→业务员截断、平台不为负、全整数分」；推送系数/等级映射兜底；令牌篡改、过期、换密钥、载荷非 JSON、畸形输入一律 `null`；scrypt 盐唯一、跨账号不串号、畸形存储拒绝；电子围栏内外点与坏 JSON 退化到「中心点 + 半径」；分页默认 300/上限 500/非法值收敛；生产环境缺 `AUTH_SECRET` 由**子进程**验证拒绝启动（加载期护栏）。新增 `tools/gate-unit.mjs`（`npm run test:unit`）：用 Node 原生 `--experimental-test-coverage` 解析 TAP 与覆盖率表，断言「失败用例 = 0 / 用例数 ≥ 60（**防空检查**，防测试被删后 0 用例也绿）/ 每个目标模块行 ≥ 90% 且分支 ≥ 60% / 目标必须真的出现在报告里」，**不引入 c8/vitest**（根目录保持零第三方依赖）。实测 9 个模块行覆盖 **98.51%~100%（合计 99.65%）**、分支 94.74%。**四类负向验证全部变红**：`COVERAGE_MIN_LINES=99.9` → 1、`UNIT_MIN_TESTS=999` → 1、`UNIT_TEST_GLOB` 指向空目录 → 1（并逐文件点名「未出现在覆盖率报告中」）、`COVERAGE_MIN_BRANCH=100` → 1；注入必失败用例被点名。`ci:full` 24 → **25 步**（静态 12 → 13，静态 18s），CI `static` job 自动继承。过程中修正 4 处**测试自身**的错误断言（非产品缺陷）：口令允许跨字符组重复、负页长收敛到 1 而非回默认、同口令不同盐摘要必然不同、79.9 已越过 L2 上限 → 回落最高档。仍 ⚠️：`orders/wallet/demands` 服务层依赖 DB 夹具，未纳入本轮单测 |
 | P19 后台新增 3 页 UI（需求池 / 管理员账号 / 权限矩阵） | ✅ | `Demands.vue`（状态/学段/科目/片区/加急筛选 + 分页）、`Admins.vue`（新建显示一次性口令 + 启停护栏提示）、`Permissions.vue`（4 权限点 × 5 角色矩阵，admin 列锁定）；PC 后台 15 → **18 页**，`check-admin-spa` 35 → **38** |
 | P21 移动端补「消息中心」页（第 10 页） | ✅ | `pages/messages/index`：未读数、单条已读、全部已读（订单/资金/风控/系统四类）；4 个角色首页均加带未读数的入口；`check-mobile-spa` 39 → **41**（新增路由回落 + `/messages` 契约） |
 | P20 UI 追溯矩阵（UI 说明书 ↔ 新前端） | ✅ | `docs/TRACEABILITY-UI-NEST.md`：移动端 10 页 + 后台 18 页逐页映射到 UI 说明书章节；`npm run ui:check` 校验（缺条目 → 退出码 1，实测负向验证通过）；纳入 `npm run ci` |
 | P17 细粒度权限矩阵（需求 4.5.9 角色权限分配） | ✅ | 新增规则组 `permissions`（4 个高危权限点）+ `@Perm` 装饰器 + `GET/PUT /api/admin/permissions`；`check-permissions` **17/17**（授予即时生效、撤销即失效、admin 不可移除、未知权限点被拒、审计留痕） |
 | P16 补齐后台需求池与管理员账号（需求 4.5.3 / 4.5.9） | ✅ | 新增 4 条路由（接口 136→**140**）：需求池分页筛选；管理员列表 / 新建（一次性强口令 + 首登改密）/ 启停（禁止禁自己、保底一个启用、禁用即失效令牌）；`check-admin-spa` 29→**35** |
 
-**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 41 + 27 + 38 + 17 + 15(P1) + 31(镜像运行契约) = 498 项断言全绿；
+**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 41 + 27 + 38 + 17 + 15(P1) + 33(镜像运行契约) + 82(单元测试) = 582 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**
 
 ### 1.17 P10：对抗式评审与缺陷修复
@@ -577,7 +578,7 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
   P16/P17/P19 陆续新增后台路由后，接口总数增至 **142**，覆盖同步为 **142/142**（`npm run trace:check` 每次都会重新核对）；
   把其中一处改成不存在的 `POST /api/orders/:id/payyy` 后，校验立即报错并退出码 1。
 - 新增 **`tools/ci-full.mjs`** 汇总门禁，三个档位：
-  `npm run ci`（静态十二步，约 9 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 24 步）。
+  `npm run ci`（静态十三步，约 18 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 25 步）。
   失败即中止并打印逐项耗时汇总。实测静态档：tsc 2.1s + 接口文档 0.1s + 追溯矩阵 0.1s，3 步全绿。
 
 ## 2. 后续迁移计划（按模块推进，以既有测试套件为门禁）
