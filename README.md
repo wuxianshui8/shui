@@ -170,6 +170,14 @@ npm run git:push
 > 若远端 URL 里已经带了凭据，脚本会自动改成干净地址。
 >
 > 手动等价写法（同样不落盘）：`git -c http.https://github.com/.extraheader="AUTHORIZATION: basic <base64(x-access-token:PAT)>" push -u origin main`
+>
+> **若暂时拿不到 `workflow` scope**：可先推送一份剔除 `.github/workflows` 的历史让仓库有内容，再用网页端
+> （GitHub → Add file → Create new file → `.github/workflows/ci.yml`）粘贴 `ci.yml` 内容——浏览器会话不受 scope 限制。
+> 等拿到带 `workflow` 的 token 后，用 `FORCE=1 npm run git:push` 把含 `ci.yml` 的完整历史覆盖回去（`--force-with-lease`）。
+> 注意：一旦推送过剔除版历史，本地分支会与远端分叉，恢复时必须用 `FORCE=1`。
+>
+> 全新检出已验证（`git clone` 后仅 `npm install` + `ci-full --static`）：补齐 `ci.yml` 后 **12/12 步全绿**，
+> 说明仓库自包含、无需仓库外文件即可通过 Actions 的 static job。
 
 > 迁移全过程、逐阶段门禁与偏离记录见 `docs/MIGRATION.md`；
 > 新后端接口清单见 [`docs/API-NEST.md`](docs/API-NEST.md)；需求逐条追溯见 [`docs/TRACEABILITY-NEST.md`](docs/TRACEABILITY-NEST.md)；
