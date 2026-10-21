@@ -472,6 +472,7 @@ tools/check-mobile-spa.mjs 39/39   （/m/ 入口与 assets、8 条路由 history
 | P12 性能基线与热点优化 | ✅ | `nest:bench`（500 次 × 并发 20 × 12 读接口 + 抢单写路径）→ `docs/PERF.md`；修复 2 处串行取数/N+1 |
 | P13 接口清单自动生成 + 文档漂移门禁 | ✅ | `api:doc` / `api:doc:check`：136 路由 / 16 控制器；删行→退出码 1、重生成→0（双向验证） |
 | P14 需求追溯矩阵（新后端）+ 汇总 CI 门禁 | ✅ | `docs/TRACEABILITY-NEST.md`：**136/136 路由全覆盖**、148 处接口引用全部有效；`trace:check` / `ci` / `ci:quick` / `ci:full` |
+| P15 容器化交付 + GitHub Actions | ⚠️ | `deploy/`（Dockerfile / compose / .env.example）+ `.github/workflows/ci.yml`（static + integration 双 job）；`deploy:check` 静态校验通过（严格 YAML）；**本机无 Docker 守护进程，容器运行时未实测**；git 仓库已初始化并提交（190 文件），推送需远端与凭据 |
 
 **新后端累计门禁：153 + 53 + 50 + 23 + 12 + 29 + 39 + 27 + 38 + 15(P1) = 439 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**

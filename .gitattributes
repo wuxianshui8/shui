@@ -1,0 +1,8 @@
+# 统一换行，避免 Windows 检出后 Docker/CI 里出现 CRLF 差异
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.zip binary

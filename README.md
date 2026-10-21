@@ -129,6 +129,26 @@ npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分
 npm run ci:full        # 全部 13 步门禁（约 15 分钟）
 ```
 
+## 4. 容器化部署与 CI
+
+**容器化（Docker Compose）**：`deploy/Dockerfile` + `deploy/docker-compose.yml`（MySQL 8 / Redis 7 / 应用镜像），
+一键起服与自检清单见 [`docs/DEPLOY-CONTAINERS.md`](docs/DEPLOY-CONTAINERS.md)。
+> 注意：**本机没有 Docker 守护进程**（无硬件虚拟化 → WSL2 不可用），容器运行时未在本机实测；
+> 交付物只做了静态一致性校验 `npm run deploy:check`（严格 YAML 解析 + 路径/端口/安全开关一致性）。
+
+**CI（GitHub Actions）**：`.github/workflows/ci.yml`
+- `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / 部署配置）
+- `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
+  e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 29 + 39
+- 触发：push 到 main/master、PR、手动 `workflow_dispatch`
+
+启用方式（需仓库远端与推送凭据）：
+```bash
+node tools/check-deploy.mjs                 # 本地先过静态校验（已入库，随 ci 一起跑）
+git remote add origin <你的仓库地址>
+git push -u origin main                     # 推送后 Actions 自动执行
+```
+
 > 迁移全过程、逐阶段门禁与偏离记录见 `docs/MIGRATION.md`；
 > 新后端接口清单见 [`docs/API-NEST.md`](docs/API-NEST.md)；需求逐条追溯见 [`docs/TRACEABILITY-NEST.md`](docs/TRACEABILITY-NEST.md)；
 > 性能基线见 [`docs/PERF.md`](docs/PERF.md)。
