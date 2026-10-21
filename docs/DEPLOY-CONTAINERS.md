@@ -147,16 +147,53 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 
 ```powershell
 npm run db:backup                                        # → backups/jiajiao-<时间戳>.sql.gz
+npm run db:backup -- --keep 7                            # 只保留最近 7 份（默认 14，0 = 不剪枝）
 npm run db:restore -- backups/jiajiao-xxx.sql.gz --yes    # ⚠️ 破坏性：会 DROP 库后导入
 ```
 
 - 自动探测模式：容器 `mysql` 在跑 → 走 `docker compose exec -T mysql mysqldump`；
   否则用 `tools/mysql-8.4.0-winx64/bin/mysqldump.exe` 连 `127.0.0.1:3307`（可用 `MYSQL_MODE=docker|host` 强制）。
 - **备份自检**：导出后立即解压校验「表数 = 37」且含 `orders` 表，不满足直接判失败（避免产出看似成功却不可用的备份）。
+- **保留策略**：按文件名时间戳倒序只留最新 `KEEP` 份，且**只删比本次更旧的产物**（当次文件永不参与删除）；
+  实测连续两次 `--keep 2`：第二次数出「删除旧备份 1 份」，目录稳定收敛到 2 份。
 - **恢复保护**：文件表数 < 30 直接中止（不动库）；恢复后复核「表 37 + users 非空」。
 - 实测回环（本机容器栈）：备份 → 删掉全部订单/支付/台账/评价/流水并把钱包清零（orders 3 → 0）→ 恢复 →
   **orders 3、users 12、表 37**，随后 `healthcheck-mysql` **12/12 异常 0**。
 - 产物目录 `backups/` 已在 `.gitignore` 中，不会误提交。
+
+### 定时备份（Windows 计划任务，B3）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\backup-schedule.ps1 -Action Status
+powershell -ExecutionPolicy Bypass -File tools\backup-schedule.ps1 -Action Install -Time 02:30 -Keep 14
+powershell -ExecutionPolicy Bypass -File tools\backup-schedule.ps1 -Action RunNow        # 先验链路
+powershell -ExecutionPolicy Bypass -File tools\backup-schedule.ps1 -Action Uninstall
+```
+
+- 安装时生成 `backups\backup-run.cmd`（UTF-8 无 BOM + CRLF + `chcp 65001`），把 `node` / `DOCKER_BIN` / `KEEP`
+  与环境变量**固定在任务动作里**，避免任务计划程序里 PATH 差异导致「计划跑成功、其实没备份」。
+- 输出统一追加到 `backups\backup.log`（含 `backup start` / `backup exit=<码>`），`-Action Status` 会回显任务字段与日志尾部。
+- 前提：任务运行时 Docker Desktop 已启动且容器栈在跑（否则退化为 host 模式调便携 mysqldump）。
+- ⚠️ 本机 Agent 会话**无权写任务计划库**（`schtasks /Create` 返回 `Access is denied`），因此
+  「安装任务 → 由任务计划程序触发 → 查询上次结果」这一段**未在本机验证**；已验证的部分是：
+  生成的 `backup-run.cmd` 直接执行 → exit 0、日志正确、保留策略生效、`-Action Status` 对「未安装」判定正确。
+  在管理员 PowerShell 中执行 `-Action Install` 即可完成落地。
+
+### 依赖漏洞审计（D3）
+
+```powershell
+npm run audit:check                                       # 三个 workspace 的生产依赖预算校验
+$env:AUDIT_ALLOW_SKIP=1; npm run audit:check               # 离线/受限网络的显式降级（会打印跳过原因）
+```
+
+- 数据来源 `npm audit --omit=dev --json`；预算写在 `deploy/audit-budget.json`：每个 workspace 声明
+  `block`（阻断级别）、`budget`（可接受条数，多 1 条即失败）、`expires`（到期即失败，强制重审）。
+- 实测：`apps/api-nest` low 1 / moderate 6 / **high 2** / critical 0（2 个 high 均来自 `multer`，
+  经 `@nestjs/platform-express`；全仓无文件上传端点 → 不可达，修复需 Nest 10→12 大版本升级，预算内放行）；
+  `apps/web-admin` 全 0；`apps/web-mobile` moderate 8 / **high 27**（全部是 uni-app 构建链与构建期工具，
+  H5 产物为静态资源），故该 workspace 只阻断 critical。
+- 负向验证：预算收紧到 `high:0` → 退出码 1 并点名 `multer` 的 8 条公告；到期日设为过去 → 退出码 1；
+  配置缺失/无 workspace → 退出码 1；配置带 UTF-8 BOM 也能正常解析。
 
 ## 6. 已知限制（如实记录）
 

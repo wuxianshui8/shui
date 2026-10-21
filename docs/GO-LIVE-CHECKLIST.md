@@ -26,7 +26,7 @@
 | --- | --- | --- | --- |
 | B1 | HTTPS / 域名 / 证书 | ❌ 应用只监听 HTTP（令牌为 Bearer，明文会被截获） | 前置 Nginx/Caddy 或云 LB + ACME 自动续期；`TRUST_PROXY=1` 已在 compose 中预留（**务必只在前置代理时打开**，否则登录锁定可被伪造 XFF 绕过） |
 | B2 | 多实例水平扩容 | ❌ 验证码/登录失败计数、规则配置内存缓存均为**单实例**（规则缓存有 300s TTL） | 按 `docs/SECURITY.md §8 第 11 条` 全部迁到 Redis；会话无状态（当前令牌自包含，可直接多实例）、补共享限流 |
-| B3 | 备份自动化与演练 | 🟡 有 `npm run db:backup` / `db:restore`（含自检与破坏性回环验证），但**无定时任务、无异地归档、无 RPO/RTO 定义** | 定时 `backup` + 上传对象存储（版本化）+ 每月一次**恢复演练**；定义 RPO/RTO 并写入运维手册 |
+| B3 | 备份自动化与演练 | ✅ **已完成**：`npm run db:backup`（自检「表 37 + 含 orders」）/ `db:restore`（恢复前后双重校验）+ **保留策略**（`KEEP`/`--keep`，默认留 14 份，实测剪枝正确）+ `tools/backup-schedule.ps1`（Install/Uninstall/Status/RunNow，生成固定 node/docker 路径的 `backup-run.cmd` 与 `backup.log`）+ 破坏性恢复回环实测。**仍缺**：异地/对象存储归档、RPO/RTO 定义、每月恢复演练排期 | 上传对象存储（版本化 + 生命周期）+ 写一页 RPO/RTO；⚠️ 安装计划任务需管理员会话（本机 Agent 会话 `schtasks /Create` 返回 Access is denied，该段未实测，其余链路已实测） |
 | B4 | 监控与告警 | 🟡 有 `/api/health`（匿名仅可用性）与 `/api/health/detail`（管理员，含用户数/订单/担保额/DB+Redis 延迟） | 接 Prometheus 指标端点 + Grafana 面板 + 告警规则（错误率/延迟/担保台账不平/任务卡死） |
 | B5 | 日志集中化 | 🟡 应用日志走 stdout（容器 `docker logs` 可看） | 接 Loki/ELK：结构化 JSON 日志、保留策略、按 `trace_id` 串联；审计日志已在库内（`audit_logs`） |
 | B6 | 灰度与回滚 | ❌ 无镜像 tag 策略、无一键回滚脚本 | 镜像按 git sha 打 tag，compose 固定 tag；回滚 = 改 tag + `up -d`；DB 变更走向后兼容的两步法 |
@@ -48,7 +48,7 @@
 | --- | --- | --- | --- |
 | D1 | 单元测试 | ✅ **82 个用例**（`node:test`，零第三方依赖）：`common/{codes,errors,geo,paging,password,reply,token}`、`config`、`rule-engine` —— 含分账守恒 784 组组合、代理→业务员超额截断、令牌篡改/过期/换密钥、口令散列与盐、电子围栏内外点、分页上下限、生产环境缺 `AUTH_SECRET` 拒绝启动 | 服务层（orders/wallet/demands）仍依赖 DB 夹具，需先把纯计算抽成函数或引入事务夹具；当前缺口已记录在 `MIGRATION P32` |
 | D2 | 覆盖率门槛 | ✅ 已接入且**默认即门禁**：`tools/gate-unit.mjs` 用 Node 原生 `--experimental-test-coverage`（未引入 c8，根目录保持零依赖），断言「失败用例=0 + 用例数≥60（防空检查）+ 每个目标模块行覆盖 ≥90% / 分支 ≥60% + 目标必须真的出现在报告里」；实测 9 个模块行覆盖 **98.51%~100%（合计 99.65%）**，已纳入 `npm run ci` 静态第 2 步与 CI `static` job | 需要更高门槛时用 `COVERAGE_MIN_LINES` / `COVERAGE_MIN_BRANCH` 调；分支覆盖率天然受防御性 `catch` 影响，规则层的 `catch` 分支暂无夹具 |
-| D3 | 依赖漏洞扫描 | ❌ 未做（本机 `npm audit` 可用，但 trivy/grype 镜像源不可达） | CI 中 `npm audit --production` + 镜像扫描（需能拉取镜像） |
+| D3 | 依赖漏洞扫描 | 🟡 **已接入 npm audit**（`npm run audit:check`，纳入 `npm run ci` 静态第 3 步）：预算制 `deploy/audit-budget.json`（block / budget / expires），实测 api-nest high 2（multer 链，无上传端点→不可达）、web-admin 0、web-mobile high 27（uni-app 构建链，只阻断 critical）；负向验证 4 类全红。**未做**：镜像 SBOM/漏洞扫描（trivy/grype 与 Docker Hub 均不可达） | 镜像源可达后加 `syft` + `trivy image` 扫描并纳入发布流程；web-mobile 待 uni-app 大版本升级后再收紧到阻断 high |
 | D4 | 契约测试 / 前端 E2E | 🟡 后端 484 项集成断言 + 82 项单元断言 + 前端产物契约 38/41 + 浏览器多尺寸校验 16 项 | 补 Playwright 级 UI 流程回归（登录→下单→支付→打卡→结算） |
 | D5 | 压测常态化 | 🟡 有基线（宿主机 + 容器两套），但非 CI 门禁 | 定期跑 `bench-nest` 并对比基线，超阈值告警 |
 | D6 | 混沌/故障演练 | ❌ 无 | 演练 MySQL/Redis 中断、担保台账不平、定时任务重入 |
@@ -67,4 +67,4 @@
 1. ~~**D1 单元测试（资金/规则）+ D2 覆盖率**~~ —— ✅ 已完成（82 用例、9 模块行覆盖 ≥ 98.5%，纳入 `npm run ci`）。
 2. **A1 短信 + A2 支付真实通道** —— 模拟实现可演示不可上线；这是当前唯一的**功能性**上线阻断项。
 3. **B1 HTTPS + B3 定时备份与恢复演练** —— 上线前的最低安全与可恢复底线（备份脚本已具备，缺调度与异地留存）。
-4. **D3 依赖漏洞扫描** —— CI 里补 `npm audit --production`（本机可用），镜像扫描待镜像源可达。
+4. **D3 依赖漏洞扫描** —— 🟡 npm audit 已接入（预算制、CI 静态门禁）；镜像扫描待镜像源可达。

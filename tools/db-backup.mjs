@@ -12,6 +12,7 @@
 // 用法：
 //   node tools/db-backup.mjs                       # → backups/jiajiao-<时间戳>.sql.gz
 //   OUT_DIR=D:\bak node tools/db-backup.mjs        # 指定输出目录
+//   node tools/db-backup.mjs --keep 7              # 只保留最近 7 份（默认 14；0 = 不剪枝）
 //   产出文件可直接用 tools/db-restore.mjs 还原
 // ============================================================
 import fs from "node:fs";
@@ -89,3 +90,43 @@ if (!hasOrders) die("备份内缺少 orders 表，备份不可信");
 
 console.log(`✓ 备份完成：${outFile}`);
 console.log(`  还原：node tools/db-restore.mjs "${outFile}" --yes`);
+
+// —— 保留策略（B3）：按时间戳倒序保留最新 KEEP 份，只删「比本次更旧」的产物
+const keepArg = (() => {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--keep") return Number(argv[i + 1]);
+    if (a.startsWith("--keep=")) return Number(a.slice("--keep=".length));
+  }
+  return Number(process.env.KEEP ?? 14);
+})();
+
+if (!Number.isInteger(keepArg) || keepArg < 0) die(`KEEP/--keep 必须是非负整数（当前 ${keepArg}）`);
+
+if (keepArg === 0) {
+  console.log("  · 保留策略：已禁用（KEEP=0），历史备份全部保留");
+} else {
+  const mine = path.resolve(outFile);
+  // 文件名形如 jiajiao-<YYYYMMDDHHmmss>.sql.gz，字典序即时间序
+  const all = fs
+    .readdirSync(OUT_DIR)
+    .filter((f) => /^jiajiao-\d{14}\.sql\.gz$/.test(f))
+    .sort()
+    .reverse();
+  const doomed = all.slice(keepArg).filter((f) => path.resolve(OUT_DIR, f) !== mine);
+  if (!doomed.length) {
+    console.log(`  · 保留策略：保留最近 ${keepArg} 份，现有 ${all.length} 份，无需清理`);
+  } else {
+    let removed = 0;
+    for (const f of doomed) {
+      try {
+        fs.unlinkSync(path.join(OUT_DIR, f));
+        removed++;
+      } catch (e) {
+        console.log(`  ⚠️ 删除失败（不影响本次备份）：${f} — ${e.message}`);
+      }
+    }
+    console.log(`  · 保留策略：保留最近 ${keepArg} 份，删除旧备份 ${removed} 份（${doomed.join("、")}）`);
+  }
+}

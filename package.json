@@ -58,6 +58,8 @@
     "nest:health:mysql": "node tools/healthcheck-mysql.mjs",
     "nest:migrate": "node tools/migrate-sqlite.mjs",
     "test:unit": "node tools/gate-unit.mjs",
+    "audit:check": "node tools/check-audit.mjs",
+    "db:backup:schedule": "powershell -ExecutionPolicy Bypass -File tools/backup-schedule.ps1",
     "web:admin:install": "npm --prefix apps/web-admin install",
     "web:admin:build": "npm --prefix apps/web-admin run build",
     "web:admin:check": "node tools/check-admin-spa.mjs",

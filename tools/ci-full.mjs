@@ -13,6 +13,7 @@ const QUICK = process.argv.includes("--quick");
 const STEPS = [
   { name: "静态：tsc", cmd: ["node", "node_modules/typescript/bin/tsc", "-p", "tsconfig.json"], cwd: "apps/api-nest" },
   { name: "静态：单元测试与覆盖率", cmd: ["node", "tools/gate-unit.mjs"] },
+  { name: "静态：依赖漏洞（npm audit）", cmd: ["node", "tools/check-audit.mjs"] },
   { name: "静态：接口文档", cmd: ["node", "tools/gen-api-doc.mjs", "--check"] },
   { name: "静态：追溯矩阵", cmd: ["node", "tools/check-trace-nest.mjs"] },
   { name: "静态：UI 追溯", cmd: ["node", "tools/check-ui-trace.mjs"] },

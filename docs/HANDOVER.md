@@ -66,15 +66,16 @@ npm start                      # → http://localhost:4173
 | 层面 | 命令 | 结果 |
 | --- | --- | --- |
 | 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **329 断言**全绿 |
-| 正式实现全量门禁 | `npm run ci:full` | **25 步**（静态 13 + 业务 12），约 4 分钟 |
-| 静态门禁 | `npm run ci` | **13 步**，约 18 秒（含单元测试 82 用例 + 门禁自检 10 用例） |
+| 正式实现全量门禁 | `npm run ci:full` | **26 步**（静态 14 + 业务 12），约 4 分钟 |
+| 静态门禁 | `npm run ci` | **14 步**，约 26 秒（含单元测试 82 用例 + 依赖审计 + 门禁自检 10 用例） |
 | 单元测试与覆盖率 | `npm run test:unit` | **82 用例**，9 个纯函数模块行覆盖 ≥ 98.5%（门禁阈值 90%） |
+| 依赖漏洞审计 | `npm run audit:check` | 预算制 3 个 workspace：api-nest high 2（multer 不可达）/ web-admin 0 / web-mobile high 27（构建链，只阻断 critical） |
 | 托管 Runner | push 到 `main` 自动跑 | **6 次全绿**（static 13s / integration 206~210s，484 断言/次） |
 | 容器栈功能验收 | `npm run verify:docker` | **9 套件 282 断言** |
 | 容器栈性能基线 | `docs/PERF.md §6` | 读接口 p95 ≤ 73.5ms、错误 0；抢单并发 成功 1 / 被拒 49 |
-| 备份/恢复回环 | `npm run db:backup` / `db:restore` | 删表后恢复：orders 3、users 12、表 37，巡检 12/12 |
+| 备份/恢复回环 | `npm run db:backup` / `db:restore` | 删表后恢复：orders 3、users 12、表 37，巡检 12/12；保留策略 `--keep 2` 剪枝实测正确 |
 | 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/142 路由**、需求逐条、后台 18 页 + 移动 10 页 |
-| 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | 全绿（clone 时 12 步；加入单元测试后 **13/13** 本机复跑通过） |
+| 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | 全绿（clone 时 12 步；加入单元测试与依赖审计后 **14/14** 本机复跑通过） |
 
 官方校验器：`actionlint 1.7.12` + `shellcheck 0.11.0`（零告警）、`compose-spec` JSON Schema（固定 commit 随仓库提交）。
 

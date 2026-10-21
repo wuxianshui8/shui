@@ -1,0 +1,27 @@
+{
+  "$comment": "依赖漏洞预算（D3）。工具：tools/check-audit.mjs（npm run audit:check，已纳入 npm run ci 静态门禁）。规则：对每个 workspace 跑 `npm audit --omit=dev --json`，block 列出的级别一旦超过 budget 即失败；count 低于 budget 只告警（提醒收紧配置）；expires 到期即失败（强制重审，防止「允许清单永不过期」。）",
+  "updated": "2026-10-22",
+  "workspaces": [
+    {
+      "dir": "apps/api-nest",
+      "block": ["high", "critical"],
+      "budget": { "high": 2, "critical": 0 },
+      "reason": "2 个 high 全部来自 multer（经 @nestjs/platform-express，8 条 DoS 公告）：全仓检索无 FileInterceptor / @UploadedFile / multer / FormData 引用，没有任何文件上传端点，该中间件不可达；官方修复只出现在 @nestjs/platform-express 12.x → 需 Nest 10→12 大版本迁移，不在本轮范围。moderate（@nestjs/common、@nestjs/core、@nestjs/typeorm、qs、file-type、uuid）仅报告不阻断。",
+      "expires": "2027-03-31"
+    },
+    {
+      "dir": "apps/web-admin",
+      "block": ["high", "critical"],
+      "budget": { "high": 0, "critical": 0 },
+      "reason": "实测生产依赖 0 漏洞（admin 后台为纯 Vue3 + Element Plus 静态产物）。",
+      "expires": "2027-03-31"
+    },
+    {
+      "dir": "apps/web-mobile",
+      "block": ["critical"],
+      "budget": { "critical": 0 },
+      "reason": "实测 27 high + 8 moderate，全部落在 uni-app 3.0.0-2024 构建链（@dcloudio/*）、vue-i18n/intlify 与构建期工具（adm-zip、braces、chokidar、fast-glob、jpeg-js、micromatch、unimport、unplugin-auto-import）。H5 产物是静态资源，构建期依赖不进运行时；升级需跨 uni-app 大版本并重跑 check-mobile-spa 的 41 项产物契约。本轮只阻断 critical，high 仅报告。",
+      "expires": "2026-12-31"
+    }
+  ]
+}
