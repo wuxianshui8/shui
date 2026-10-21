@@ -43,6 +43,7 @@
     "ui:check": "node tools/check-ui-trace.mjs",
     "deploy:check": "node tools/check-deploy.mjs",
     "deploy:schema": "node tools/check-compose-schema.mjs",
+    "image:runtime": "node tools/check-image-runtime.mjs",
     "image:check": "node tools/check-image.mjs",
     "workflow:check": "node tools/check-workflow-lint.mjs",
     "workflow:proof": "node tools/check-workflow-proof.mjs",

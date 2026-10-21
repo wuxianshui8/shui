@@ -89,7 +89,7 @@ BASE_URL=http://localhost:4300 node tools/check-privacy-auth.mjs   # 隐私与�
 
 | # | 限制 | 说明 |
 | --- | --- | --- |
-| 1 | **容器运行时未实测** | 本机 `VirtualizationFirmwareEnabled=False`（BIOS 关闭 VT-x）+ 未安装 Hyper-V/WSL 组件 → dockerd 起不来。已用不依赖守护进程的方式验证：`npm run deploy:check`（compose/Dockerfile/workflow 一致性，严格 YAML）、`npm run image:check`（运行阶段 COPY 布局 vs `main.ts` 静态托管约定）、镜像 tag 联网校验（本机被网络阻断，跳过） |
+| 1 | **容器运行时未实测** | 本机 `VirtualizationFirmwareEnabled=False`（BIOS 关闭 VT-x）+ Hyper-V/WSL/Containers 组件全 `Disabled`、`HvHost` Stopped → dockerd 起不来（已提权确认）。已用不依赖守护进程的方式验证：`npm run deploy:check`（compose/Dockerfile/workflow 一致性）、`npm run deploy:schema`（官方 compose-spec Schema）、`npm run image:check`（运行阶段 COPY 布局 vs `main.ts` 约定）、`npm run image:runtime`（**生产模式真起服 31 项**：HEALTHCHECK 原始命令、三个静态站点、验证码不回显、缺密钥拒绝启动）；镜像 tag 联网校验仍被网络阻断 |
 | 2 | 基础镜像 tag 联网校验被阻断 | `auth.docker.io` / `registry-1.docker.io` 在本机超时；在有外网的机器上执行 `node tools/check-image.mjs --online` 会逐个校验 `node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 是否可拉取 |
 | 3 | 官方 actionlint：**已解决**；compose 官方二进制：**未取到** | 官方 `actionlint v1.7.12 + shellcheck 0.11.0` 已装入 `tools/bin/`（`download.docker.com`、`github.com` 可达），`npm run workflow:check` 会自动优先调用官方 actionlint，实测**无告警**。`docker compose` 官方二进制（33MB）在本机 ~14KB/s 带宽下多次续传残缺 → 改用**官方 compose-spec JSON Schema** 校验：`npm run deploy:schema`（schema 固定 commit `de28432` 随仓库提交于 `deploy/compose-spec.schema.json`，结构 + 本项目约定双向校验，负向验证退出码 1） |
 | 4 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
@@ -103,9 +103,10 @@ BASE_URL=http://localhost:4300 node tools/check-privacy-auth.mjs   # 隐私与�
 npm run deploy:check     # compose/Dockerfile/workflow 的路径、端口、脚本、安全开关一致（严格 YAML 解析）
 npm run deploy:schema    # 官方 compose-spec Schema 校验（需 YAML_LIB/AJV_LIB 注入依赖，见脚本头部注释）
 npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 个目录 + WORKDIR/USER/HEALTHCHECK/CMD
+npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 31 项
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
-npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（22 需证据 + 6 Runner 专属）
-npm run ci:full          # 全量 19 步门禁（静态 8 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/迁移巡检）
+npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
+npm run ci:full          # 全量 20 步门禁（静态 8 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
 ```
 
-`deploy/` 与 `.github/` 的**内容**已被上述前五项覆盖（其中 `workflow:check` 现由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导）；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。
+`deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。

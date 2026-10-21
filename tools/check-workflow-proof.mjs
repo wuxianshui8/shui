@@ -35,6 +35,7 @@ const PROOF = [
   { match: /npm --prefix apps\/web-admin run build/, gate: "web-admin vite build 本地多次通过（dist 存在）" },
   { match: /npm --prefix apps\/web-mobile run build:h5/, gate: "web-mobile uni build（H5）本地多次通过" },
   { match: /npm --prefix apps\/web-mobile run build:mp/, gate: "web-mobile uni build -p mp-weixin 本地通过（app.json 10 页）" },
+  { match: /node .*tools\/check-image-runtime\.mjs/, gate: "镜像运行契约 → 31/31（Dockerfile 运行阶段 + 生产模式起服 + healthcheck）" },
   { match: /node tools\/ci-full\.mjs --static/, gate: "npm run ci（tsc + 接口文档 + 追溯矩阵 + 部署配置）" },
 ];
 

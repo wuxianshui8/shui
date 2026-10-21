@@ -151,10 +151,21 @@ jobs:
           npm --prefix apps/web-mobile run build:h5
           npm --prefix apps/web-mobile run build:mp
 
-      - name: PC 后台（29）与移动端（39）产物校验
+      - name: PC 后台（38）与移动端（41）产物校验
         run: |
           node tools/check-admin-spa.mjs
           node tools/check-mobile-spa.mjs
+
+      - name: 镜像运行契约（31）
+        working-directory: apps/api-nest
+        run: node ../../tools/check-image-runtime.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
 
       - name: 失败时输出服务日志
         if: failure()

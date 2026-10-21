@@ -146,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 140 路由）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 41 + verify 15 + hc 12 = **467** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 41 + 镜像运行契约 31 + verify 15 + hc 12 = **498** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）
