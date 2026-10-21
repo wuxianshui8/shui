@@ -89,8 +89,33 @@ try {
   redis.disconnect();
 }
 
-/* ---------- 4. 重启 API（可选） ---------- */
-if (RESTART_API) {
+/* ---------- 4. 重启 API（可选：本机进程 or 容器） ---------- */
+const RESET_TARGET = process.env.RESET_TARGET || (RESTART_API ? "local" : "none");
+async function waitHealth(label) {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/health`);
+      if (res.ok) return true;
+    } catch {}
+    await sleep(500);
+  }
+  console.error(`✗ ${label}后 30 秒内 /api/health 未就绪`);
+  return false;
+}
+
+if (RESET_TARGET === "docker") {
+  // 容器栈：直接重启 app 容器（DB 被 DROP 过，旧连接池不可复用）
+  const compose = process.env.COMPOSE_BIN || "docker";
+  const args = ["compose", "-f", path.join(ROOT, "deploy", "docker-compose.yml"), "restart", "app"];
+  const r = spawnSync(compose, args, { cwd: ROOT, encoding: "utf8" });
+  if (r.status !== 0) {
+    console.error("✗ docker compose restart app 失败：" + (r.stderr || r.error || "").toString().split("\n")[0]);
+    process.exit(1);
+  }
+  log("已重启容器 jiajiao-app-1");
+  if (!(await waitHealth("容器重启"))) process.exit(1);
+  log(`容器内 API 已就绪：${BASE_URL}`);
+} else if (RESET_TARGET === "local") {
   const kill = spawnSync("pkill", ["-f", "node dist/main.js"], { encoding: "utf8" });
   log(kill.status === 0 ? "旧 API 进程已结束" : "无旧 API 进程需要结束");
   // 等端口释放（最多 10s）
@@ -107,21 +132,7 @@ if (RESTART_API) {
     stdio: ["ignore", logFd, logFd],
   });
   child.unref();
-  let up = false;
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/health`);
-      if (res.ok) {
-        up = true;
-        break;
-      }
-    } catch {}
-    await sleep(500);
-  }
-  if (!up) {
-    console.error("✗ API 重启后 30 秒内未就绪");
-    process.exit(1);
-  }
+  if (!(await waitHealth("API 重启"))) process.exit(1);
   log(`API 已重启并就绪：${BASE_URL}`);
 }
 

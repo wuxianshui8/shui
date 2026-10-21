@@ -54,7 +54,7 @@ services:
       MYSQL_DATABASE: jiajiao
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      # 生产必须关闭验证码回显；如前置了反向代理再打开 TRUST_PROXY
+      # 生产必须关闭验证码回显（另注：镜像内 NODE_ENV=production，devCode 恒不回显）
       DEV_SMS: "0"
       TRUST_PROXY: ${TRUST_PROXY:-0}
       JOBS_ENABLED: ${JOBS_ENABLED:-1}

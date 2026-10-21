@@ -123,6 +123,26 @@ node tools\check-privacy-auth.mjs               # 隐私与账号安全 38 项
 npm run nest:health:mysql                       # 12 项一致性巡检
 ```
 
+### 容器栈功能验收（不只是 healthy）
+
+```powershell
+npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个套件前重置数据并重启 app 容器）
+```
+
+实测（Docker Desktop 4.96 / Engine 29.9.1 + WSL2）：**9 个套件 282 断言全绿**
+
+| 套件 | 结果 | 套件 | 结果 |
+| --- | --- | --- | --- |
+| security | 53/53 | admin SPA | 38/38 |
+| races | 27/27 | mobile SPA | 41/41 |
+| privacy | 38/38 | 镜像运行契约 | 33/33 |
+| permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
+| concurrency | 23/23 | | |
+
+> `e2e`（153）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
+> 而镜像内 `NODE_ENV=production` 会永久关闭该回显（安全设计）。这两条由 CI 的主机栈覆盖（run #5 全绿）。
+> 容器栈上的 9 个套件已足以证明「镜像里的 API + MySQL + Redis 组合与业务规则等价」。
+
 ## 6. 已知限制（如实记录）
 
 | # | 限制 | 说明 |

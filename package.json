@@ -62,7 +62,8 @@
     "web:admin:check": "node tools/check-admin-spa.mjs",
     "web:mobile:install": "npm --prefix apps/web-mobile install",
     "web:mobile:check": "node tools/check-mobile-spa.mjs",
-    "nest:gate:permissions": "node tools/gate-permissions.mjs"
+    "nest:gate:permissions": "node tools/gate-permissions.mjs",
+    "verify:docker": "node tools/verify-docker.mjs"
   },
   "dependencies": {}
 }
