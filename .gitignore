@@ -1,4 +1,7 @@
 data/
+# 密钥文件：compose 的 .env 含 AUTH_SECRET，绝不能入库
+.env
+deploy/.env
 node_modules/
 *.log
 .DS_Store

@@ -114,10 +114,14 @@ npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：
 
+> 以下命令在 bash / zsh / PowerShell 7+ 里可加 `&&` 串起来；**Windows PowerShell 5.1 不支持 `&&`，请逐行执行**。
+
 ```bash
-npm run web:admin:install && npm run web:admin:build     # → apps/web-admin/dist
-npm run web:mobile:install && npm run web:mobile:build   # → apps/web-mobile/dist/build/h5
-npm run web:mobile:build:mp                             # → apps/web-mobile/dist/build/mp-weixin（可导入微信开发者工具）
+npm run web:admin:install
+npm run web:admin:build                                  # → apps/web-admin/dist
+npm run web:mobile:install
+npm run web:mobile:build                                 # → apps/web-mobile/dist/build/h5
+npm run web:mobile:build:mp                              # → apps/web-mobile/dist/build/mp-weixin（可导入微信开发者工具）
 ```
 
 接口文档、追溯矩阵与汇总门禁：

@@ -1,9 +1,10 @@
 # 容器化部署（Docker Compose）
 
 > 交付说明：本仓库提供 **MySQL 8 + Redis 7 + 应用镜像** 的 compose 编排与构建文件。
-> **本机没有 Docker 守护进程**（`HypervisorPresent=False`，WSL2 不可用，Docker Desktop 无法启动），
-> 因此下面这些文件只做过**静态一致性校验**（`npm run deploy:check`，含严格 YAML 解析），
-> 容器运行时行为**未在本机实测**。首次在具备 Docker 的机器上执行时，请按第 5 节自检。
+> **本机连容器运行时都不具备**：`docker` 不在 PATH、无 Docker Desktop，且 BIOS 关闭 VT-x
+> （`VirtualizationFirmwareEnabled=False`）、Hyper-V / VirtualMachinePlatform / WSL / Containers 组件全 `Disabled`
+> —— dockerd 起不来。因此下面这些文件只做过**静态与契约级校验**（`deploy:check`、`deploy:schema`、`image:check`、
+> `image:runtime` 生产模式真起服 31 项），**容器本身未在本机启动过**。首次在具备 Docker 的机器上执行时，请按第 5 节自检。
 
 ## 1. 文件
 
@@ -33,6 +34,23 @@ node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 docker compose up -d --build          # 首次会构建镜像（三份 npm install，约 5–10 分钟）
 docker compose run --rm seed          # 灌演示数据（12 用户 / 4 教员 / 3 业务员 / 2 代理 / 演示订单）
 docker compose ps                     # 三个服务应为 healthy
+```
+
+**一键脚本（推荐 Windows）**：`deploy\up.bat` —— 自带护栏（未装 docker 时提示先开 VT-x / 装 Docker Desktop；
+`.env` 不存在时自动从模板生成并提示填 `AUTH_SECRET`），随后依次执行 `up -d --build` → `run --rm seed` → `ps`。
+实测：本机（无 docker）运行该脚本会在第 1 道护栏退出（退出码 1），不产生任何副作用文件。
+
+> **Windows 用户注意**：`&&` 是 bash / PowerShell 7+（`pwsh`）的语法，**Windows PowerShell 5.1 会直接抛解析错误**
+> （`标记"&&"不是此版本中的有效语句分隔符` / `InvalidEndOfLine`），命令根本不会执行；另外 `curl` 在 5.1 里是
+> `Invoke-WebRequest` 的别名，带 `-fsS` 也会报参数错误。逐行执行即可，等价命令：
+
+```powershell
+cd D:\shui\deploy
+Copy-Item .env.example .env
+node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"   # 输出填入 .env 的 AUTH_SECRET
+docker compose up -d --build
+docker compose run --rm seed
+docker compose ps
 ```
 
 访问：
@@ -75,14 +93,33 @@ server {
 
 ## 5. 部署自检清单（在具备 Docker 的机器上执行）
 
+两种写法都给出：上面是 bash / zsh / PowerShell 7+（`pwsh`）；下面是 **Windows PowerShell 5.1** 的等价命令（逐行执行）。
+
 ```bash
+# ── bash / zsh / PowerShell 7+ ──
 docker compose ps                              # 三服务 healthy
-curl -fsS http://localhost:4300/api/health     # {"code":0,...,"status":"ok"}
+curl -fsS http://localhost:4300/api/health     # {"code":0,...,"data":{"status":"ok",...}}
 docker compose logs app | tail -40             # 无 "生产环境必须配置 AUTH_SECRET"
-docker compose run --rm seed && curl -fsS -X POST http://localhost:4300/api/auth/login-password \
+docker compose run --rm seed
+curl -fsS -X POST http://localhost:4300/api/auth/login-password \
   -H 'Content-Type: application/json' -d '{"phone":"13900000001","password":"a123456"}'   # code=0
-npm run nest:health:mysql                      # 12 项一致性巡检（在容器库上跑）
 BASE_URL=http://localhost:4300 node tools/check-privacy-auth.mjs   # 隐私与账号安全 38 项
+npm run nest:health:mysql                      # 12 项一致性巡检（在容器库上跑）
+```
+
+```powershell
+# ── Windows PowerShell 5.1（本机默认 shell）──
+#   注意：5.1 不支持 && 链式（那是 bash / pwsh 7+ 的语法），curl 是 Invoke-WebRequest 别名，
+#   带 -fsS 会报参数错误 —— 这里统一写 curl.exe，且逐行执行。
+docker compose ps
+curl.exe -fsS http://localhost:4300/api/health
+docker compose logs app --tail 40
+docker compose run --rm seed
+curl.exe -fsS -X POST http://localhost:4300/api/auth/login-password `
+  -H "Content-Type: application/json" -d '{"phone":"13900000001","password":"a123456"}'
+$env:BASE_URL = "http://localhost:4300"
+node tools\check-privacy-auth.mjs               # 隐私与账号安全 38 项
+npm run nest:health:mysql                       # 12 项一致性巡检
 ```
 
 ## 6. 已知限制（如实记录）

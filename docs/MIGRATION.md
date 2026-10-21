@@ -82,15 +82,19 @@ apps/api-nest/
 
 ### 1.5 复现命令
 
-```bash
+```powershell
+# Windows PowerShell 5.1：逐行执行（5.1 不支持 `&&` 链式，那是 bash / pwsh 7+ 的语法）
+
 # 1) 装依赖（一次性，MySQL 247MB + Redis 12MB）
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup-services.ps1
 
 # 2) 装 npm 依赖（一次性，222 个包）
-cd apps\api-nest && npm install
+cd apps\api-nest
+npm install
 
 # 3) 一键验证（自动起停 MySQL/Redis/NestJS，跑完自动清理）
-cd ..\.. && node tools\verify-nest.mjs     # P1 切面 15 项
+cd ..\..
+node tools\verify-nest.mjs                  # P1 切面 15 项
 node tools\gate-p2.mjs                      # P2 门禁：新后端跑既有 e2e §1–§3（20 项）
 ```
 
