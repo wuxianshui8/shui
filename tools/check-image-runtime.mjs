@@ -194,13 +194,26 @@ if (!distOk) {
 
 const used = new Map();
 for (const file of walk(distDir)) {
-  const src = fs.readFileSync(file, "utf8");
-  for (const m of src.matchAll(/(?:require\(|from\s+)["']([^"']+)["']/g)) {
-    const spec = m[1];
+  // 只剔除注释（不能剔除字符串字面量，否则 require("x") 里的模块名会被一起清掉，
+  // 结果扫到 0 个包却报「全部在 dependencies」——空检查比不检查更糟）
+  const src = fs
+    .readFileSync(file, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  for (const m of src.matchAll(/(?:^|[^\w$.])require\(\s*["']([^"']+)["']\s*\)|(?:^|[^\w$.])from\s+["']([^"']+)["']/gm)) {
+    const spec = m[1] || m[2];
+    if (!spec) continue;
+    // 只认「像包名」的说明符，挡住字符串里出现的 require("任意中文说明…") 之类噪声
+    if (!/^[@a-zA-Z0-9._/-]+$/.test(spec)) continue;
     if (spec.startsWith(".") || spec.startsWith("/") || builtins.has(spec)) continue;
     const bare = spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
     if (!used.has(bare)) used.set(bare, path.relative(APP, file));
   }
+}
+// 防空检查：dist 里必然有 require("xxx")，扫到 0 个说明扫描逻辑坏了
+if (used.size === 0) {
+  console.error("✗ 依赖扫描结果为空：扫描逻辑可能失效（dist 里必然存在 require(...)）");
+  process.exit(1);
 }
 const missing = [...used.keys()].filter((d) => !prodDeps.has(d));
 const devOnly = [...used.keys()].filter((d) => devDeps.has(d) && !prodDeps.has(d));
@@ -245,6 +258,12 @@ ok("compose seed 服务的入口存在（db/seed-min.mjs）", fs.existsSync(path
 }
 
 /* ============ C. 生产模式真起服 ============ */
+// 起服前先确认测试端口空闲：否则会对着「别人」的服务做完断言（假通过）
+if (await portOpen(PORT)) {
+  console.error(`\n✗ 测试端口 ${PORT} 已被占用，可能是上次残留的进程。`);
+  console.error(`   请先释放该端口，或用 IMAGE_TEST_PORT=<其它端口> 重跑`);
+  process.exit(1);
+}
 let server = spawnServer(containerEnv, PORT);
 let up = await waitPort(PORT, 80);
 if (!up) {

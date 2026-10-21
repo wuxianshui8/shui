@@ -1,0 +1,26 @@
+# 构建上下文裁剪：仓库里 tools/（便携 Node/MySQL/Redis/Git，1.7GB）与 node_modules
+# 都不该进 Docker 构建上下文（镜像内部会各自 npm install）。
+# 首次构建曾因上下文 2050MB 耗时 16 分钟；加入本文件后上下文约十几 MB。
+**/node_modules
+**/dist
+**/build
+**/.vite
+
+# 便携二进制与数据（体积大且与镜像无关）
+tools
+data
+*.zip
+
+# 版本库与本地配置
+.git
+.gitattributes
+.gitignore
+deploy/.env
+
+# 与运行镜像无关的文档与脚本
+docs
+test
+scripts
+README.md
+*.log
+**/*.pdb

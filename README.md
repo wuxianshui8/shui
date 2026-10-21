@@ -144,11 +144,11 @@ npm run ci:full        # 全部 24 步门禁（约 4 分钟 = 静态 12 步 + �
 > **容器运行时已实测通过**：Docker Desktop 4.96（Engine 29.9.1）+ WSL2（内核 6.18.40），
 > `docker compose up -d --build` → 三服务 healthy、`run --rm seed` 灌入 12 用户 / 4 片区 / 16 组规则、
 > 四个入口（`/api/health`、`/admin-vue/`、`/m/`、`/parent`）全 200、四角色登录成功、容器库 37 表且一致性巡检 12/12。
-> 注意：本机**无法直连 Docker Hub**（`registry-1.docker.io` 超时），已通过 `~/.docker/daemon.json` 的 `registry-mirrors` 指向可达镜像源。
+> 注意：本机**无法直连 Docker Hub**（`registry-1.docker.io` 超时），已在 `~/.docker/daemon.json` 配置 `registry-mirrors`（`docker.1ms.run` / `docker.m.daocloud.io`）并**实测生效**（`docker pull` 可直接使用原始镜像名）；`.dockerignore` 把构建上下文从 2050 MB 压到十几 MB，镜像重建约 **18 秒**。
 > 已完成的等价校验：`npm run deploy:check`（严格 YAML + 路径/端口/安全开关一致性）、
 > `npm run deploy:schema`（**官方 compose-spec JSON Schema**，固定 commit 随仓库提交，负向验证退出码 1）、
 > `npm run image:check`（镜像运行阶段 COPY 布局 vs `main.ts` 静态托管约定）、
-> `npm run image:runtime`（**Dockerfile 运行阶段 + 生产模式真起服**：`NODE_ENV=production` 下验证 /api/health、HEALTHCHECK 原始命令、三个静态站点、验证码不回显（含仅靠 NODE_ENV 的第二道防线）、缺 `AUTH_SECRET` 拒绝启动，共 32 项）。
+> `npm run image:runtime`（**Dockerfile 运行阶段 + 生产模式真起服**：`NODE_ENV=production` 下验证 /api/health、HEALTHCHECK 原始命令、三个静态站点、验证码不回显（含仅靠 NODE_ENV 的第二道防线）、缺 `AUTH_SECRET` 拒绝启动，共 33 项）。
 
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）

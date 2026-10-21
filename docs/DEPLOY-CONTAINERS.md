@@ -32,7 +32,7 @@ cp .env.example .env
 # 生成强随机密钥并填入 .env（必须 >= 32 字符，否则应用拒绝启动）
 node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 
-docker compose up -d --build          # 首次会构建镜像（三份 npm install，约 5–10 分钟）
+docker compose up -d --build          # 首次会构建镜像（三份 npm install，实测约 16 分钟；有 `.dockerignore` 后重建约 18 秒）
 docker compose run --rm seed          # 灌演示数据（12 用户 / 4 教员 / 3 业务员 / 2 代理 / 演示订单）
 docker compose ps                     # 三个服务应为 healthy
 ```
@@ -148,7 +148,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | # | 限制 | 说明 |
 | --- | --- | --- |
 | 1 | **容器运行时：已实测通过** | 2026-10-21 在本机跑通：Docker Desktop 4.96 / Engine 29.9.1 + WSL2 内核 6.18.40（BIOS 已开 VT-x、系统升至 22H2 19045）。实测结果：`up -d --build` 三服务 healthy（首次构建 16.2 分钟）、`run --rm seed` 灌入 12 用户 / 4 片区 / 16 组规则、四入口全 200、四角色登录成功、容器库 37 表且一致性巡检 **12/12**。过程中修掉两个只有容器才暴露的缺陷：① 镜像缺 `server/core/defaults.js` → `seed` 报 `ERR_MODULE_NOT_FOUND`；② `seed` 服务缺 `AUTH_SECRET` → 镜像内 `NODE_ENV=production` 直接拒绝启动。两项都已加进门禁（`image:runtime` 33 项、`deploy:schema` 约定断言）。 |
-| 2 | 基础镜像 tag 联网校验被阻断 | `auth.docker.io` / `registry-1.docker.io` 在本机超时；在有外网的机器上执行 `node tools/check-image.mjs --online` 会逐个校验 `node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 是否可拉取 |
+| 2 | Docker Hub 直连被阻断（已用镜像源绕过） | `auth.docker.io` / `registry-1.docker.io` 在本机超时。**已配置 `registry-mirrors`（`docker.1ms.run` / `docker.m.daocloud.io`，写在 `~/.docker/daemon.json`）并实测生效**：`docker pull` 可直接用原始镜像名（实测 `hello-world` 6.7s、`node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 均可拉取）。`node tools/check-image.mjs --online` 仍不适用（它走 Docker Hub 官方 API） |
 | 3 | 官方 actionlint：**已解决**；compose 官方二进制：**未取到** | 官方 `actionlint v1.7.12 + shellcheck 0.11.0` 已装入 `tools/bin/`（`download.docker.com`、`github.com` 可达），`npm run workflow:check` 会自动优先调用官方 actionlint，实测**无告警**。`docker compose` 官方二进制（33MB）在本机 ~14KB/s 带宽下多次续传残缺 → 改用**官方 compose-spec JSON Schema** 校验：`npm run deploy:schema`（schema 固定 commit `de28432` 随仓库提交于 `deploy/compose-spec.schema.json`，结构 + 本项目约定双向校验，负向验证退出码 1） |
 | 4 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
 | 5 | 未包含微信小程序构建 | compose 只产出 H5；小程序需本地 `npm run web:mobile:build:mp` 后用微信开发者工具上传 |
@@ -161,7 +161,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 npm run deploy:check     # compose/Dockerfile/workflow 的路径、端口、脚本、安全开关一致（严格 YAML 解析）
 npm run deploy:schema    # 官方 compose-spec Schema 校验（缺依赖默认失败；CI 里显式 --allow-skip 降级）
 npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 个目录 + WORKDIR/USER/HEALTHCHECK/CMD
-npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 32 项
+npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 33 项
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
 npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
 npm run ci:full          # 全量 24 步门禁（静态 12 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）

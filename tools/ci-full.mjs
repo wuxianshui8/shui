@@ -36,7 +36,7 @@ const FULL = [
   { name: "permissions（17）", cmd: ["node", "tools/gate-permissions.mjs"] },
   { name: "admin SPA（38）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
   { name: "mobile SPA（41）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
-  { name: "镜像运行契约（32）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },
+  { name: "镜像运行契约（33）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },
   { name: "迁移 + MySQL 巡检（12）", cmd: ["node", "tools/gate-p9.mjs"] },
 ];
 
