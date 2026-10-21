@@ -40,6 +40,7 @@
     "api:doc": "node tools/gen-api-doc.mjs",
     "api:doc:check": "node tools/gen-api-doc.mjs --check",
     "trace:check": "node tools/check-trace-nest.mjs",
+    "ui:check": "node tools/check-ui-trace.mjs",
     "deploy:check": "node tools/check-deploy.mjs",
     "image:check": "node tools/check-image.mjs",
     "workflow:check": "node tools/check-workflow-lint.mjs",

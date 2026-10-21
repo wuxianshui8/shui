@@ -125,6 +125,7 @@ npm run web:mobile:build:mp                             # → apps/web-mobile/di
 npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（142 路由 / 16 控制器）
 npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期）
 npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（142/142 覆盖）
+npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 18 页 + 移动 9 页）
 npm run ci             # 静态门禁：tsc + 接口文档 + 追溯矩阵（约 2 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
 npm run ci:full        # 全部 13 步门禁（约 15 分钟）
