@@ -41,6 +41,7 @@
     "api:doc:check": "node tools/gen-api-doc.mjs --check",
     "trace:check": "node tools/check-trace-nest.mjs",
     "ui:check": "node tools/check-ui-trace.mjs",
+    "docs:check": "node tools/check-docs-shell.mjs",
     "deploy:check": "node tools/check-deploy.mjs",
     "deploy:schema": "node tools/check-compose-schema.mjs",
     "image:runtime": "node tools/check-image-runtime.mjs",
