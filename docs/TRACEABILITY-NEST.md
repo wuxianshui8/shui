@@ -77,7 +77,7 @@
 | 4.5.3 全平台订单（筛选/导出/改价/强制关闭释放担保） | `GET /api/admin/orders`、`GET /api/admin/orders/export`、`POST /api/admin/orders/:id/price`、`POST /api/admin/orders/:id/close` | e2e §16、`races`（关闭已完成订单冲销冻结） |
 | 4.5.3 退款工单处理 | `GET /api/admin/refunds`、`POST /api/admin/refunds/:id/review` | e2e §13、`races`（并发审批只出账一次） |
 | 4.5.3 抢单超时清理 | 定时任务 `expireApplications()` + `POST /api/admin/applications/expire` | e2e §16 |
-| 4.5.3 需求池列表（状态/科目/学段/片区/加急筛选、报名数、家长手机号脱敏） | `GET /api/admin/demands` | `admin`（2 条断言） |
+| 4.5.3 需求池列表（状态/科目/学段/片区/加急筛选、报名数、家长手机号脱敏）+ 后台「需求池」页 | `GET /api/admin/demands` | `admin`（2 条断言 + 页面分包） |
 | 4.5.4 规则配置中心（15 组，热更新即时生效） | `GET /api/admin/rules`、`PUT /api/admin/rules/:key` | e2e §11、`rules`（50 项） |
 | 4.5.5 片区与电子围栏 | `GET /api/admin/regions`、`POST /api/admin/regions` | `admin`（新建片区写闭环） |
 | 4.5.6 财务：担保台账、支付流水、分账、对账 | `GET /api/admin/finance` | e2e §14、`hc`（12 项不变量） |
@@ -86,7 +86,7 @@
 | 4.5.7 风控事件处置、差评仲裁、客诉终审（家长/教员发起工单） | `GET /api/admin/risks`、`POST /api/admin/risks/:id/handle`、`POST /api/admin/appeals/:id/arbitrate`、`POST /api/admin/complaints/:id/close`、`POST /api/complaints`、`GET /api/complaints/mine` | e2e §12、`admin` |
 | 4.5.8 运营工具（Banner/公告/优惠券增删改启停） | `GET|POST /api/admin/banners`、`PUT|DELETE /api/admin/banners/:id`、`POST /api/admin/banners/:id/toggle`、`GET|POST /api/admin/announcements`、`PUT|DELETE /api/admin/announcements/:id`、`POST /api/admin/announcements/:id/toggle`、`POST /api/admin/announcements/:id/pin`、`GET|POST /api/admin/coupons`、`PUT /api/admin/coupons/:id`、`POST /api/admin/coupons/:id/toggle` | e2e §15、`admin` |
 | 4.5.9 管理员账号管理（列表/新建/启停，一次性口令 + 首登改密 + 禁用即失效令牌） | `GET /api/admin/admins`、`POST /api/admin/admins`、`POST /api/admin/admins/:id/toggle` | `admin`（4 条断言） |
-| 4.5.9 细粒度权限矩阵（4 个高危权限点可按角色授予，admin 不可被移除） | `GET /api/admin/permissions`、`PUT /api/admin/permissions` | `permissions`（17 条断言） |
+| 4.5.9 细粒度权限矩阵（4 个高危权限点可按角色授予，admin 不可被移除）+ 后台「权限矩阵」页 | `GET /api/admin/permissions`、`PUT /api/admin/permissions` | `permissions`（17）+ `admin`（3） |
 | 4.5.9 操作日志与基础参数 | `GET /api/admin/audit-logs`、`GET /api/meta/dictionary`、`GET /api/meta/rules-public` | e2e §16、`sec` |
 | 4.5.9 运维指标（用户数/订单数/担保资金） | `GET /api/health/detail`（仅 admin）、`GET /api/health`（匿名仅可用性） | `priv`（信息分级） |
 
@@ -113,7 +113,7 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（45 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（15 页） | `admin` 29 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（18 页，含需求池/管理员账号/权限矩阵） | `admin` 38 项 |
 | 6.1 移动端 uni-app | `apps/web-mobile/`（9 页，H5 + 微信小程序双产物） | `mobile` 39 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
@@ -146,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 140 路由）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 35 + mobile 39 + verify 15 + hc 12 = **462** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 153 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 39 + verify 15 + hc 12 = **465** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

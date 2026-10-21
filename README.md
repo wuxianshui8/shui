@@ -94,7 +94,7 @@ node test/e2e.test.js     # 或 npm test
 | 层 | 目录 | 技术栈 | 单端口访问 |
 | --- | --- | --- | --- |
 | 后端 API | `apps/api-nest/` | NestJS 10 + TypeScript + TypeORM(原生 SQL) + MySQL 8 + Redis | `http://localhost:4300/api/*` |
-| PC 管理后台 | `apps/web-admin/` | Vue3 + Vite + Element Plus + vue-router（15 个页面，含区域管理） | `http://localhost:4300/admin-vue/` |
+| PC 管理后台 | `apps/web-admin/` | Vue3 + Vite + Element Plus + vue-router（18 个页面，含需求池/管理员账号/权限矩阵/区域管理） | `http://localhost:4300/admin-vue/` |
 | 移动四端 | `apps/web-mobile/` | uni-app（Vue3 语法；同一份源码产出 H5 + 微信小程序，9 个页面：家长/教员+钱包提现/业务员+奖励明细/代理+客诉） | `http://localhost:4300/m/` |
 | 既有 5 端 UI | `web/` | 零构建原生 ESM（参考实现，作为 UI 蓝本保留） | `http://localhost:4300/parent` 等 |
 
@@ -108,7 +108,7 @@ npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / hea
 npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生效、admin 不可被移除）→ 17/17
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
-npm run web:admin:check     # PC 后台（Vue3+Element Plus，15 页）→ 35/35
+npm run web:admin:check     # PC 后台（Vue3+Element Plus，18 页）→ 38/38
 npm run web:mobile:check    # 移动四端（uni-app H5 + 小程序，9 页）→ 39/39
 ```
 

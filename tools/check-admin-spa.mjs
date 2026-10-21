@@ -27,8 +27,8 @@ async function api(method, path, { token, body } = {}) {
 {
   const { readdirSync } = await import("node:fs");
   const distAssets = readdirSync(new URL("../apps/web-admin/dist/assets", import.meta.url));
-  const views = ["Login", "Overview", "Orders", "Refunds", "Finance", "Withdrawals", "Invoices",
-    "Users", "Teachers", "Agents", "Regions", "Rules", "Ops", "Risks", "Logs"];
+  const views = ["Login", "Overview", "Orders", "Demands", "Refunds", "Finance", "Withdrawals", "Invoices",
+    "Users", "Teachers", "Agents", "Admins", "Permissions", "Regions", "Rules", "Ops", "Risks", "Logs"];
   const missing = views.filter((v) => !distAssets.some((f) => f.startsWith(v + "-")));
   assert(missing.length === 0, "构建产物含 " + views.length + " 个页面分包" + (missing.length ? "，缺失 " + missing.join(",") : ""));
 }
@@ -133,6 +133,18 @@ assert(disableNew.status === 200 && disableNew.body.data.status === "disabled", 
 const selfDisable = await api("POST", "/admin/admins/" + (login.body.data.user.id) + "/toggle", { token });
 assert(selfDisable.status === 403 && /当前登录/.test(selfDisable.body?.message || ""),
   "管理员账号页：禁止禁用自己（" + selfDisable.body?.message + "）");
+
+/* ---------- 权限矩阵页（需求 4.5.9） ---------- */
+const perms = await api("GET", "/admin/permissions", { token });
+assert(perms.status === 200 && (perms.body.data.keys || []).length === 4, "权限矩阵页：/admin/permissions 返回 4 个权限点");
+const grant = await api("PUT", "/admin/permissions", {
+  token,
+  body: { matrix: { ...perms.body.data.matrix, "order.price": ["admin", "agent"] } },
+});
+assert(grant.status === 200 && (grant.body.data.matrix["order.price"] || []).includes("agent"),
+  "权限矩阵页：保存后即时返回新矩阵（order.price 含 agent）");
+const restore = await api("PUT", "/admin/permissions", { token, body: { matrix: perms.body.data.matrix } });
+assert(restore.status === 200, "权限矩阵页：可恢复默认矩阵");
 
 console.log("\n=================================================");
 console.log("PC 管理后台验收：通过 " + pass + " 项，失败 " + fail + " 项");
