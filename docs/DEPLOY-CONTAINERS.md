@@ -4,7 +4,7 @@
 > **本机连容器运行时都不具备**：`docker` 不在 PATH、无 Docker Desktop，且 BIOS 关闭 VT-x
 > （`VirtualizationFirmwareEnabled=False`）、Hyper-V / VirtualMachinePlatform / WSL / Containers 组件全 `Disabled`
 > —— dockerd 起不来。因此下面这些文件只做过**静态与契约级校验**（`deploy:check`、`deploy:schema`、`image:check`、
-> `image:runtime` 生产模式真起服 31 项），**容器本身未在本机启动过**。首次在具备 Docker 的机器上执行时，请按第 5 节自检。
+> `image:runtime` 生产模式真起服 32 项），**容器本身未在本机启动过**。首次在具备 Docker 的机器上执行时，请按第 5 节自检。
 
 ## 1. 文件
 
@@ -126,7 +126,7 @@ npm run nest:health:mysql                       # 12 项一致性巡检
 
 | # | 限制 | 说明 |
 | --- | --- | --- |
-| 1 | **容器运行时未实测（两道硬前置，均需人工操作）** | ① **BIOS 关闭 VT-x**：`VirtualizationFirmwareEnabled=False`、`systeminfo` → `Virtualization Enabled In Firmware: No`、`HypervisorPresent=False`；② **Windows 为 10 Pro 21H1（build 19043）**，低于 Docker Desktop 4.96 官方要求（Win10 **22H2 build 19045+**，取自 docs.docker.com「Windows 10 64-bit: Enterprise, Pro, or Education version 22H2 (build 19045)」）。当前组件实测：WSL `Enabled`（`LxssManager` 运行中）、`VirtualMachinePlatform` `Disabled`、`Microsoft-Hyper-V-All` `Disabled`、无 `vmcompute`，`wsl --status` 明确回「当前计算机配置不支持 WSL2」。已用不依赖守护进程的方式验证：`deploy:check`、`deploy:schema`（官方 compose-spec Schema）、`image:check`、`image:runtime`（**生产模式真起服 31 项**）；镜像 tag 联网校验仍被网络阻断 |
+| 1 | **容器运行时未实测（两道硬前置，均需人工操作）** | ① **BIOS 关闭 VT-x**：`VirtualizationFirmwareEnabled=False`、`systeminfo` → `Virtualization Enabled In Firmware: No`、`HypervisorPresent=False`；② **Windows 为 10 Pro 21H1（build 19043）**，低于 Docker Desktop 4.96 官方要求（Win10 **22H2 build 19045+**，取自 docs.docker.com「Windows 10 64-bit: Enterprise, Pro, or Education version 22H2 (build 19045)」）。当前组件实测：WSL `Enabled`（`LxssManager` 运行中）、`VirtualMachinePlatform` `Disabled`、`Microsoft-Hyper-V-All` `Disabled`、无 `vmcompute`，`wsl --status` 明确回「当前计算机配置不支持 WSL2」。已用不依赖守护进程的方式验证：`deploy:check`、`deploy:schema`（官方 compose-spec Schema）、`image:check`、`image:runtime`（**生产模式真起服 32 项**）；镜像 tag 联网校验仍被网络阻断 |
 | 2 | 基础镜像 tag 联网校验被阻断 | `auth.docker.io` / `registry-1.docker.io` 在本机超时；在有外网的机器上执行 `node tools/check-image.mjs --online` 会逐个校验 `node:22-bookworm-slim` / `mysql:8.0` / `redis:7-alpine` 是否可拉取 |
 | 3 | 官方 actionlint：**已解决**；compose 官方二进制：**未取到** | 官方 `actionlint v1.7.12 + shellcheck 0.11.0` 已装入 `tools/bin/`（`download.docker.com`、`github.com` 可达），`npm run workflow:check` 会自动优先调用官方 actionlint，实测**无告警**。`docker compose` 官方二进制（33MB）在本机 ~14KB/s 带宽下多次续传残缺 → 改用**官方 compose-spec JSON Schema** 校验：`npm run deploy:schema`（schema 固定 commit `de28432` 随仓库提交于 `deploy/compose-spec.schema.json`，结构 + 本项目约定双向校验，负向验证退出码 1） |
 | 4 | 镜像体积偏大 | 三份前端依赖各自 `npm install`；如需优化可改为 pnpm workspace 或预构建产物挂载 |
@@ -138,12 +138,12 @@ npm run nest:health:mysql                       # 12 项一致性巡检
 
 ```bash
 npm run deploy:check     # compose/Dockerfile/workflow 的路径、端口、脚本、安全开关一致（严格 YAML 解析）
-npm run deploy:schema    # 官方 compose-spec Schema 校验（需 YAML_LIB/AJV_LIB 注入依赖，见脚本头部注释）
+npm run deploy:schema    # 官方 compose-spec Schema 校验（缺依赖默认失败；CI 里显式 --allow-skip 降级）
 npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 个目录 + WORKDIR/USER/HEALTHCHECK/CMD
-npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 31 项
+npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 32 项
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
 npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
-npm run ci:full          # 全量 22 步门禁（静态 10 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
+npm run ci:full          # 全量 24 步门禁（静态 12 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/镜像运行契约/迁移巡检）
 ```
 
 `deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；剩下真正未做的只有「在有 Docker 的机器上 `docker compose up -d --build`」与「推送后 Actions 首跑」。

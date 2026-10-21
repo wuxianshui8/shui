@@ -2,49 +2,56 @@
 // compose 官方 Schema 校验（deploy/docker-compose.yml ↔ compose-spec）
 //
 //   背景：本机没有 Docker 守护进程（BIOS 关闭 VT-x），`docker compose config`
-//   无法执行。这里改用 compose 官方发布的 JSON Schema 做等价的结构校验：
-//     schema 来源：https://github.com/compose-spec/compose-spec
+//   无法执行，故用 compose 官方 JSON Schema 做等价结构校验：
+//     来源：https://github.com/compose-spec/compose-spec
 //     固定提交：de28432802a367d650bd4ad6748b19491b6cf986
 //     本地副本：deploy/compose-spec.schema.json（随仓库提交，离线可用）
-//   ⚠️ 该检查覆盖「配置结构是否合法」，不覆盖「容器能否真正起来」。
+//   ⚠️ 覆盖「配置结构是否合法」，不覆盖「容器能否真正起来」。
 //
-// 依赖（根目录保持零第三方依赖，故按需注入）：
-//   YAML_LIB=<yaml 模块路径或包名>   —— 解析 compose 文件
-//   AJV_LIB=<ajv 模块路径或包名>     —— JSON Schema 校验器
+//   依赖（根目录保持零第三方依赖，按需注入）：
+//     YAML_LIB=<yaml 路径或包名>   AJV_LIB=<ajv 路径或包名（draft 2020-12）>
+//   缺依赖时【默认失败】（否则门禁等于不存在）；确需降级时显式加 --allow-skip。
+//
 // 用法：
-//   node tools/check-compose-schema.mjs
-//   node tools/check-compose-schema.mjs --require   # 缺依赖即失败（强校验）
+//   node tools/check-compose-schema.mjs               # 严格：缺依赖即失败
+//   node tools/check-compose-schema.mjs --allow-skip  # 降级：缺依赖时打印跳过并退出 0
+//   COMPOSE_FILE / SCHEMA_FILE 可覆盖文件路径（负向验证用）
 // ============================================================
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const COMPOSE = process.env.COMPOSE_FILE
-  ? path.resolve(process.env.COMPOSE_FILE)
-  : path.join(ROOT, "deploy", "docker-compose.yml");
-const SCHEMA = process.env.SCHEMA_FILE
-  ? path.resolve(process.env.SCHEMA_FILE)
-  : path.join(ROOT, "deploy", "compose-spec.schema.json");
-const REQUIRE = process.argv.includes("--require");
+const ALLOW_SKIP = process.argv.includes("--allow-skip");
 const MAX_SHOW = 12;
 
-/** 环境变量指定的是路径就转成 file:// URL，否则当作包名 */
+/** 相对路径按仓库根解析，避免受 cwd 影响 */
+function resolveFromRoot(p) {
+  return path.isAbsolute(p) ? p : path.join(ROOT, p);
+}
+const COMPOSE = process.env.COMPOSE_FILE
+  ? resolveFromRoot(process.env.COMPOSE_FILE)
+  : path.join(ROOT, "deploy", "docker-compose.yml");
+const SCHEMA = process.env.SCHEMA_FILE
+  ? resolveFromRoot(process.env.SCHEMA_FILE)
+  : path.join(ROOT, "deploy", "compose-spec.schema.json");
+
+/** 环境变量值是已存在的路径就转 file:// URL，否则当包名/子路径交给解析器 */
 function spec(target) {
   if (!target) return null;
-  return /[\\/]/.test(target) || /\.(mjs|cjs|js|json)$/i.test(target)
-    ? pathToFileURL(path.resolve(target)).href
-    : target;
+  const asPath = path.isAbsolute(target) ? target : path.join(ROOT, target);
+  if (fs.existsSync(asPath) && fs.statSync(asPath).isFile()) return pathToFileURL(asPath).href;
+  return target;
 }
 
-/** 按「首选候选 → 环境变量指定 → 包名」的顺序探测，返回第一个可加载的模块 */
+/** 按候选顺序探测依赖；支持「包名 / 子路径 / 文件路径」三种写法 */
 async function load(envKey, pkg, what, preferred = []) {
   const custom = process.env[envKey];
   const listed = [
-    ...preferred.filter(Boolean).map((p) => ({ c: spec(p), how: p })),
+    ...preferred.map((p) => ({ c: spec(p), how: p })),
     ...(custom ? [{ c: spec(custom), how: `${envKey}=${custom}` }] : []),
     { c: pkg, how: pkg },
-  ];
+  ].filter((x) => x.c);
   const fails = [];
   for (const { c, how } of listed) {
     try {
@@ -53,50 +60,72 @@ async function load(envKey, pkg, what, preferred = []) {
       fails.push(`${c}: ${e.message.split("\n")[0]}`);
     }
   }
-  if (REQUIRE) {
-    console.error(`✗ 缺少${what}（${pkg}）。设置 ${envKey} 指向该依赖，或先安装：${pkg}`);
-    for (const f of fails) console.error("   " + f);
-    process.exit(1);
+  if (ALLOW_SKIP) {
+    console.log(`⚠️ 跳过：缺少${what}（${pkg}），本次未做官方 Schema 校验`);
+    for (const f of fails) console.log("   " + f);
+    console.log(`   开启方式：设置 ${envKey}=<该依赖的路径或包名>`);
+    process.exit(0);
   }
-  console.log(`⚠️ 跳过：缺少${what}（${pkg}），未做官方 Schema 校验`);
-  for (const f of fails) console.log("   " + f);
-  console.log(`   开启方式：设置 ${envKey}=<该依赖的路径或包名>；强校验加 --require`);
-  process.exit(0);
+  console.error(`✗ 缺少${what}（${pkg}）：官方 Schema 校验无法执行`);
+  for (const f of fails) console.error("   " + f);
+  console.error(`   装依赖后设置 ${envKey} 指向它；若确实要跳过，请显式加 --allow-skip`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(COMPOSE)) {
+  console.error(`✗ 找不到 compose 文件：${COMPOSE}`);
+  process.exit(1);
+}
+if (!fs.existsSync(SCHEMA)) {
+  console.error(`✗ 找不到官方 schema 副本：${SCHEMA}`);
+  process.exit(1);
 }
 
 const yamlMod = await load("YAML_LIB", "yaml", " YAML 解析库");
-// compose-spec 是 draft 2020-12，ajv 核心不含该方言，优先用 ajv/dist/2020
-const ajvPreferred = [process.env.AJV_LIB?.replace(/ajv\.js$/, "2020.js"), "ajv/dist/2020"].filter(Boolean);
-const ajvMod = await load("AJV_LIB", "ajv", " JSON Schema 校验器", ajvPreferred);
+// compose-spec 是 draft 2020-12；ajv 核心（dist/ajv.js）不含该方言。
+// 只在「派生出的 2020.js 真实存在」时才把它当候选，否则会把路径写错导致方言退回 draft-07。
+const ajvPreferred = [];
+if (process.env.AJV_LIB) {
+  const derived = process.env.AJV_LIB.replace(/ajv\.js$/, "2020.js");
+  const derivedPath = path.isAbsolute(derived) ? derived : path.join(ROOT, derived);
+  if (derived !== process.env.AJV_LIB && fs.existsSync(derivedPath)) ajvPreferred.push(derived);
+}
+ajvPreferred.push("ajv/dist/2020");
+const ajvMod = await load("AJV_LIB", "ajv", " JSON Schema 校验器（draft 2020-12）", ajvPreferred);
+
 const YAML = yamlMod.mod.default || yamlMod.mod;
 const AjvMod = ajvMod.mod.default || ajvMod.mod;
 const Ajv = AjvMod.Ajv || AjvMod;
 
-if (!fs.existsSync(COMPOSE)) {
-  console.error(`✗ 找不到 ${COMPOSE}`);
+let schema;
+let doc;
+try {
+  schema = JSON.parse(fs.readFileSync(SCHEMA, "utf8"));
+} catch (e) {
+  console.error(`✗ 官方 schema 副本不是合法 JSON：${e.message}`);
   process.exit(1);
 }
-if (!fs.existsSync(SCHEMA)) {
-  console.error(`✗ 找不到官方 schema 副本 ${SCHEMA}`);
-  console.error("  重新获取：见 deploy/compose-spec.schema.json 文件头的 $comment");
+try {
+  const text = fs.readFileSync(COMPOSE, "utf8");
+  doc = YAML.parse(text);
+} catch (e) {
+  console.error(`✗ compose 文件 YAML 解析失败：${e.message}`);
   process.exit(1);
 }
-
-const schema = JSON.parse(fs.readFileSync(SCHEMA, "utf8"));
-const text = fs.readFileSync(COMPOSE, "utf8");
-const doc = YAML.parse(text);
 
 console.log("compose 官方 Schema 校验（docker compose config 的等价替代）");
-console.log(`  · compose 文件：deploy/docker-compose.yml`);
+console.log(`  · compose 文件：${path.relative(ROOT, COMPOSE) || COMPOSE}`);
 console.log(`  · 官方 schema ：compose-spec @ ${schema.$comment?.match(/[0-9a-f]{40}/)?.[0] ?? "(见文件头)"}`);
-console.log(`  · YAML 解析   ：${yamlMod.how}；Schema 校验：${ajvMod.how}`);
+console.log(`  · YAML 解析   ：${yamlMod.how}`);
+console.log(`  · Schema 校验 ：${ajvMod.how}`);
 
-const ajv = new Ajv({ strict: false, allErrors: true, allowUnionTypes: true });
 let validate;
 try {
+  const ajv = new Ajv({ strict: false, allErrors: true, allowUnionTypes: true });
   validate = ajv.compile(schema);
 } catch (e) {
-  console.error(`✗ 官方 schema 本身编译失败：${e.message}`);
+  console.error(`✗ 官方 schema 编译失败：${e.message}`);
+  console.error("   若提示 unknown schema/dialect，说明 ajv 版本不是 draft 2020-12（需 ajv/dist/2020）");
   process.exit(1);
 }
 
@@ -114,7 +143,7 @@ if (!ok) {
   process.exit(1);
 }
 
-// 结构合法之外，再核对本项目关心的关键约定（与 check-deploy.mjs 互补）
+/* ---------- 结构合格之外，再核对本项目约定（与 check-deploy.mjs 互补）---------- */
 const problems = [];
 if (doc?.name !== "jiajiao") problems.push(`顶层 name 应为 jiajiao，实际 ${JSON.stringify(doc?.name)}`);
 for (const name of ["mysql", "redis", "app"]) {

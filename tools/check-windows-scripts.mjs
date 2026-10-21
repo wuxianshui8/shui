@@ -65,6 +65,7 @@ let ps1Count = 0;
 for (const file of files) {
   const buf = fs.readFileSync(file);
   const hasBom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+  const utf16 = (buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff);
   const nonAscii = buf.some((b) => b > 127);
   const hasLF = buf.includes(0x0a);
   const hasCR = buf.includes(0x0d);
@@ -77,11 +78,25 @@ for (const file of files) {
     }
   }
   const text = buf.toString("utf8").replace(/^\uFEFF/, "");
+  // 该文件用 UTF-8 读回再写一遍是否字节一致（不一致 = 另存成了 ANSI/GBK 等编码）
+  const utf8RoundTrip = Buffer.from(text.replace(/^\uFEFF/, ""), "utf8").equals(
+    hasBom ? buf.subarray(3) : buf,
+  );
 
   if (/\.(bat|cmd)$/i.test(file)) {
     batCount++;
-    if (lfOnly || !hasCR) fail(file, "批处理必须是 CRLF 换行（纯 LF 会让 cmd 解析多行 if 失败，表现为「双击无反应」）");
+    // 只有「存在未被 CR 前导的 LF」或「纯 LF」才算换行错误；单行无换行文件不算
+    if (lfOnly || (hasLF && !hasCR)) {
+      fail(file, "批处理必须是 CRLF 换行（纯 LF 会让 cmd 解析多行 if 失败，表现为「双击无反应」）");
+    }
+    if (hasCR && !hasLF && buf.length > 0) {
+      fail(file, "批处理只有 CR 换行（老 Mac 风格），cmd 无法正确分行");
+    }
+    if (utf16) fail(file, "批处理不是 UTF-8 编码（检测到 UTF-16 BOM），请另存为 UTF-8");
     if (hasBom) fail(file, "批处理不得带 UTF-8 BOM（cmd 会把 BOM 当命令内容，报「不是内部或外部命令」）");
+    if (nonAscii && !utf8RoundTrip) {
+      fail(file, "批处理含非 ASCII 但文件不是合法 UTF-8（很可能另存成了 ANSI/GBK，chcp 65001 也救不回来）");
+    }
     if (nonAscii && !/chcp\s+65001/i.test(text)) {
       fail(file, "批处理含非 ASCII 字符但没有 chcp 65001（默认 936 代码页下中文会乱码）");
     }
@@ -109,16 +124,32 @@ if (hasPwsh && ps1.length) {
     `$files=@(${list}); foreach($f in $files){` +
     `$e=$null; $null=[System.Management.Automation.Language.Parser]::ParseFile($f,[ref]$null,[ref]$e);` +
     `if($e){ Write-Output ($f + '|ERR|' + $e[0].Message) } else { Write-Output ($f + '|OK') } }`;
-  const out = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", cmd], { encoding: "utf8" });
-  const lines = `${out.stdout ?? ""}`.split(/\r?\n/).filter(Boolean);
-  let checked = 0;
-  for (const line of lines) {
-    const [f, state, msg] = line.split("|");
-    if (!f) continue;
-    checked++;
-    if (state === "ERR") fail(f, "PowerShell 语法检查失败：" + (msg || "未知错误"));
+  const out = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", cmd], {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (out.error || out.status !== 0) {
+    // 语法检查进程本身失败：不能当成"通过"，否则这项检查会静默消失
+    fail(
+      path.join(ROOT, "tools"),
+      `PowerShell 语法检查未能执行：${out.error ? out.error.message : "exit=" + out.status}` +
+        `${out.stderr ? " / " + String(out.stderr).split(/\r?\n/)[0] : ""}`,
+    );
+    notes.push("PowerShell 语法检查：执行失败（见上方问题）");
+  } else {
+    const lines = `${out.stdout ?? ""}`.split(/\r?\n/).filter(Boolean);
+    let checked = 0;
+    for (const line of lines) {
+      const [f, state, msg] = line.split("|");
+      if (!f) continue;
+      checked++;
+      if (state === "ERR") fail(f, "PowerShell 语法检查失败：" + (msg || "未知错误"));
+    }
+    if (checked !== ps1.length) {
+      fail(path.join(ROOT, "tools"), `PowerShell 语法检查只返回了 ${checked}/${ps1.length} 个结果（解析器输出异常）`);
+    }
+    notes.push(`PowerShell 语法检查：已解析 ${checked}/${ps1.length} 个脚本（Windows PowerShell 5.1 解析器）`);
   }
-  notes.push(`PowerShell 语法检查：已解析 ${checked} 个脚本（Windows PowerShell 5.1 解析器）`);
 } else {
   notes.push("PowerShell 语法检查：跳过（本机无 powershell.exe）");
 }

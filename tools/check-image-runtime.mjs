@@ -73,6 +73,7 @@ function spawnServer(env, port) {
     windowsHide: true,
   });
   const log = [];
+  spawned.push(child);
   child.stdout.on("data", (b) => log.push(String(b)));
   child.stderr.on("data", (b) => log.push(String(b)));
   let exited = null;
@@ -107,6 +108,7 @@ const get = async (url) => {
   return { status: r.status, type: r.headers.get("content-type") || "", text };
 };
 
+const spawned = [];
 function killTree(child) {
   try {
     process.kill(-child.pid);
@@ -116,19 +118,31 @@ function killTree(child) {
     } catch {}
   }
 }
+// 任何异常退出（含未捕获拒绝）都要清理子进程，
+// 否则残留的 node 会占着测试端口，下次运行会对着旧进程做完断言（假通过）
+process.on("exit", () => {
+  for (const c of spawned) killTree(c);
+});
 
 /* ============ A. Dockerfile 运行阶段声明 ============ */
 const text = fs.readFileSync(DOCKERFILE, "utf8");
-const cut = text.lastIndexOf("AS runtime");
-const runtime = cut >= 0 ? text.slice(cut) : "";
+// 只认真正的 FROM 指令行（跳过注释里出现的 “AS runtime”）
+const runtimeFrom = /^\s*FROM\s+\S+\s+AS\s+runtime\b/im.exec(text);
+const runtime = runtimeFrom ? text.slice(runtimeFrom.index) : "";
+const runtimeActive = runtime
+  .split(/\r?\n/)
+  .filter((l) => !/^\s*#/.test(l))
+  .join("\n");
 
 console.log("镜像运行阶段契约校验（Dockerfile 的宿主机等价复演）");
 console.log("  · 来源：deploy/Dockerfile 最后一个 stage（AS runtime）");
 
+// 统一用「去掉注释行后的运行阶段」判定，避免被注释掉的指令蒙混过关
+const rt = runtimeActive;
 ok("存在运行阶段（AS runtime）", Boolean(runtime));
-ok("ENV NODE_ENV=production", /ENV[\s\S]{0,80}NODE_ENV=production/.test(runtime));
-ok("ENV PORT=4300", /PORT=4300/.test(runtime));
-ok("WORKDIR /app/apps/api-nest（main.ts 用 cwd 解析静态目录）", /WORKDIR \/app\/apps\/api-nest/.test(runtime));
+ok("ENV NODE_ENV=production", /ENV[\s\S]{0,80}NODE_ENV=production/.test(rt));
+ok("ENV PORT=4300", /PORT=4300/.test(rt));
+ok("WORKDIR /app/apps/api-nest（main.ts 用 cwd 解析静态目录）", /WORKDIR \/app\/apps\/api-nest/.test(rt));
 
 const copyRules = [
   ["后端运行期依赖", /COPY --from=api \/app\/apps\/api-nest\/node_modules \.\/node_modules/],
@@ -139,18 +153,18 @@ const copyRules = [
   ["移动端 H5 → /app/apps/web-mobile/dist/build/h5", /COPY --from=web-mobile \/app\/apps\/web-mobile\/dist\/build\/h5/],
   ["旧 5 端 UI → /app/web", /COPY web \/app\/web/],
 ];
-for (const [label, re] of copyRules) ok("COPY " + label, re.test(runtime));
+for (const [label, re] of copyRules) ok("COPY " + label, re.test(rt));
 
-ok("以非 root 用户运行（USER node）", /USER node\b/.test(runtime) && !/USER root/.test(runtime));
-ok("EXPOSE 4300", /EXPOSE 4300/.test(runtime));
+ok("以非 root 用户运行（USER node）", /USER node\b/.test(rt) && !/USER root/.test(rt));
+ok("EXPOSE 4300", /EXPOSE 4300/.test(rt));
 ok(
   "HEALTHCHECK 探 /api/health 且带 interval/timeout/retries",
-  /HEALTHCHECK[\s\S]{0,200}api\/health/.test(runtime) &&
-    /--interval=/.test(runtime) &&
-    /--timeout=/.test(runtime) &&
-    /--retries=/.test(runtime),
+  /HEALTHCHECK[\s\S]{0,200}api\/health/.test(rt) &&
+    /--interval=/.test(rt) &&
+    /--timeout=/.test(rt) &&
+    /--retries=/.test(rt),
 );
-ok("CMD 为 node dist/main.js", /CMD \["node", "dist\/main\.js"\]/.test(runtime));
+ok("CMD 为 node dist/main.js", /CMD \["node", "dist\/main\.js"\]/.test(rt));
 
 /* ============ B. 产物依赖必须都在 dependencies（npm prune --omit=dev 后仍可跑） ============ */
 const pkg = JSON.parse(fs.readFileSync(path.join(APP, "package.json"), "utf8"));
@@ -170,7 +184,12 @@ function walk(dir, out = []) {
 }
 
 const distDir = path.join(APP, "dist");
-ok("dist 编译产物存在", fs.existsSync(path.join(distDir, "main.js")));
+const distOk = fs.existsSync(path.join(distDir, "main.js"));
+ok("dist 编译产物存在", distOk);
+if (!distOk) {
+  console.error("\n✗ 缺少 apps/api-nest/dist：请先编译（tsc -p tsconfig.json）再跑本门禁");
+  process.exit(1);
+}
 
 const used = new Map();
 for (const file of walk(distDir)) {
@@ -222,11 +241,22 @@ const legacy = await get(base + "/parent");
 ok("GET /parent 返回旧 5 端 UI 页面", legacy.status === 200 && /html/.test(legacy.type), `HTTP ${legacy.status} ${legacy.type}`);
 
 // HEALTHCHECK：用 Dockerfile 里的原始命令（只把端口换成测试端口）真实执行一次
-const hcMatch = runtime.match(/CMD node -e "([^"]+)"/);
-let hcCmd = hcMatch ? hcMatch[1].replace(/127\.0\.0\.1:\d+/, `127.0.0.1:${PORT}`) : "";
+// HEALTHCHECK：用 Dockerfile 里的原始命令（只把端口换成测试端口）真实执行一次
+// 兼容两种写法：CMD node -e "..."（shell 形式）与 CMD ["node","-e","..."]（exec 形式）
+const hcShell = rt.match(/CMD\s+node\s+-e\s+"([^"]+)"/);
+const hcExec = rt.match(/CMD\s+\[\s*"node"\s*,\s*"-e"\s*,\s*"((?:[^"\\]|\\.)*)"/);
+const hcRaw = hcShell ? hcShell[1] : hcExec ? hcExec[1].replace(/\\"/g, '"') : "";
+let hcCmd = "";
+let hcReplacements = 0;
+if (hcRaw) {
+  hcCmd = hcRaw.replace(/(127\.0\.0\.1:)\d+/g, (_m, p1) => {
+    hcReplacements++;
+    return `${p1}${PORT}`;
+  });
+}
 let hcCode = -1;
 let hcErr = "";
-if (hcCmd) {
+if (hcCmd && hcReplacements === 1) {
   try {
     execFileSync(process.execPath, ["-e", hcCmd], { timeout: 10000, stdio: ["ignore", "pipe", "pipe"] });
     hcCode = 0;
@@ -235,22 +265,58 @@ if (hcCmd) {
     hcErr = String(e.stderr || e.message).slice(0, 120);
   }
 }
-ok("HEALTHCHECK 命令在镜像同一路径下退出码为 0", hcCmd && hcCode === 0, hcCmd ? `exit=${hcCode}${hcErr ? " " + hcErr : ""}` : "Dockerfile 未找到可解析的 CMD node -e");
-
-// 生产环境验证码绝不回显
-const sendCode = await fetch(base + "/api/auth/send-code", {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ phone: "13900000998" }),
-});
-let scBody = {};
-try {
-  scBody = await sendCode.json();
-} catch {}
 ok(
-  "生产模式验证码不回显（DEV_SMS=0）",
-  sendCode.status === 200 && !("devCode" in scBody) && !JSON.stringify(scBody).match(/\d{6}.*验证码/),
-  `HTTP ${sendCode.status} keys=${Object.keys(scBody).join(",")}`,
+  "HEALTHCHECK 命令在镜像同一路径下退出码为 0",
+  Boolean(hcCmd) && hcReplacements === 1 && hcCode === 0,
+  !hcRaw
+    ? "Dockerfile 未找到可解析的 HEALTHCHECK CMD"
+    : hcReplacements !== 1
+      ? `探活地址端口出现 ${hcReplacements} 次（应恰好 1 次，无法安全替换）`
+      : `exit=${hcCode}${hcErr ? " " + hcErr : ""}`,
+);
+
+// 生产环境验证码绝不回显：响应是 {code,message,data} 信封，必须查到 data 层
+const askCode = async (phone) => {
+  const r = await fetch(base + "/api/auth/send-code", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  let body = {};
+  try {
+    body = await r.json();
+  } catch {}
+  const payload = `${JSON.stringify(body)}`;
+  const leaked =
+    body?.data?.devCode !== undefined ||
+    body?.devCode !== undefined ||
+    /"devCode"\s*:/.test(payload);
+  return { status: r.status, body, leaked, keys: Object.keys(body.data ?? {}).join(",") };
+};
+
+const sc1 = await askCode("13900000990");
+ok(
+  "生产模式验证码不回显（NODE_ENV=production + DEV_SMS=0）",
+  sc1.status === 200 && !sc1.leaked,
+  `HTTP ${sc1.status} data.keys=${sc1.keys}`,
+);
+killTree(server.child);
+await sleep(800);
+
+// 第二道防线：只靠 NODE_ENV=production、不设 DEV_SMS，同样不得回显
+const noDevSmsEnv = { ...containerEnv };
+delete noDevSmsEnv.DEV_SMS;
+const server2 = server = spawnServer(noDevSmsEnv, PORT);
+if (!(await waitPort(PORT, 80))) {
+  console.error("\n[准备失败] 第二道防线起服超时，日志：\n" + server2.log.join(""));
+  killTree(server2.child);
+  process.exit(1);
+}
+const sc2 = await askCode("13900000991");
+ok(
+  "仅靠 NODE_ENV=production（未设 DEV_SMS）也不回显验证码",
+  sc2.status === 200 && !sc2.leaked,
+  `HTTP ${sc2.status} data.keys=${sc2.keys}`,
 );
 
 killTree(server.child);
