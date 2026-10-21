@@ -56,6 +56,14 @@ services:
       REDIS_PORT: "6379"
       # 生产必须关闭验证码回显（另注：镜像内 NODE_ENV=production，devCode 恒不回显）
       DEV_SMS: "0"
+      # 短信通道（A1）：默认 mock（验证码只写服务端日志）；上线改为 tencent 并配齐下面 5 项
+      SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      TENCENT_SMS_SECRET_ID: ${TENCENT_SMS_SECRET_ID:-}
+      TENCENT_SMS_SECRET_KEY: ${TENCENT_SMS_SECRET_KEY:-}
+      TENCENT_SMS_SDK_APP_ID: ${TENCENT_SMS_SDK_APP_ID:-}
+      TENCENT_SMS_SIGN_NAME: ${TENCENT_SMS_SIGN_NAME:-}
+      TENCENT_SMS_TEMPLATE_ID: ${TENCENT_SMS_TEMPLATE_ID:-}
+      TENCENT_SMS_REGION: ${TENCENT_SMS_REGION:-ap-guangzhou}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       JOBS_ENABLED: ${JOBS_ENABLED:-1}
     depends_on:

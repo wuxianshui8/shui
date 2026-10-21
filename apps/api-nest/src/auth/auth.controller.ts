@@ -23,7 +23,7 @@ export class AuthController {
   @HttpCode(200)
   @Post("send-code")
   sendCode(@Body() body: { phone?: string }) {
-    return ok(this.auth.sendCode(String(body.phone || "").trim()));
+    return this.auth.sendCode(String(body.phone || "").trim()).then((data) => ok(data));
   }
 
   @Public()

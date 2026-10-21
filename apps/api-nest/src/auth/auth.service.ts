@@ -9,6 +9,7 @@ import { nowIso } from "../common/reply";
 import { audit } from "../common/audit";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { maskPhone, resolveRegion } from "../common/geo";
+import { getSmsSender } from "../integrations/sms/sms.service";
 
 // 进程内验证码 / 登录失败计数：带 TTL 与容量上限，避免被随机手机号灌爆内存
 // （多实例部署时应迁移到 Redis，见 docs/SECURITY.md「已知偏离」）
@@ -41,7 +42,7 @@ export class AuthService {
     private readonly rules: RuleConfigService,
   ) {}
 
-  sendCode(phone: string) {
+  async sendCode(phone: string) {
     if (!/^1\d{10}$/.test(phone)) throw bad("请输入正确的手机号");
     purge(smsCodes, (v) => v.exp < Date.now());
     purge(smsSentAt, (t) => Date.now() - t > 3600_000);
@@ -51,10 +52,19 @@ export class AuthService {
       if (last && Date.now() - last < 60_000) throw tooMany("SMS_TOO_FREQUENT", "验证码发送过于频繁，请 60 秒后再试");
     }
     const code = String(randomInt(100000, 999999));
-    smsCodes.set(phone, { code, exp: Date.now() + 5 * 60 * 1000 });
+    const ttl = 300;
+    // 先下发、后落码：网关失败时不能留下一个「可用但用户没收到」的验证码
+    try {
+      await getSmsSender().sendCode(phone, code, ttl);
+    } catch (e: any) {
+      // 不把网关错误细节透给调用方（可能含密钥/签名/模板号线索），只留服务端日志
+      console.error("[sms] 下发失败：" + (e?.message || e));
+      throw biz("SMS_SEND_FAILED", "验证码发送失败，请稍后重试");
+    }
+    smsCodes.set(phone, { code, exp: Date.now() + ttl * 1000 });
     smsSentAt.set(phone, Date.now());
     // 生产环境绝不回显验证码；devCode 仅在 DEV_SMS=1 时返回（供本地演示与自动化用例）
-    return { phone: maskPhone(phone), ttl: 300, ...(devSms() ? { devCode: code } : {}) };
+    return { phone: maskPhone(phone), ttl, ...(devSms() ? { devCode: code } : {}) };
   }
 
   /** 登录失败锁定阈值：由规则配置中心 risk 组驱动 */

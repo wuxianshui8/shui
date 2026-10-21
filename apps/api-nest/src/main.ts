@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AppModule } from "./app.module";
 import { ApiExceptionFilter } from "./common/pipes-and-filters";
 import { config } from "./config";
+import { createSmsSender } from "./integrations/sms/sms.service";
 
 const SECURITY_HEADERS = {
   "X-Frame-Options": "SAMEORIGIN",
@@ -25,6 +26,19 @@ const SECURITY_HEADERS = {
 };
 
 async function bootstrap() {
+  // 启动即校验外部集成配置：真实通道配错就别启动，不要等第一条验证码才炸
+  try {
+    const sms = createSmsSender();
+    if (sms.name === "mock") {
+      console.warn("[集成] 短信通道=mock（验证码只写服务端日志；上线必须配置 SMS_PROVIDER=tencent 及密钥）");
+    } else {
+      console.log("[集成] 短信通道=" + sms.name);
+    }
+  } catch (e: any) {
+    console.error("[集成] 短信配置无效，拒绝启动：" + (e?.message || e));
+    process.exit(1);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn", "log"] });
   app.setGlobalPrefix("api", { exclude: [] });
   app.useGlobalFilters(new ApiExceptionFilter());

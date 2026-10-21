@@ -33,6 +33,10 @@ const TARGETS = [
   "dist/common/reply.js",
   "dist/common/token.js",
   "dist/config.js",
+  "dist/integrations/sms/sms.port.js",
+  "dist/integrations/sms/sms.mock.js",
+  "dist/integrations/sms/sms.tencent.js",
+  "dist/integrations/sms/sms.service.js",
   "dist/rules/rule-engine.service.js",
 ];
 
