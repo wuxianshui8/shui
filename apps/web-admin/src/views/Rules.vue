@@ -81,8 +81,8 @@ const reset = () => select(current.value);
 </script>
 
 <template>
-  <div v-loading="loading" class="row" style="align-items: flex-start; flex-wrap: nowrap">
-    <div class="card" style="width: 320px; flex: 0 0 320px; max-height: 78vh; overflow: auto">
+  <div v-loading="loading" class="rules-wrap">
+    <div class="card rules-side">
       <h3>规则分组（{{ rules.length }}）</h3>
       <div
         v-for="r in rules"
@@ -96,7 +96,7 @@ const reset = () => select(current.value);
       </div>
     </div>
 
-    <div class="card grow" v-if="current" style="min-width: 0">
+    <div class="card rules-main" v-if="current">
       <h3>{{ current.label }} <span class="muted mono">{{ current.key }}</span></h3>
       <p class="muted" style="margin: -4px 0 14px">
         按字段直接填数字 / 开关 / 标签即可；比例的填 0~1 的小数（0.15 = 15%），金额单位是「分」。
@@ -125,3 +125,16 @@ const reset = () => select(current.value);
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 宽屏：左侧分组列表 + 右侧表单并排；窄屏（面板/小屏/投影）自动上下堆叠，
+   否则固定 320px 的列表会把表单挤出可视区。 */
+.rules-wrap { display: flex; gap: 12px; align-items: flex-start; }
+.rules-side { width: 320px; flex: 0 0 320px; max-height: 78vh; overflow: auto; }
+.rules-main { flex: 1; min-width: 0; }
+@media (max-width: 1100px) {
+  .rules-wrap { flex-wrap: wrap; }
+  .rules-side { width: 100%; flex: 1 1 100%; max-height: 30vh; }
+  .rules-main { flex: 1 1 100%; }
+}
+</style>
