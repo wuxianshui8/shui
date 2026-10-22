@@ -51,7 +51,7 @@
 | D3 | 依赖漏洞扫描 | 🟡 **已接入 npm audit**（`npm run audit:check`，纳入 `npm run ci` 静态第 3 步）：预算制 `deploy/audit-budget.json`（block / budget / expires），实测 api-nest high 2（multer 链，无上传端点→不可达）、web-admin 0、web-mobile high 27（uni-app 构建链，只阻断 critical）；负向验证 4 类全红。**未做**：镜像 SBOM/漏洞扫描（trivy/grype 与 Docker Hub 均不可达） | 镜像源可达后加 `syft` + `trivy image` 扫描并纳入发布流程；web-mobile 待 uni-app 大版本升级后再收紧到阻断 high |
 | D4 | 契约测试 / 前端 E2E | 🟡 后端 484 项集成断言 + 82 项单元断言 + 前端产物契约 38/41 + 浏览器多尺寸校验 16 项 | 补 Playwright 级 UI 流程回归（登录→下单→支付→打卡→结算） |
 | D5 | 压测常态化 | 🟡 有基线（宿主机 + 容器两套），但非 CI 门禁 | 定期跑 `bench-nest` 并对比基线，超阈值告警 |
-| D6 | 混沌/故障演练 | ❌ 无 | 演练 MySQL/Redis 中断、担保台账不平、定时任务重入 |
+| D6 | 混沌/故障演练 | 🟡 **已有脚本并实测**：`npm run chaos:drill`（`tools/chaos-drill.mjs`）分别停 MySQL / Redis，断言「不崩溃（容器 RestartCount 不变）+ 快失败（不挂死）+ 明确报异常（health 503）+ 恢复后可用（health 200 且能登录）」，本机容器栈 **21 项全绿**；实测语义差异成立：**MySQL 挂 → 依赖读接口必须失败（400/503，不返回假成功）**、**Redis 挂 → 业务读仍 200（缓存不阻断主流程）** | 生产前在**预发环境**按同一脚本再跑一次（含真实流量与监控告警联动）；担保台账不平、定时任务重入两类演练尚未脚本化 |
 
 ## E. 已知环境限制（非工程缺口，仅记录）
 

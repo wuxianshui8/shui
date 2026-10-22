@@ -60,6 +60,7 @@
     "test:unit": "node tools/gate-unit.mjs",
     "audit:check": "node tools/check-audit.mjs",
     "pay:recon": "node tools/check-recon.mjs",
+    "chaos:drill": "node tools/chaos-drill.mjs",
     "db:backup:schedule": "powershell -ExecutionPolicy Bypass -File tools/backup-schedule.ps1",
     "web:admin:install": "npm --prefix apps/web-admin install",
     "web:admin:build": "npm --prefix apps/web-admin run build",

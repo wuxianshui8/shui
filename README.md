@@ -136,6 +136,8 @@ npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与�
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
 npm run test:unit      # 单元测试 + 覆盖率门禁（119 用例、17 个模块，行覆盖率 ≥ 90% 否则失败·约 5 秒）
 npm run audit:check    # 生产依赖漏洞预算校验（deploy/audit-budget.json：block/budget/expires·约 8 秒）
+npm run pay:recon      # 渠道对账（--self-test 自检；--bill <csv> 与库内 payments 逐笔比对）
+npm run chaos:drill    # 混沌演练：停 MySQL/Redis 验证「不崩溃 + 快失败 + 能恢复」（约 60s，会短暂停容器）
 npm run ci             # 静态门禁：tsc + 单元测试 + 依赖审计 + 接口 + 追溯 + Windows 脚本 + 文档写法（约 26 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
 npm run ci:full        # 全部 28 步门禁（约 5 分钟 = 静态 15 步 + 业务 13 步）
