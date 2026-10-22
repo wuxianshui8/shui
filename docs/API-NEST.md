@@ -43,7 +43,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **142** 个路由，分布在 **16** 个控制器。
+总计 **143** 个路由，分布在 **17** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
@@ -63,6 +63,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `complaint/complaint.controller.ts` | 2 |
 | `health/health.controller.ts` | 2 |
 | `meta/meta.controller.ts` | 2 |
+| `pay/pay-notify.controller.ts` | 1 |
 
 ### `admin/admin-ops.controller.ts`
 
@@ -235,6 +236,12 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | GET | `/api/parent/profile` | parent |  |
 | GET | `/api/parent/teachers` | parent |  |
 | GET | `/api/parent/teachers/:id` | parent |  |
+
+### `pay/pay-notify.controller.ts`
+
+| 方法 | 路径 | 角色 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/pay/wechat/notify` | 公开 | 无需令牌，200 |
 
 ### `public/public.controller.ts`
 

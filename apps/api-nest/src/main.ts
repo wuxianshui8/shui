@@ -51,7 +51,12 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn", "log"] });
+  // bodyParser 关掉默认的，改为自带 rawBody 采集：微信支付回调必须用「与签名逐字节一致」的原文验签
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn", "log"], bodyParser: false });
+  // 用 Nest 自带的 bodyParser 注册（不直接 import express）：express 只是 @nestjs/platform-express 的传递依赖，
+  // 直接引用会让镜像里缺少显式声明（tools/check-image-runtime.mjs 会拦）。
+  app.useBodyParser("json", { limit: "1mb", verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } });
+  app.useBodyParser("urlencoded", { extended: true, limit: "1mb" });
   app.setGlobalPrefix("api", { exclude: [] });
   app.useGlobalFilters(new ApiExceptionFilter());
 

@@ -31,14 +31,14 @@ const problems = [];
 const warnings = [];
 const fail = (m) => problems.push(m);
 
-function runAudit(dir) {
+function runAuditOnce(dir) {
   // npm 在 Windows 上是 npm.cmd，必须经 shell 执行；--json 走 stdout，stderr 单独留作诊断
   const r = spawnSync("npm audit --omit=dev --json", {
     cwd: dir,
     shell: true,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    timeout: 180000,
+    timeout: 90000,
   });
   const stdout = r.stdout || "";
   const stderr = (r.stderr || "").trim();
@@ -46,7 +46,7 @@ function runAudit(dir) {
   try {
     json = JSON.parse(stdout);
   } catch {
-    return { ok: false, error: (stderr || stdout).slice(0, 600) || "无输出", code: r.status };
+    return { ok: false, error: (stderr || stdout).slice(0, 600) || "无输出（或超时 " + 90 + "s）", code: r.status };
   }
   if (!json || !json.metadata || !json.metadata.vulnerabilities) {
     return { ok: false, error: "JSON 缺少 metadata.vulnerabilities", code: r.status };
@@ -59,6 +59,18 @@ function runAudit(dir) {
     details.push({ name, severity: v.severity, advisories });
   }
   return { ok: true, counts: json.metadata.vulnerabilities, details };
+}
+
+/** npm registry 偶发抖动很常见：重试一次，仍失败才判失败（不静默通过） */
+function runAudit(dir) {
+  const first = runAuditOnce(dir);
+  if (first.ok) return first;
+  console.log("  · " + dir + " 首次审计失败（" + String(first.error).slice(0, 120) + "），2s 后重试");
+  const until = Date.now() + 2000;
+  while (Date.now() < until) {
+    /* 同步等待，保持脚本简单 */
+  }
+  return runAuditOnce(dir);
 }
 
 if (!fs.existsSync(CONFIG)) {

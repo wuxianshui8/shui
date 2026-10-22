@@ -26,7 +26,7 @@ export class OrdersController {
   @HttpCode(200)
   @Roles("parent")
   async pay(@Param("id") id: string, @Body() body: any, @Headers("x-idem-key") idem: string, @Req() req: any) {
-    return ok(await this.svc.pay(Number(req.user.uid), Number(id), idem, body?.channel));
+    return ok(await this.svc.pay(Number(req.user.uid), Number(id), idem, body?.channel, body?.openId));
   }
 
   /* ---------------- 上门打卡 ---------------- */

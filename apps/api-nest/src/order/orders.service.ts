@@ -9,6 +9,7 @@ import { haversineKm } from "../common/geo";
 import { audit, notify } from "../common/audit";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { RuleEngineService } from "../rules/rule-engine.service";
+import { getPayProvider } from "../integrations/pay/pay.service";
 import {
   applyRate, ensureWallet, escrowBalance, escrowMove, walletAdd, walletFreezeIncoming, walletSettle,
 } from "../common/ledger";
@@ -276,7 +277,7 @@ export class OrdersService {
   }
 
   /* ---------------- 担保支付 ---------------- */
-  async pay(parentId: number, orderId: number, idemKey?: string, channel = "wechat_jsapi") {
+  async pay(parentId: number, orderId: number, idemKey?: string, channel = "wechat_jsapi", openId?: string) {
     const pre = await this.get(orderId);
     if (!pre) throw notFound("订单不存在");
     if (Number(pre.parent_id) !== parentId) throw forbidden();
@@ -288,55 +289,143 @@ export class OrdersService {
       throw biz("BAD_STATUS", "当前订单状态不可支付：" + (STATUS_TEXT[pre.status]?.parent || pre.status));
     }
 
-    return this.ds.transaction(async (m) => {
-      const o = (await m.query("SELECT * FROM `orders` WHERE `id` = ? FOR UPDATE", [orderId]))[0];
-      if (o.status !== "awaiting_payment") return this.view(o, "parent");
-      // 幂等重放：同一 X-Idem-Key 已入账则直接返回该订单（避免重复扣款/唯一索引报 400）
-      if (idemKey) {
-        const replay = (await m.query("SELECT `order_id` FROM `payments` WHERE `idem_key` = ? LIMIT 1", [idemKey]))[0];
-        if (replay) {
-          const same = (await m.query("SELECT * FROM `orders` WHERE `id` = ?", [Number(replay.order_id)]))[0];
-          if (same) return this.view(same, "parent");
+    const provider = getPayProvider();
+    if (provider.name === "mock") {
+      // 本地/自动化：保持「点一下即支付成功」的既有语义（全量门禁用例依赖）
+      return this.ds.transaction(async (m) => {
+        const o = (await m.query("SELECT * FROM `orders` WHERE `id` = ? FOR UPDATE", [orderId]))[0];
+        if (o.status !== "awaiting_payment") return this.view(o, "parent");
+        // 幂等重放：同一 X-Idem-Key 已入账则直接返回该订单（避免重复扣款/唯一索引报 400）
+        if (idemKey) {
+          const replay = (await m.query("SELECT `order_id` FROM `payments` WHERE `idem_key` = ? LIMIT 1", [idemKey]))[0];
+          if (replay) {
+            const same = (await m.query("SELECT * FROM `orders` WHERE `id` = ?", [Number(replay.order_id)]))[0];
+            if (same) return this.view(same, "parent");
+          }
         }
-      }
+        return this.settlePaid(m, o, {
+          payerId: parentId,
+          amount: Number(o.amount) + Number(o.urgent_fee),
+          channel,
+          tradeNo: tradeNo("WX"),
+          idemKey,
+        });
+      });
+    }
 
-      const amount = Number(o.amount) + Number(o.urgent_fee);
+    // 真实通道：先建预支付单（payments.status=pending），入账只等渠道回调确认
+    if (provider.name === "wechat" && !openId) {
+      throw biz("OPENID_REQUIRED", "微信支付需要 openid（待接入微信登录后下发）");
+    }
+    const amount = Number(pre.amount) + Number(pre.urgent_fee);
+    let prepay: any;
+    try {
+      prepay = await provider.createPrepay({
+        outTradeNo: String(pre.orderNo),
+        amountCents: amount,
+        description: "家教服务 " + String(pre.orderNo),
+        openId: openId || "",
+        notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL || "",
+        attach: "order:" + pre.id,
+      });
+    } catch (e: any) {
+      // 渠道错误细节（签名/证书/网络）只进服务端日志，不给前端，避免泄露商户配置线索
+      console.error("[pay] 预支付下单失败：" + (e?.message || e));
+      throw biz("PAY_CHANNEL_ERROR", "支付渠道暂时不可用，请稍后重试");
+    }
+
+    // 预支付流水：trade_no 固定为 PREPAY:<订单号>，回调成功时改写为渠道流水号
+    await this.ds.query(
+      "INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`idem_key`,`created_at`) VALUES (?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE `id` = `id`",
+      [pre.id, parentId, "pay", amount, channel, "PREPAY:" + pre.orderNo, "pending", idemKey ?? null, nowIso()],
+    );
+    return { mode: "prepay", orderId: Number(pre.id), amount, prepayId: prepay.prepayId, params: prepay.params };
+  }
+
+  /**
+   * 渠道回调确认（微信支付 v3）：验签 → 幂等 → 金额一致 → 走与 mock 相同的结算逻辑。
+   * 任何校验失败都抛错，由控制器转成非 2xx，让渠道重试而不是「假装成功」。
+   */
+  async settlePayNotify(rawBody: string, headers: Record<string, string | undefined>) {
+    const provider = getPayProvider();
+    const r = await provider.verifyNotify(rawBody, headers);
+    // 非成功状态（NOTPAY/CLOSED/退款等）不动账，直接忽略
+    if (!r.success) return { ignored: true, tradeState: r.tradeState, outTradeNo: r.outTradeNo };
+
+    return this.ds.transaction(async (m) => {
+      const o = (await m.query("SELECT * FROM `orders` WHERE `order_no` = ? FOR UPDATE", [r.outTradeNo]))[0];
+      if (!o) throw new Error("回调对应的订单不存在：" + r.outTradeNo);
+      // 幂等：已有成功支付记录 → 不重复入账（渠道会重试同一笔回调）
+      const paid = (await m.query("SELECT `id` FROM `payments` WHERE `order_id` = ? AND `type` = 'pay' AND `status` = 'success' LIMIT 1", [o.id]))[0];
+      if (paid) return { idempotent: true, orderId: Number(o.id) };
+      const expect = Number(o.amount) + Number(o.urgent_fee);
+      if (Number(r.amountCents) !== expect) {
+        throw new Error("回调金额与订单应付不一致：渠道 " + r.amountCents + " / 订单 " + expect);
+      }
+      const pending = (await m.query("SELECT * FROM `payments` WHERE `order_id` = ? AND `type` = 'pay' AND `status` = 'pending' FOR UPDATE", [o.id]))[0];
+      const view = await this.settlePaid(m, o, {
+        payerId: Number(o.parent_id),
+        amount: expect,
+        channel: pending ? String(pending.channel) : provider.name,
+        tradeNo: r.transactionId || "TXN:" + r.outTradeNo,
+        paymentId: pending ? Number(pending.id) : undefined,
+      });
+      return { settled: true, orderId: Number(o.id), order: view };
+    });
+  }
+
+  /**
+   * 结算入账（mock 即时支付与真实通道回调共用，保证两条路径账本完全一致）：
+   * 写支付流水 → 担保台账入账 → 分账 → 推进订单状态 → 业务员提成 → 站内通知 → 审计。
+   */
+  private async settlePaid(
+    m: EntityManager,
+    o: any,
+    p: { payerId: number; amount: number; channel: string; tradeNo: string; idemKey?: string; paymentId?: number },
+  ) {
+    if (p.paymentId) {
+      const upd = await m.query(
+        "UPDATE `payments` SET `trade_no` = ?, `status` = 'success', `channel` = ? WHERE `id` = ? AND `status` = 'pending'",
+        [p.tradeNo, p.channel, p.paymentId],
+      );
+      if (!upd.affectedRows) throw biz("PAY_CONFLICT", "支付流水状态已变更，请刷新");
+    } else {
       await m.query(
         "INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`idem_key`,`created_at`) VALUES (?,?,?,?,?,?,?,?,?)",
-        [o.id, parentId, "pay", amount, channel, tradeNo("WX"), "success", idemKey ?? null, nowIso()],
+        [o.id, p.payerId, "pay", p.amount, p.channel, p.tradeNo, "success", p.idemKey ?? null, nowIso()],
       );
-      await escrowMove(m, Number(o.id), "in", amount, "家长预付课时费 " + o.order_no);
+    }
+    await escrowMove(m, Number(o.id), "in", p.amount, "家长预付课时费 " + o.order_no);
 
-      const ap = o.agent_id ? (await m.query("SELECT * FROM `agent_profiles` WHERE `user_id` = ? LIMIT 1", [o.agent_id]))[0] : null;
-      const agentCfg = (await this.rules.get("agent_commission")) as any;
-      const salesCfg = (await this.rules.get("sales_rewards")) as any;
-      const tiers = (salesCfg.deal_tiers as any[]) || [];
-      const tier = tiers.find((t) => Number(o.amount) >= t.min && (t.max == null || Number(o.amount) <= t.max));
-      const split = await this.engine.calcSplit({
-        amount: Number(o.amount),
-        commissionRate: Number(o.commission_rate),
-        feeShareRate: ap && ap.commission_rate != null ? Number(ap.commission_rate) : Number(agentCfg.fee_share_rate),
-        mgmtRate: ap && ap.mgmt_rate != null ? Number(ap.mgmt_rate) : Number(agentCfg.mgmt_rate),
-        salesRate: o.sales_id ? (tier ? Number(tier.rate) : (tiers.length ? Number(tiers[tiers.length - 1].rate) : 0)) : 0,
-      });
-      await m.query(
-        "UPDATE `orders` SET `status` = 'pending_class', `paid_at` = ?, `service_fee` = ?, `teacher_income` = ?, `agent_share` = ?, `sales_commission` = ?, `platform_revenue` = ?, `updated_at` = ? WHERE `id` = ?",
-        [nowIso(), split.serviceFee, split.teacherIncome, split.agentShare, split.salesCommission, split.platformRevenue, nowIso(), o.id],
-      );
-      // 业务员成交提成（pending，周结）
-      if (o.sales_id && split.salesCommission > 0) {
-        await m.query(
-          "INSERT INTO `rewards` (`sales_id`,`type`,`amount`,`ref_order_id`,`status`,`calc_note`,`created_at`) VALUES (?,?,?,?,?,?,?)",
-          [o.sales_id, "deal", split.salesCommission, o.id, "pending",
-            "订单 " + o.order_no + " 成交提成 " + (Number(tier?.rate ?? 0) * 100).toFixed(1) + "% × ¥" + (Number(o.amount) / 100).toFixed(2),
-            nowIso()],
-        );
-      }
-      await notify(m, Number(o.teacher_id), "订单已支付", "订单 " + o.order_no + " 家长已完成担保支付，请按时上门", "payment", "/order/" + o.id);
-      await audit(m, { user: { uid: parentId, role: "parent" } }, "order.pay", "orders:" + o.id, { amount });
-      const fresh = (await m.query("SELECT * FROM `orders` WHERE `id` = ?", [o.id]))[0];
-      return this.view(fresh, "parent");
+    const ap = o.agent_id ? (await m.query("SELECT * FROM `agent_profiles` WHERE `user_id` = ? LIMIT 1", [o.agent_id]))[0] : null;
+    const agentCfg = (await this.rules.get("agent_commission")) as any;
+    const salesCfg = (await this.rules.get("sales_rewards")) as any;
+    const tiers = (salesCfg.deal_tiers as any[]) || [];
+    const tier = tiers.find((t) => Number(o.amount) >= t.min && (t.max == null || Number(o.amount) <= t.max));
+    const split = await this.engine.calcSplit({
+      amount: Number(o.amount),
+      commissionRate: Number(o.commission_rate),
+      feeShareRate: ap && ap.commission_rate != null ? Number(ap.commission_rate) : Number(agentCfg.fee_share_rate),
+      mgmtRate: ap && ap.mgmt_rate != null ? Number(ap.mgmt_rate) : Number(agentCfg.mgmt_rate),
+      salesRate: o.sales_id ? (tier ? Number(tier.rate) : (tiers.length ? Number(tiers[tiers.length - 1].rate) : 0)) : 0,
     });
+    await m.query(
+      "UPDATE `orders` SET `status` = 'pending_class', `paid_at` = ?, `service_fee` = ?, `teacher_income` = ?, `agent_share` = ?, `sales_commission` = ?, `platform_revenue` = ?, `updated_at` = ? WHERE `id` = ?",
+      [nowIso(), split.serviceFee, split.teacherIncome, split.agentShare, split.salesCommission, split.platformRevenue, nowIso(), o.id],
+    );
+    // 业务员成交提成（pending，周结）
+    if (o.sales_id && split.salesCommission > 0) {
+      await m.query(
+        "INSERT INTO `rewards` (`sales_id`,`type`,`amount`,`ref_order_id`,`status`,`calc_note`,`created_at`) VALUES (?,?,?,?,?,?,?)",
+        [o.sales_id, "deal", split.salesCommission, o.id, "pending",
+          "订单 " + o.order_no + " 成交提成 " + (Number(tier?.rate ?? 0) * 100).toFixed(1) + "% × ¥" + (Number(o.amount) / 100).toFixed(2),
+          nowIso()],
+      );
+    }
+    await notify(m, Number(o.teacher_id), "订单已支付", "订单 " + o.order_no + " 家长已完成担保支付，请按时上门", "payment", "/order/" + o.id);
+    await audit(m, { user: { uid: p.payerId, role: "parent" } }, "order.pay", "orders:" + o.id, { amount: p.amount, channel: p.channel });
+    const fresh = (await m.query("SELECT * FROM `orders` WHERE `id` = ?", [o.id]))[0];
+    return this.view(fresh, "parent");
   }
 
   /* ---------------- 上门打卡（默认 500 米阈值，可配置）---------------- */

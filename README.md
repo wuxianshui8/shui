@@ -138,7 +138,7 @@ npm run test:unit      # 单元测试 + 覆盖率门禁（119 用例、17 个模
 npm run audit:check    # 生产依赖漏洞预算校验（deploy/audit-budget.json：block/budget/expires·约 8 秒）
 npm run ci             # 静态门禁：tsc + 单元测试 + 依赖审计 + 接口 + 追溯 + Windows 脚本 + 文档写法（约 26 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
-npm run ci:full        # 全部 26 步门禁（约 4 分钟 = 静态 14 步 + 业务 12 步）
+npm run ci:full        # 全部 27 步门禁（约 5 分钟 = 静态 14 步 + 业务 13 步）
 ```
 
 ## 4. 容器化部署与 CI
@@ -159,7 +159,7 @@ npm run ci:full        # 全部 26 步门禁（约 4 分钟 = 静态 14 步 + �
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
   e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17；镜像运行契约 33
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
-- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 26 步
+- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 27 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）
 
 启用方式（需仓库远端与推送凭据）：

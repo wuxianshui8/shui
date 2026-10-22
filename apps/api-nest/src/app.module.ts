@@ -23,6 +23,7 @@ import { OrdersController } from "./order/orders.controller";
 import { OrdersService } from "./order/orders.service";
 import { WalletService } from "./wallet/wallet.service";
 import { SalesController } from "./sales/sales.controller";
+import { PayNotifyController } from "./pay/pay-notify.controller";
 import { JobsService } from "./jobs/jobs.service";
 import { AdminOpsController } from "./admin/admin-ops.controller";
 import { AdminOpsService } from "./admin/admin-ops.service";
@@ -59,6 +60,7 @@ import { ComplaintController } from "./complaint/complaint.controller";
     AdminController, AgentController,
     TeacherController, WalletController, OrdersController, SalesController,
     AdminOpsController, PublicController, MessageController, ComplaintController,
+    PayNotifyController,
   ],
   providers: [
     AuthService, ParentService, AddressesService, DemandsService, OrdersService, WalletService, JobsService, AdminOpsService,
