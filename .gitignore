@@ -1,4 +1,5 @@
 data/
+.cache/
 backups/
 # 安装包：体积巨大，绝不入库（如误放到仓库根目录的 Docker Desktop Installer.exe）
 *.exe

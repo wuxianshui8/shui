@@ -8,12 +8,13 @@
 //   用法：node tools/check-geo-fence.mjs
 // ============================================================
 import { readFileSync, existsSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import path from "node:path";
 
 const ROOT = process.env.GATE_ROOT || path.resolve(import.meta.dirname, "..");
 const GEO_JS = path.join(ROOT, "apps/web-admin/src/geo-fence.js");
 const CHINA = path.join(ROOT, "apps/web-admin/src/assets/china.geo.json");
-const AREAS = path.join(ROOT, "apps/api-nest/db/admin-areas.json");
+const AREAS = path.join(ROOT, "apps/api-nest/db/admin-areas.json.gz");
 const MAP_VUE = path.join(ROOT, "apps/web-admin/src/components/GeoFenceMap.vue");
 const REGIONS_VUE = path.join(ROOT, "apps/web-admin/src/views/Regions.vue");
 const NEST_SVC = path.join(ROOT, "apps/api-nest/src/admin/admin-ops.service.ts");
@@ -204,20 +205,25 @@ console.log("\n== 8. 离线底图 ==");
 
 console.log("\n== 9. 行政区数据集（按行政区设置）==");
 {
-  ok("数据集文件存在（由 tools/build-admin-areas.mjs 生成）", existsSync(AREAS), path.relative(ROOT, AREAS));
-  const areas = existsSync(AREAS) ? JSON.parse(readFileSync(AREAS, "utf8")) : [];
+  ok("数据集文件存在（由 tools/build-admin-areas.mjs 生成，gzip 随包分发）", existsSync(AREAS), path.relative(ROOT, AREAS));
+  const raw = existsSync(AREAS) ? gunzipSync(readFileSync(AREAS)).toString("utf8") : "[]";
+  const areas = JSON.parse(raw);
   const levels = {};
   for (const a of areas) levels[a.level] = (levels[a.level] || 0) + 1;
-  ok("含省级 / 地级市 / 区县三级", (levels.province || 0) >= 30 && (levels.city || 0) >= 300 && (levels.district || 0) >= 5,
+  ok("含省级 / 地级市 / 区县三级，且区县齐全（全国 ≥2500）",
+    (levels.province || 0) >= 30 && (levels.city || 0) >= 300 && (levels.district || 0) >= 2500,
     JSON.stringify(levels));
   const names = new Set(areas.map((a) => a.name));
   ok("含截图示例「张北县」与演示城市「杭州市」", names.has("张北县") && names.has("杭州市"));
+  ok("含县级市 / 区 / 县三类常见区划（义乌市、天河区、桐庐县）",
+    names.has("义乌市") && names.has("天河区") && names.has("桐庐县"),
+    ["义乌市", "天河区", "桐庐县"].filter((n) => !names.has(n)).join("、") || "全含");
   const bad = areas.filter((a) => !Array.isArray(a.rings) || !a.rings.length || !Array.isArray(a.center));
   ok("每个行政区都有边界环与中心点", bad.length === 0, bad.length ? "缺失 " + bad.length : "");
   const outRange = areas.some((a) => a.rings.some((r) => r.some(([lng, lat]) => !(lng > 73 && lng < 136 && lat > 3 && lat < 54))));
   ok("边界坐标全部在中国范围内（没把经纬度写反）", !outRange);
-  ok("数据体积可控（随包分发，不拖慢启动）", readFileSync(AREAS).length < 4 * 1024 * 1024,
-    Math.round(readFileSync(AREAS).length / 1024) + " KB");
+  ok("gzip 体积可控（随包分发，不拖慢镜像与启动）", readFileSync(AREAS).length < 4 * 1024 * 1024,
+    Math.round(readFileSync(AREAS).length / 1024) + " KB（解压后 " + Math.round(raw.length / 1024) + " KB）");
 
   // 与后端实现比对：搜索命中、围栏拼装、adcode 缺失处理
   const backendAreas = await import(
@@ -226,6 +232,10 @@ console.log("\n== 9. 行政区数据集（按行政区设置）==");
   if (backendAreas) {
     const hit = backendAreas.searchAreas("张北", 5);
     ok("后端搜索「张北」命中张北县", hit.length > 0 && hit[0].name === "张北县", hit.map((a) => a.name).join(","));
+    const hitYw = backendAreas.searchAreas("义乌", 5);
+    ok("后端搜索县级市「义乌」命中义乌市", hitYw[0]?.name === "义乌市", hitYw.map((a) => a.name).join(","));
+    const hitTh = backendAreas.searchAreas("天河", 5);
+    ok("后端搜索「天河」命中天河区（区级）", hitTh[0]?.name === "天河区", hitTh.map((a) => a.name).join(","));
     const hitHz = backendAreas.searchAreas("杭州", 20);
     ok("后端搜索「杭州」把杭州市排在前面", hitHz[0]?.name === "杭州市", hitHz.map((a) => a.name).join(","));
     ok("搜城市会展开已收录的下级区县（输入「杭州」能点到西湖区）",

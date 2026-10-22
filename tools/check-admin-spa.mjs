@@ -119,6 +119,13 @@ assert(areaHit.status === 200 && areaList[0]?.name === "张北县",
 const areaRings = await api("GET", "/admin/regions/areas?codes=130722", { token });
 const ringPts = (areaRings.body?.data?.list?.[0]?.rings || []).flat().length;
 assert(areaRings.status === 200 && ringPts > 50, "区域管理页：按 adcode 取回边界（" + ringPts + " 个顶点）");
+/* 全国区县覆盖：县级市与市辖区都要能搜到（地名搜索不能只认省/市） */
+const countyHit = await api("GET", "/admin/regions/areas?q=" + encodeURIComponent("义乌"), { token });
+const countyName = countyHit.body?.data?.list?.[0]?.name;
+const districtHit = await api("GET", "/admin/regions/areas?q=" + encodeURIComponent("天河"), { token });
+const districtName = districtHit.body?.data?.list?.[0]?.name;
+assert(countyName === "义乌市" && districtName === "天河区",
+  "区域管理页：能搜到县级市与市辖区（" + (countyName || "-") + " / " + (districtName || "-") + "）");
 const byAdmin = await api("POST", "/admin/regions", {
   token,
   body: { name: "张北县片区验收", adminCodes: ["130722"] },

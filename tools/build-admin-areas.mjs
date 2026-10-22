@@ -16,16 +16,20 @@
 //   对「片区归属判定」这种用途足够；如果需要更高精度，调 EPS 或改用 --precise。
 //
 //   用法：
-//     node tools/build-admin-areas.mjs                 # 联网生成（省 + 地级市 + 演示区县）
-//     node tools/build-admin-areas.mjs --src D:\geo    # 用本地 {adcode}_full.json 目录
-//     node tools/build-admin-areas.mjs --check         # 只校验已生成的数据（门禁用）
-//     node tools/build-admin-areas.mjs --counties 130722,330100   # 追加区县级（adcode）
+//     node tools/build-admin-areas.mjs                    # 联网生成全国（省 + 地级市 + 全部区县 ≈ 3200 个）
+//     node tools/build-admin-areas.mjs --depth city        # 只要省 + 地级市（体积小得多）
+//     node tools/build-admin-areas.mjs --provinces 330000   # 只处理某几个省（调试用）
+//     node tools/build-admin-areas.mjs --src D:\geo         # 用本地 {adcode}_full.json 目录
+//     node tools/build-admin-areas.mjs --check              # 只校验已生成的数据（门禁用）
+//     node tools/build-admin-areas.mjs --plain              # 同时写一份裸 JSON（默认只写 .json.gz）
 // ============================================================
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { gunzipSync, gzipSync } from "node:zlib";
 import path from "node:path";
 
 const ROOT = process.env.GATE_ROOT || path.resolve(import.meta.dirname, "..");
 const OUT = path.join(ROOT, "apps/api-nest/db/admin-areas.json");
+const OUT_GZ = OUT + ".gz";
 const BASE = process.env.ADMIN_AREAS_URL || "https://geo.datav.aliyun.com/areas_v3/bound/";
 const args = process.argv.slice(2);
 const flag = (k) => args.includes(k);
@@ -37,12 +41,36 @@ const opt = (k, d = "") => {
 /** 默认随包分发的「区县级」演示范围：张北县（截图示例）+ 杭州市各区县（演示城市） */
 const DEFAULT_COUNTIES = ["130722", "330100"];
 
-const EPS = { province: 0.02, city: 0.008, district: 0.002 };
+const EPS = { province: 0.02, city: 0.008, district: 0.003 };
 const PREC = { province: 2, city: 3, district: 3 };
-/** 直辖市/特别行政区/台湾只保留整体，不再收下级区县（否则光北京就多 16 个多边形） */
+/** 直辖市/特别行政区/台湾：下级直接是区县（不当地级市处理，也不再往下抓一层） */
 const WHOLE_ONLY = new Set(["110000", "120000", "310000", "500000", "710000", "810000", "820000"]);
 
 /* ---------------- 几何：简化与清理 ---------------- */
+
+/** 先粗抽样把超大环压到 ~1200 点，再做 DP（否则上万点的县界会让 DP 退化成 O(n²)） */
+function predecimate(ring, cap = 1200) {
+  let out = ring;
+  while (out.length > cap) {
+    const next = [out[0]];
+    for (let i = 1; i < out.length - 1; i += 2) next.push(out[i]);
+    next.push(out[out.length - 1]);
+    out = next;
+  }
+  return out;
+}
+
+/** 环的包围盒对角线（度）：太小的岛/碎块直接丢掉，省体积也不影响归属判定 */
+function ringDiagonal(ring) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return Math.hypot(maxX - minX, maxY - minY);
+}
 
 /** 道格拉斯-普克：容差 eps（度）；闭合环按「首尾同点」处理 */
 function simplify(points, eps) {
@@ -114,20 +142,53 @@ function largestRing(rings) {
 /* ---------------- 数据获取 ---------------- */
 
 const cache = new Map();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** 下载缓存目录：可断点续跑（限流/中断后再跑会命中已下载的文件），默认不进仓库 */
+const CACHE_DIR = process.env.ADMIN_AREAS_CACHE || path.join(ROOT, ".cache", "admin-areas");
+let lastFetch = 0;
+
+/** 抓取单个文件：顺序 + 节流（300ms）+ 限流退避（DataV 高频会 403） */
+async function fetchText(url, name, { attempts = 6 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const wait = Math.max(0, 300 - (Date.now() - lastFetch));
+    if (wait) await sleep(wait);
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": "Mozilla/5.0 jiajiao-build-admin-areas" },
+        signal: AbortSignal.timeout(15000), // 卡住的连接直接判失败，别把整轮构建挂死
+      });
+      lastFetch = Date.now();
+      if (res.status === 200) return await res.text();
+      lastErr = new Error(name + " HTTP " + res.status);
+      // 404 是「该行政区本来就没有下级文件」（如新疆兵团的县级市），不该重试也不该退避
+      if (res.status === 404) break;
+      // 403/429/5xx 视为限流，指数退避（5s→30s）；最后一次尝试不再睡，免得白等
+      if (attempt < attempts - 1) await sleep(Math.min(30000, 5000 * 2 ** attempt));
+    } catch (e) {
+      lastErr = e;
+      if (attempt < attempts - 1) await sleep(Math.min(20000, 3000 * 2 ** attempt));
+    }
+  }
+  throw lastErr || new Error(name + " 抓取失败");
+}
+
+/** 取一个源文件（优先 --src 目录，其次本地缓存，最后联网；联网结果写回缓存） */
+async function sourceText(name, srcDir) {
+  const dirs = [srcDir, CACHE_DIR].filter(Boolean);
+  for (const d of dirs) {
+    const p = path.join(d, name);
+    if (existsSync(p)) return readFileSync(p, "utf8");
+  }
+  const text = await fetchText(BASE + name, name, { attempts: Number(process.env.ADMIN_AREAS_ATTEMPTS || 6) });
+  mkdirSync(CACHE_DIR, { recursive: true });
+  writeFileSync(path.join(CACHE_DIR, name), text);
+  return text;
+}
+
 async function loadArea(adcode, srcDir) {
   if (cache.has(adcode)) return cache.get(adcode);
-  const name = adcode + "_full.json";
-  let text = null;
-  if (srcDir) {
-    const p = path.join(srcDir, name);
-    if (!existsSync(p)) throw new Error("本地缺少 " + name + "（--src 目录里需要 {adcode}_full.json）");
-    text = readFileSync(p, "utf8");
-  } else {
-    const res = await fetch(BASE + name, { headers: { "user-agent": "jiajiao-build-admin-areas" } });
-    if (res.status !== 200) throw new Error(name + " HTTP " + res.status);
-    text = await res.text();
-  }
-  const json = JSON.parse(text);
+  const json = JSON.parse(await sourceText(adcode + "_full.json", srcDir));
   cache.set(adcode, json);
   return json;
 }
@@ -135,19 +196,28 @@ async function loadArea(adcode, srcDir) {
 /** 单个 adcode 的「自身」边界（datav 的 {adcode}.json 是不带 _full 的单体文件） */
 async function loadSingle(adcode, srcDir) {
   const name = adcode + ".json";
-  if (srcDir) {
-    const p = path.join(srcDir, name);
+  const dirs = [srcDir, CACHE_DIR].filter(Boolean);
+  for (const d of dirs) {
+    const p = path.join(d, name);
     if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8"));
-    return loadArea(adcode, srcDir);
   }
-  const res = await fetch(BASE + name);
-  if (res.status !== 200) throw new Error(name + " HTTP " + res.status);
-  return JSON.parse(await res.text());
+  if (!existsSync(path.join(CACHE_DIR, adcode + "_full.json")) && !srcDir) {
+    try {
+      const text = await sourceText(name, srcDir);
+      return JSON.parse(text);
+    } catch {
+      /* 落到 _full 再试 */
+    }
+  }
+  return loadArea(adcode, srcDir);
 }
 
 function toEntry(props, geometry, level) {
+  const eps = EPS[level] ?? 0.004;
+  const prec = PREC[level] ?? 3;
   const rings = outerRings(geometry)
-    .map((r) => tidy(simplify(r, EPS[level] ?? 0.004), PREC[level] ?? 3))
+    .filter((r) => r.length >= 4 && ringDiagonal(r) >= 0.01) // 丢掉 <1km 的碎岛
+    .map((r) => tidy(simplify(predecimate(r), eps), prec))
     .filter((r) => r.length >= 3);
   if (!rings.length) return null;
   const center = props.centroid || props.center || (largestRing(rings) ? largestRing(rings)[0] : null);
@@ -166,8 +236,10 @@ function toEntry(props, geometry, level) {
 
 /* ---------------- 校验（--check 与生成后自检共用） ---------------- */
 
-export function validateAreaFile(file = OUT) {
-  const rows = JSON.parse(readFileSync(file, "utf8"));
+export function validateAreaFile(file = "") {
+  const pick = file || (existsSync(OUT_GZ) ? OUT_GZ : OUT);
+  const buf = readFileSync(pick);
+  const rows = JSON.parse(pick.endsWith(".gz") ? gunzipSync(buf).toString("utf8") : buf.toString("utf8"));
   const problems = [];
   if (!Array.isArray(rows) || rows.length < 30) problems.push("条目太少：" + (Array.isArray(rows) ? rows.length : "非数组"));
   const levels = {};
@@ -190,19 +262,28 @@ export function validateAreaFile(file = OUT) {
   if (dup) problems.push("adcode 重复 " + dup + " 个");
   if (!levels.province) problems.push("缺少省级");
   if (!levels.city) problems.push("缺少地级市");
-  if (!levels.district) problems.push("缺少区县级（演示范围）");
-  return { rows: rows.length, levels, points: pts, problems, bytes: readFileSync(file).length };
+  // 区县是否齐全：全国区县约 2800+（含县级市/旗/林区），只收演示范围时不做这个要求
+  const wantAllDistricts = process.env.ADMIN_AREAS_DEPTH === "district";
+  if (!levels.district) problems.push("缺少区县级");
+  else if (wantAllDistricts && levels.district < 2500) problems.push("区县级太少（" + levels.district + "），全国应 ≥2500");
+  return { rows: rows.length, levels, points: pts, problems, bytes: buf.length, file: pick };
 }
 
 /* ---------------- 主流程 ---------------- */
 
 async function build() {
   const srcDir = opt("--src");
-  const counties = opt("--counties", DEFAULT_COUNTIES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
+  const depth = opt("--depth", "district"); // province | city | district
+  const provincesFilter = opt("--provinces", "").split(",").map((s) => s.trim().slice(0, 2)).filter(Boolean);
+  const extraCounties = opt("--counties", "").split(",").map((s) => s.trim()).filter(Boolean);
+  process.env.ADMIN_AREAS_DEPTH = depth;
+  const wantDistricts = depth === "district";
 
-  // 1) 省级
+  // 1) 省级 + 省的直接下级（地级市 / 直辖市的区）
   const country = await loadArea("100000", srcDir);
   const provinces = [];
+  const cities = [];
+  const districts = [];
   const cityTasks = [];
   for (const f of country.features || []) {
     const p = f.properties || {};
@@ -210,35 +291,62 @@ async function build() {
     if (!/^\d{6}$/.test(code) || code === "100000") continue; // 跳过「南海诸岛」等非行政区占位
     const e = toEntry(p, f.geometry, "province");
     if (e) provinces.push(e);
-    // 省的下级是地级市；直辖市/特别行政区只保留整体，不再收下级
-    if (!WHOLE_ONLY.has(code)) cityTasks.push({ code });
+    if (provincesFilter.length && !provincesFilter.includes(code.slice(0, 2))) continue;
+    // 直辖市/特别行政区：下级直接是区县，不当地级市处理
+    cityTasks.push({ provinceCode: code, asDistrict: WHOLE_ONLY.has(code) });
   }
-  console.log("省级：" + provinces.length + " 个");
+  console.log("省级：" + provinces.length + " 个" + (provincesFilter.length ? "（本次只处理 " + provincesFilter.join(",") + "）" : ""));
 
-  // 2) 地级市（逐省取 _full）
-  const cities = [];
+  const cityFetchTasks = [];
   for (const t of cityTasks) {
     let json;
     try {
-      json = await loadArea(t.code, srcDir);
+      json = await loadArea(t.provinceCode, srcDir);
     } catch (e) {
-      console.log("  跳过 " + t.code + "：" + e.message);
+      console.log("  跳过 " + t.provinceCode + "：" + e.message);
       continue;
     }
     for (const f of json.features || []) {
       const p = f.properties || {};
-      const level = p.level === "district" ? "district" : "city";
-      // 只收「省的直接下级」，避免把区县重复塞进来
+      const isDistrict = t.asDistrict || p.level === "district";
+      const level = isDistrict ? "district" : "city";
       const e = toEntry(p, f.geometry, level);
-      if (e && e.parentCode && String(e.parentCode).slice(0, 2) === t.code.slice(0, 2)) cities.push(e);
+      if (!e) continue;
+      if (isDistrict) districts.push(e);
+      else cities.push(e);
+      if (wantDistricts && !isDistrict) cityFetchTasks.push(String(e.code));
     }
     process.stdout.write(".");
   }
-  console.log("\n地级市/直辖市区：" + cities.length + " 个");
+  console.log("\n地级市：" + cities.length + " 个 / 直辖市区县：" + districts.filter((d) => WHOLE_ONLY.has(String(d.parentCode))).length + " 个");
 
-  // 3) 演示区县（默认张北县 + 杭州各区县）
-  const districts = [];
-  for (const c of counties) {
+  // 2) 逐市取区县（全国 2800+ 个）：顺序抓取（限流友好）+ 磁盘缓存（中断可续跑）
+  if (wantDistricts) {
+    const tasks = cityFetchTasks;
+    console.log("抓区县：" + tasks.length + " 个地级市（顺序 + 缓存 " + path.relative(ROOT, CACHE_DIR) + "）");
+    let done = 0, cached = 0;
+    for (const cityCode of tasks) {
+      let json;
+      try {
+        const hit = existsSync(path.join(CACHE_DIR, cityCode + "_full.json"));
+        json = await loadArea(cityCode, srcDir);
+        if (hit) cached++;
+      } catch {
+        continue;
+      } finally {
+        done++;
+        if (done % 20 === 0) process.stdout.write(".");
+      }
+      for (const f of json.features || []) {
+        const e = toEntry(f.properties || {}, f.geometry, "district");
+        if (e) districts.push(e);
+      }
+    }
+    console.log("\n区县级合计：" + districts.length + " 个（缓存命中 " + cached + "/" + tasks.length + "）");
+  }
+
+  // 3) 手工追加的区县（--counties 130722,330100）
+  for (const c of extraCounties) {
     let json;
     try {
       json = await loadArea(c, srcDir);
@@ -246,23 +354,25 @@ async function build() {
       json = await loadSingle(c, srcDir);
     }
     for (const f of json.features || []) {
-      const p = f.properties || {};
-      const e = toEntry(p, f.geometry, "district");
+      const e = toEntry(f.properties || {}, f.geometry, "district");
       if (e) districts.push(e);
     }
   }
-  console.log("区县级（演示范围）：" + districts.length + " 个");
 
-  // 4) 去重 + 落盘
+  // 4) 去重 + 落盘（默认只产出 gzip：全国 3222 个行政区裸 JSON 有 8MB，gzip 后 ~1.9MB，
+  //    解析耗时反而更低（182ms vs 226ms），仓库与镜像都不用背 8MB）
   const map = new Map();
   for (const a of [...provinces, ...cities, ...districts]) map.set(a.code, a);
   const rows = [...map.values()].sort((a, b) => a.code - b.code);
   mkdirSync(path.dirname(OUT), { recursive: true });
-  writeFileSync(OUT, JSON.stringify(rows));
+  const raw = Buffer.from(JSON.stringify(rows), "utf8");
+  const gz = gzipSync(raw, { level: 9 });
+  writeFileSync(OUT_GZ, gz);
+  if (flag("--plain")) writeFileSync(OUT, raw);
   const info = validateAreaFile();
   console.log(
-    "\n已写入 " + path.relative(ROOT, OUT) + "：" + info.rows + " 个行政区 / " + info.points + " 个坐标点 / " +
-      Math.round(info.bytes / 1024) + " KB",
+    "\n已写入 " + path.relative(ROOT, OUT_GZ) + "：" + info.rows + " 个行政区 / " + info.points + " 个坐标点 / " +
+      Math.round(gz.length / 1024) + " KB（gzip）" + (flag("--plain") ? " + 裸 JSON " + Math.round(raw.length / 1024) + " KB" : ""),
   );
   console.log("级别分布：" + JSON.stringify(info.levels));
   if (info.problems.length) {
@@ -274,13 +384,52 @@ async function build() {
 
 if (flag("--check")) {
   const info = validateAreaFile();
-  console.log("行政区数据集校验：" + info.rows + " 个 / " + info.points + " 点 / " + Math.round(info.bytes / 1024) + " KB");
+  console.log("行政区数据集校验（" + path.relative(ROOT, info.file) + "）：" + info.rows + " 个 / " + info.points + " 点 / " + Math.round(info.bytes / 1024) + " KB");
   console.log("级别分布：" + JSON.stringify(info.levels));
   if (info.problems.length) {
     console.log("✗ " + info.problems.join("；"));
     process.exit(1);
   }
   console.log("✓ 通过");
+} else if (flag("--download-only")) {
+  // 只把各市 _full.json 拉进本地缓存（可反复执行、断点续跑），随后 build 完全离线
+  const srcDir = opt("--src");
+  const country = await loadArea("100000", srcDir);
+  const cityCodes = [];
+  for (const f of country.features || []) {
+    const p = f.properties || {};
+    const code = String(p.adcode ?? "");
+    if (!/^\d{6}$/.test(code) || code === "100000") continue;
+    if (WHOLE_ONLY.has(code)) continue;
+    let json;
+    try {
+      json = await loadArea(code, srcDir);
+    } catch (e) {
+      console.log("跳过省 " + code + "：" + e.message);
+      continue;
+    }
+    for (const cf of json.features || []) {
+      const cpf = cf.properties || {};
+      if (!/^\d{6}$/.test(String(cpf.adcode ?? ""))) continue;
+      cityCodes.push(String(cpf.adcode));
+    }
+  }
+  const missing = cityCodes.filter((c) => !existsSync(path.join(CACHE_DIR, c + "_full.json")));
+  console.log("需要区县数据的地级市 " + cityCodes.length + " 个，待下载 " + missing.length + " 个");
+  let ok = 0, fail = 0;
+  for (const c of missing) {
+    try {
+      await sourceText(c + "_full.json", srcDir);
+      ok++;
+    } catch (e) {
+      fail++;
+      console.log("  ✗ " + c + "：" + e.message);
+    }
+    if ((ok + fail) % 25 === 0) process.stdout.write(".");
+  }
+  console.log("\n本次下载 " + ok + " 个，失败 " + fail + " 个；剩余 " +
+    cityCodes.filter((c) => !existsSync(path.join(CACHE_DIR, c + "_full.json"))).length + " 个");
+  process.exit(fail && !ok ? 1 : 0);
 } else {
   await build();
 }

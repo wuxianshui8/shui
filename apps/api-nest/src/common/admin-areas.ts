@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 
 /**
@@ -28,10 +29,13 @@ let cacheError: string | null = null;
 function candidates(): string[] {
   const out: string[] = [];
   const cwd = process.cwd();
-  out.push(join(cwd, "db", "admin-areas.json"));
-  out.push(join(cwd, "..", "..", "apps", "api-nest", "db", "admin-areas.json"));
-  // dist/common/admin-areas.js → ../../db/admin-areas.json
-  out.push(join(__dirname, "..", "..", "db", "admin-areas.json"));
+  const dirs = [
+    join(cwd, "db"),
+    join(cwd, "..", "..", "apps", "api-nest", "db"),
+    join(__dirname, "..", "..", "db"),
+  ];
+  // 优先读 gzip（全国 3200 个行政区裸 JSON 8MB，gzip 后 ~1.9MB，解压+解析反而更快）
+  for (const d of dirs) out.push(join(d, "admin-areas.json.gz"), join(d, "admin-areas.json"));
   return out;
 }
 
@@ -39,7 +43,9 @@ export function loadAdminAreas(): AdminArea[] {
   if (cache) return cache;
   for (const p of candidates()) {
     if (!existsSync(p)) continue;
-    const raw = JSON.parse(readFileSync(p, "utf8")) as AdminArea[];
+    const buf = readFileSync(p);
+    const text = p.endsWith(".gz") ? gunzipSync(buf).toString("utf8") : buf.toString("utf8");
+    const raw = JSON.parse(text) as AdminArea[];
     cache = raw.map((a) => ({
       ...a,
       // 数据文件是 [lng,lat]，这里顺手换成 [lat,lng] 存一份，省得每次转换

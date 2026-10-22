@@ -4,22 +4,31 @@
 // 数据文件里坐标是 GeoJSON 习惯的 [lng,lat]，这里统一转成 [lat,lng]，
 // 与片区多边形、pointInPolygon/pointInAnyRing 的约定保持一致。
 import { existsSync, readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 
 let cache = null;
 let cacheError = null;
 
-const candidates = () => [
-  join(process.cwd(), "apps", "api-nest", "db", "admin-areas.json"),
-  join(process.cwd(), "db", "admin-areas.json"),
-  join(process.cwd(), "..", "apps", "api-nest", "db", "admin-areas.json"),
-];
+const candidates = () => {
+  const out = [];
+  for (const d of [
+    join(process.cwd(), "apps", "api-nest", "db"),
+    join(process.cwd(), "db"),
+    join(process.cwd(), "..", "apps", "api-nest", "db"),
+  ]) {
+    // 优先读 gzip（全国 3200 个行政区：裸 JSON 8MB、gzip ~1.9MB）
+    out.push(join(d, "admin-areas.json.gz"), join(d, "admin-areas.json"));
+  }
+  return out;
+};
 
 export function loadAdminAreas() {
   if (cache) return cache;
   for (const p of candidates()) {
     if (!existsSync(p)) continue;
-    const raw = JSON.parse(readFileSync(p, "utf8"));
+    const buf = readFileSync(p);
+    const raw = JSON.parse(p.endsWith(".gz") ? gunzipSync(buf).toString("utf8") : buf.toString("utf8"));
     cache = raw.map((a) => ({
       ...a,
       rings: a.rings.map((ring) => ring.map(([lng, lat]) => [Number(lat), Number(lng)])),
