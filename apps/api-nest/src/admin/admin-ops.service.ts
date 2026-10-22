@@ -142,6 +142,11 @@ export class AdminOpsService {
       realName: r.real_name, identityType: r.identity_type, subjects: r.subjects, stages: r.stages,
       hourlyPrice: Number(r.hourly_price), intro: r.intro, auditStatus: r.audit_status,
       eduCertUrl: r.edu_cert_url, teacherCertUrl: r.teacher_cert_url, skillCertUrl: r.skill_cert_url,
+      // 身份证正反面 + 识别结果：审核员要能看到证件图，并知道系统是否已核过「人证一致」
+      idCardFrontUrl: r.id_card_front_url || null,
+      idCardBackUrl: r.id_card_back_url || null,
+      idCardName: r.id_card_name || null,
+      idCardVerified: Number(r.id_card_verified || 0) === 1,
       updatedAt: r.updated_at,
     }));
   }

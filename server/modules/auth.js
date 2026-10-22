@@ -510,18 +510,26 @@ export function register(router) {
   });
 
   /* ---------------- 文件上传（base64 落盘）---------------- */
+  /* ---------------- 文件上传（base64 落盘，仅图片、限 2MB）---------------- */
   router.post("/api/upload", async (ctx) => {
     const { filename, dataUrl } = ctx.body;
     if (!dataUrl || !String(dataUrl).startsWith("data:")) throw Err.bad("文件格式不正确");
-    const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+    const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(String(dataUrl));
     if (!m) throw Err.bad("文件格式不正确");
+    const mime = m[1].toLowerCase();
+    const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp" };
+    const ext = EXT[mime];
+    if (!ext) throw Err.bad("只支持 PNG / JPG / WEBP 图片");
+    const buf = Buffer.from(m[2].replace(/\s/g, ""), "base64");
+    if (!buf.length) throw Err.bad("图片内容为空");
+    if (buf.length > 2 * 1024 * 1024) throw Err.biz("FILE_TOO_LARGE", "图片不能超过 2MB，请压缩后重试");
     const fs = await import("node:fs");
     const path = await import("node:path");
     const dir = path.join(process.cwd(), "data", "uploads");
     fs.mkdirSync(dir, { recursive: true });
-    const ext = (m[1].split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "");
-    const name = Date.now() + "_" + Math.random().toString(36).slice(2, 8) + "." + ext;
-    fs.writeFileSync(path.join(dir, name), Buffer.from(m[2], "base64"));
-    ok(ctx.res, { url: "/uploads/" + name, filename: filename || name });
+    const name = Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10) + "." + ext;
+    fs.writeFileSync(path.join(dir, name), buf);
+    // filename 原样回传：证件识别 mock 需要它解析「姓名_身份证号」，真实通道则忽略
+    ok(ctx.res, { url: "/uploads/" + name, filename: filename || name, size: buf.length });
   });
 }

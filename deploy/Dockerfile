@@ -51,6 +51,11 @@ COPY --from=web-admin /app/apps/web-admin/dist /app/apps/web-admin/dist
 COPY --from=web-mobile /app/apps/web-mobile/dist/build/h5 /app/apps/web-mobile/dist/build/h5
 COPY web /app/web
 
+# 上传目录必须由运行用户（node, uid 1000）拥有：
+# 首次挂载命名卷时，Docker 会用镜像里该目录的属主初始化卷，否则卷是 root:root → 应用写入 EACCES。
+# （P46 实测踩过：容器能起、图片上传全 400，日志是 permission denied）
+RUN mkdir -p /app/data/uploads && chown -R node:node /app/data
+
 USER node
 EXPOSE 4300
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=12 \

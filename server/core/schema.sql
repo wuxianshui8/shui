@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS teacher_profiles (
   edu_cert_url    TEXT,
   teacher_cert_url TEXT,
   skill_cert_url  TEXT,
+  id_card_front_url TEXT,                             -- 身份证正面（人像面）图片地址
+  id_card_back_url  TEXT,                             -- 身份证反面（国徽面）图片地址
+  id_card_name    TEXT,                               -- 证件识别出的姓名（须与 real_name 一致）
+  id_card_verified INTEGER NOT NULL DEFAULT 0,        -- 1 = 识别结果已与填写信息核对一致
   intro           TEXT,
   subjects        TEXT,                               -- 逗号分隔
   stages          TEXT,                               -- 逗号分隔

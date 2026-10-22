@@ -5,7 +5,7 @@
 - 参考实现（`server/` + SQLite + 原生 ESM 前端）的追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md)；两套实现共用同一套 `/api` 契约。
 - 本文件引用的每个 `方法 /api/路径` 都会被 `tools/check-trace-nest.mjs` 与控制器源码比对，**引用了不存在的接口会直接报错**；
   引用的脚本文件缺失同样报错。校验命令：`npm run trace:check`。
-- 接口总表（自动生成、140 路由）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
+- 接口总表（自动生成、147 路由 / 18 控制器）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
 - 门禁简称：`e2e §n` = `test/e2e.test.js` 第 n 段；`rules` = `test/rules.test.js`；`sec` = `test/security.test.js`；
   `conc` = `tools/concurrency-mysql.mjs`；`races` = `tools/check-money-races.mjs`；`priv` = `tools/check-privacy-auth.mjs`；
   `hc` = `tools/healthcheck-mysql.mjs`；`admin` = `tools/check-admin-spa.mjs`；`mobile` = `tools/check-mobile-spa.mjs`。
@@ -144,9 +144,9 @@
 | 条目 | 交付物 | 验证 |
 | --- | --- | --- |
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
-| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 140 路由）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
+| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 147 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 159 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 41 + 镜像运行契约 33 + verify 15 + hc 12 = **506** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 159 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 41 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + verify 15 + hc 12 = **558** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

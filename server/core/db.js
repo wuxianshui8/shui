@@ -58,5 +58,10 @@ export function migrate() {
   ensureColumn("users", "reg_ip", "TEXT");
   ensureColumn("users", "device_fp", "TEXT");
   ensureColumn("orders", "remind_sent", "INTEGER NOT NULL DEFAULT 0");
+  // 身份证正反面上传与识别（老库自动补列，不破坏已有数据）
+  ensureColumn("teacher_profiles", "id_card_front_url", "TEXT");
+  ensureColumn("teacher_profiles", "id_card_back_url", "TEXT");
+  ensureColumn("teacher_profiles", "id_card_name", "TEXT");
+  ensureColumn("teacher_profiles", "id_card_verified", "INTEGER NOT NULL DEFAULT 0");
 }
 export { DATA_DIR, DB_FILE, ROOT };

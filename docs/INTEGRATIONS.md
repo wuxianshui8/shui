@@ -86,6 +86,7 @@
 | 短信（A1，腾讯云） | ✅ 代码完成，待密钥 | `src/integrations/sms/`：TC3-HMAC-SHA256 签名、SendSms 请求体、错误码分支、mock 兜底、`SMS_PROVIDER` 工厂、启动即校验配置；`sendCode` 先下发后落码；单测覆盖签名与错误分支 | 真实下发（需 5 项密钥 + 已备案签名/模板） |
 | 支付（A2，微信支付 v3） | 🟡 通道层完成 | `src/integrations/pay/`：`PayProvider` 端口、mock（本地/自动化）、微信 v3 实现（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款）；单测用本地 RSA 密钥对与自加密验证，**不需要商户号** | ① 订单流程接线（`orders.pay` 拆「建预支付单 → `payments.status=pending` → 回调确认」）；② 回调路由 `/api/pay/wechat/notify`（原始报文 + 头部透传）；③ 金额/单号一致性校验与重复回调幂等；④ 渠道对账文件解析 |
 | 打款（提现出款） | ⬜ 未做（方案已定：线下打款 + 后台确认） | — | `reviewWithdrawal` 通过时标注 `channel=offline` 与打款凭证字段；UI 文案「线下已打款」；对账口径说明 |
+| 证件识别（OCR，腾讯云 IDCardOCR） | ✅ 通道完成，待密钥 | `src/integrations/ocr/`：`OcrProvider` 端口、mock（按「姓名_18位身份证号」文件名解析，仅本地联调）、腾讯云实现（TC3-HMAC-SHA256 签名 + `IDCardOCR` + 响应归一化）、`OCR_PROVIDER` 工厂、启动即校验（配 tencent 缺密钥拒绝启动）；`POST /api/upload`（base64 → 落盘，仅图片、≤2MB）+ `POST /api/teacher/ocr-idcard`（识别预览，回显姓名与脱敏号码）；`teacher.apply` 落库正反面 URL + 识别姓名 + `id_card_verified`，**姓名/号码与证件不一致直接拒**；门禁 `check-teacher-idcard` 20 项 | 真实识别（需 `TENCENT_SECRET_ID/KEY` + 开通 OCR 服务）；证件上的有效期/签发机关解析（背面 OCR，`CardSide=BACK`） |
 
 ### A2 剩余步骤（按依赖顺序，均可回归验证）
 

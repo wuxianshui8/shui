@@ -43,12 +43,12 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **145** 个路由，分布在 **17** 个控制器。
+总计 **147** 个路由，分布在 **18** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
 | `admin/admin-ops.controller.ts` | 47 |
-| `teacher/teacher.controller.ts` | 17 |
+| `teacher/teacher.controller.ts` | 18 |
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
 | `admin/admin.controller.ts` | 9 |
@@ -64,6 +64,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `health/health.controller.ts` | 2 |
 | `meta/meta.controller.ts` | 2 |
 | `pay/pay-notify.controller.ts` | 2 |
+| `upload/uploads.controller.ts` | 1 |
 
 ### `admin/admin-ops.controller.ts`
 
@@ -272,6 +273,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | GET | `/api/teacher/dashboard` | teacher |  |
 | GET | `/api/teacher/income` | teacher |  |
 | GET | `/api/teacher/level` | teacher |  |
+| POST | `/api/teacher/ocr-idcard` | teacher / parent | 200 |
 | POST | `/api/teacher/online` | teacher | 200 |
 | GET | `/api/teacher/orders` | teacher |  |
 | GET | `/api/teacher/profile` | teacher / parent |  |
@@ -284,6 +286,12 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | DELETE | `/api/teacher/services/:id` | teacher |  |
 | PUT | `/api/teacher/services/:id` | teacher |  |
 | POST | `/api/teacher/services/:id/toggle` | teacher | 200 |
+
+### `upload/uploads.controller.ts`
+
+| 方法 | 路径 | 角色 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/upload` | 登录用户 | 200 |
 
 ### `wallet/wallet.controller.ts`
 

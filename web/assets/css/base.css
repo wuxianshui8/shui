@@ -498,4 +498,33 @@ h1, h2, h3, h4, p { margin: 0; }
 .portal-card p { font-size: 12px; color: var(--ink-2); margin-top: 11px; line-height: 1.65; }
 .portal-card .acct { margin-top: 12px; padding-top: 11px; border-top: 1px dashed var(--line); font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between; }
 .portal-card .go { color: var(--brand-parent); font-weight: 700; }
+
+/* ---------------- 证件/凭证上传（上传 → 缩略图 → 点击预览） ---------------- */
+.uploader { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.uploader .thumb {
+  position: relative; width: 104px; height: 72px; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line); background: #f6f8fb; cursor: zoom-in; flex: 0 0 auto;
+}
+.uploader .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.uploader .thumb .del {
+  position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 13px; line-height: 20px; text-align: center; cursor: pointer;
+}
+.uploader .pick {
+  width: 104px; height: 72px; border-radius: 10px; border: 1px dashed #c9d3e0; background: #fbfcfe;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-size: 11px; color: var(--ink-3); cursor: pointer; flex: 0 0 auto;
+}
+.uploader .pick:hover { border-color: var(--brand-parent); color: var(--brand-parent); }
+.uploader .pick .ico { font-size: 18px; line-height: 1; }
+.uploader .meta { flex: 1 1 150px; min-width: 140px; font-size: 11px; line-height: 1.6; color: var(--ink-3); }
+.uploader .meta b { color: var(--ink-2); }
+.uploader .meta .ok { color: #15803d; }
+.uploader .meta .bad { color: #c02a2a; }
+.uploader .spin { font-size: 11px; color: var(--ink-3); }
+.img-viewer {
+  position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.82);
+  display: flex; align-items: center; justify-content: center; padding: 18px; cursor: zoom-out;
+}
+.img-viewer img { max-width: 100%; max-height: 100%; border-radius: 8px; }
 .portal-foot { margin-top: 28px; font-size: 12px; color: var(--ink-3); line-height: 1.9; }

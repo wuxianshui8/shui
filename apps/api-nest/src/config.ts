@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 /** 运行时配置：全部来自环境变量，默认值面向本地开发 */
 const DEV_SECRET = "jiajiao-dev-secret-please-change-in-prod";
 if (process.env.NODE_ENV === "production" && !process.env.AUTH_SECRET) {
@@ -25,4 +27,13 @@ export const config = {
     db: Number(process.env.REDIS_DB || 0),
   },
   webDir: process.env.WEB_DIR || "web",
+  /**
+   * 上传图片落盘目录（默认仓库 data/uploads，容器内是 /app/data/uploads 挂载卷）。
+   * 用绝对路径兜底：容器的工作目录是 /app/apps/api-nest，相对路径容易写飞。
+   */
+  uploadDir: process.env.UPLOAD_DIR
+    ? String(process.env.UPLOAD_DIR)
+    : join(process.cwd(), "..", "..", "data", "uploads"),
+  /** 证件识别通道：mock（默认，从文件名解析）| tencent（腾讯云 IDCardOCR） */
+  ocrProvider: String(process.env.OCR_PROVIDER || "mock").toLowerCase(),
 };

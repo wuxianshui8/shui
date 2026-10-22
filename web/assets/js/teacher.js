@@ -1333,10 +1333,16 @@ async function profileView() {
     '<textarea class="textarea" id="pf-intro" name="intro" placeholder="教学经验、提分案例、教学风格">' + esc(p.intro || "") + "</textarea></div>" +
     '<button class="btn btn-primary btn-block" type="submit">保存资料</button></form></div>' +
     '<div class="card"><div class="card-title"><h3>资质材料</h3><span class="more">如需更新请重新提交入驻审核</span></div>' +
-    kv("身份证", esc(p.idCard || "-")) +
-    kv("学历证书", p.eduCertUrl ? esc(p.eduCertUrl.slice(0, 26)) + "…" : "未上传") +
-    kv("教师资格证", p.teacherCertUrl ? esc(p.teacherCertUrl.slice(0, 26)) + "…" : "未上传") +
-    kv("技能证书", p.skillCertUrl ? esc(p.skillCertUrl.slice(0, 26)) + "…" : "未上传") +
+    kv("身份证", esc(p.idCard || "-") + (p.idCardVerified ? ' <span class="badge ok">人证一致</span>' : ' <span class="badge gray">未识别</span>')) +
+    '<div class="field"><label>证件图片</label><div class="uploader">' +
+    ["idCardFrontUrl", "idCardBackUrl", "eduCertUrl", "teacherCertUrl", "skillCertUrl"]
+      .map((k) => (p[k] ? imageThumb(p[k], k) : ""))
+      .join("") +
+    (["idCardFrontUrl", "idCardBackUrl", "eduCertUrl", "teacherCertUrl", "skillCertUrl"].some((k) => p[k])
+      ? ""
+      : '<span class="faint tiny">未上传</span>') +
+    "</div></div>" +
+    (p.idCardName ? kv("证件识别姓名", esc(p.idCardName)) : "") +
     '<p class="tiny faint mt8">已通过审核的账号修改资质需重新提交审核，当前接口不支持在线替换已审核资质。</p></div>'
   );
 
@@ -1377,6 +1383,102 @@ async function profileView() {
     }
   });
   setActions({});
+}
+
+/* ---------------- 证件上传组件（上传 → 缩略图 → 点击预览 → 可删除） ---------------- */
+/** 缩略图：传了 URL 才渲染 img，避免出现破图；点图看大图、点 × 删除 */
+function imageThumb(url, label = "") {
+  if (!url) return "";
+  return '<div class="thumb" data-preview="' + esc(url) + '" title="点击查看大图" aria-label="' + esc(label || "查看大图") + '">' +
+    '<img src="' + esc(url) + '" alt="' + esc(label || "证件图片") + '" loading="lazy">' +
+    '<button type="button" class="del" data-clear-upload aria-label="删除">×</button></div>';
+}
+
+/**
+ * 上传字段：一张图三种状态（空 / 上传中 / 已有图）。真实值放在隐藏 input 里，
+ * 提交时 formData 读到的就是 `/uploads/xxx.png`；meta 区用来放识别结果或提示。
+ */
+function uploadFieldHtml({ name, label, value = "", hint = "", required = false, metaId = "", accept = "image/png,image/jpeg,image/webp" }) {
+  return '<div class="field" data-upload-field="' + name + '">' +
+    '<label>' + esc(label) + (required ? '<span class="req">*</span>' : "") + "</label>" +
+    '<input type="hidden" name="' + name + '" value="' + esc(value || "") + '">' +
+    '<div class="uploader">' +
+    (value ? imageThumb(value, label) : "") +
+    '<label class="pick" style="' + (value ? "display:none" : "") + '">' +
+    '<span class="ico" aria-hidden="true">📷</span><span>上传图片</span>' +
+    '<input type="file" accept="' + accept + '" data-upload-input style="display:none"></label>' +
+    '<div class="meta"' + (metaId ? ' id="' + metaId + '"' : "") + ">" + (hint ? esc(hint) : "") + "</div>" +
+    "</div></div>";
+}
+
+/** 全屏看大图（点遮罩关闭） */
+function openImageViewer(url) {
+  const mask = document.createElement("div");
+  mask.className = "img-viewer";
+  mask.innerHTML = '<img src="' + esc(url) + '" alt="查看大图">';
+  mask.addEventListener("click", () => mask.remove());
+  document.body.appendChild(mask);
+}
+
+/** FileReader → dataURL（浏览器原生，不引依赖） */
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("图片读取失败，请重新选择"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 绑定上传字段：选图 → 读成 dataURL → POST /api/upload → 回填 URL 并刷新缩略图。
+ * onUploaded 里可以继续调识别接口（身份证人像面）。
+ */
+function bindUploadField(form, name, onUploaded) {
+  const field = form.querySelector('[data-upload-field="' + name + '"]');
+  if (!field) return;
+  const input = field.querySelector("[data-upload-input]");
+  const hidden = field.querySelector('input[name="' + name + '"]');
+  const pick = field.querySelector(".pick");
+  const meta = field.querySelector(".meta");
+  const uploader = field.querySelector(".uploader");
+
+  uploader.addEventListener("click", (e) => {
+    const preview = e.target.closest("[data-preview]");
+    if (preview) return openImageViewer(preview.dataset.preview);
+    const clear = e.target.closest("[data-clear-upload]");
+    if (clear) {
+      hidden.value = "";
+      const thumb = uploader.querySelector(".thumb");
+      if (thumb) thumb.remove();
+      pick.style.display = "";
+      if (meta) meta.textContent = "";
+    }
+  });
+
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) return toastErr("请选择 PNG / JPG / WEBP 图片");
+    if (meta) meta.innerHTML = '<span class="spin">上传中…</span>';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      // 原文件名要一起带上：证件识别 mock 靠「姓名_身份证号」解析，真实通道会忽略它
+      const uploaded = await api.post("/api/upload", { filename: file.name, dataUrl });
+      hidden.value = uploaded.url;
+      const oldThumb = uploader.querySelector(".thumb");
+      if (oldThumb) oldThumb.remove();
+      pick.insertAdjacentHTML("beforebegin", imageThumb(uploaded.url, file.name));
+      pick.style.display = "none";
+      if (meta) meta.textContent = "已上传，点击图片可放大核对";
+      if (onUploaded) await onUploaded(uploaded, meta);
+    } catch (err) {
+      if (meta) meta.textContent = "";
+      onError(err);
+    } finally {
+      input.value = "";
+    }
+  });
 }
 
 /* ---------------- 路由：入驻认证 ---------------- */
@@ -1434,12 +1536,13 @@ async function applyView() {
     '<div class="field"><label for="ap-id">身份证号<span class="req">*</span></label>' +
     '<input class="input" id="ap-id" name="idCard" maxlength="18" value="" placeholder="18 位身份证号"></div></div>' +
     '<div class="form-hint" style="margin-top:-6px;margin-bottom:14px">平台不回显已提交的身份证号，重新提交审核时请再次输入完整号码。</div>' +
-    '<div class="field"><label for="ap-edu">学历证书图片 URL</label>' +
-    '<input class="input" id="ap-edu" name="eduCertUrl" value="' + esc(p.eduCertUrl && !String(p.eduCertUrl).startsWith("data:") ? p.eduCertUrl : "") + '" placeholder="可留空，如 /uploads/xx.png"></div>' +
-    '<div class="field"><label for="ap-tcert">教师资格证图片 URL</label>' +
-    '<input class="input" id="ap-tcert" name="teacherCertUrl" value="' + esc(p.teacherCertUrl || "") + '" placeholder="可留空"></div>' +
-    '<div class="field"><label for="ap-scert">技能证书图片 URL</label>' +
-    '<input class="input" id="ap-scert" name="skillCertUrl" value="' + esc(p.skillCertUrl || "") + '" placeholder="可留空"></div>' +
+    '<div class="field-row">' +
+    uploadFieldHtml({ name: "idCardFrontUrl", label: "身份证正面（人像面）", value: p.idCardFrontUrl || "", required: true, metaId: "ap-ocr-meta", hint: "必传：上传后自动识别姓名与身份证号，须与上方填写一致" }) +
+    uploadFieldHtml({ name: "idCardBackUrl", label: "身份证反面（国徽面）", value: p.idCardBackUrl || "", hint: "建议上传，审核时核对有效期与签发机关" }) +
+    "</div>" +
+    uploadFieldHtml({ name: "eduCertUrl", label: "学历证书", value: p.eduCertUrl && !String(p.eduCertUrl).startsWith("data:") ? p.eduCertUrl : "", hint: "毕业证/学位证照片，可留空" }) +
+    uploadFieldHtml({ name: "teacherCertUrl", label: "教师资格证", value: p.teacherCertUrl || "", hint: "教师资格证照片，可留空" }) +
+    uploadFieldHtml({ name: "skillCertUrl", label: "技能证书", value: p.skillCertUrl || "", hint: "如普通话等级、竞赛证书等，可留空" }) +
     '<div class="field"><label for="ap-intro">自我介绍</label>' +
     '<textarea class="textarea" id="ap-intro" name="intro" placeholder="教学经验、提分案例、教学风格">' + esc(p.intro || "") + "</textarea></div>" +
     '<div class="field"><label>擅长科目<span class="req">*</span></label>' + chipPicker("ap-subjects", dict.subjects || [], p.subjects || []) + "</div>" +
@@ -1479,6 +1582,36 @@ async function applyView() {
     form.lng.value = DEFAULT_LNG;
     toast("已填入默认服务基点");
   });
+
+  // 证件上传：4 类证书 + 身份证正反面。人像面传完立刻识别并校验姓名/号码，不用等提交才报错
+  const ocrMeta = $("[data-upload-field='idCardFrontUrl'] .meta");
+  const relabel = (el, text, ok) => {
+    if (!el) return;
+    el.innerHTML = '<span class="' + (ok ? "ok" : "bad") + '">' + esc(text) + "</span>";
+  };
+  for (const name of ["idCardBackUrl", "eduCertUrl", "teacherCertUrl", "skillCertUrl"]) {
+    bindUploadField(form, name);
+  }
+  bindUploadField(form, "idCardFrontUrl", async (uploaded) => {
+    if (!ocrMeta) return;
+    ocrMeta.innerHTML = '<span class="spin">识别中…</span>';
+    try {
+      const r = await api.post("/api/teacher/ocr-idcard", {
+        url: uploaded.url,
+        realName: String(form.realName.value || "").trim(),
+        idCard: String(form.idCard.value || "").trim(),
+      });
+      if (!r.recognized) {
+        relabel(ocrMeta, r.message || "证件未能识别，请换一张更清晰的", false);
+        return;
+      }
+      const who = "识别到：" + r.name + " · " + (r.idCardMasked || "");
+      relabel(ocrMeta, r.match && r.match.ok ? who + "（与填写一致）" : who + "；" + (r.message || "与填写不一致"), !!(r.match && r.match.ok));
+    } catch (err) {
+      ocrMeta.textContent = "";
+      onError(err);
+    }
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = formData(form);
@@ -1487,6 +1620,8 @@ async function applyView() {
     const subjects = readPicker(bodyEl(), "ap-subjects");
     if (!subjects.length) return toastErr("请至少选择一个擅长科目");
     if (!(Number(fd.hourlyPrice) > 0)) return toastErr("请填写课时单价");
+    if (!String(fd.idCardFrontUrl || "").trim()) return toastErr("请上传身份证正面（人像面）");
+    if (!String(fd.idCardBackUrl || "").trim()) return toastErr("请上传身份证反面（国徽面）");
     const btn = form.querySelector('button[type="submit"]');
     btn.disabled = true;
     btn.textContent = "提交中…";
@@ -1495,6 +1630,8 @@ async function applyView() {
         identityType: identity,
         realName: String(fd.realName).trim(),
         idCard: String(fd.idCard).trim(),
+        idCardFrontUrl: fd.idCardFrontUrl || "",
+        idCardBackUrl: fd.idCardBackUrl || "",
         eduCertUrl: fd.eduCertUrl || "",
         teacherCertUrl: fd.teacherCertUrl || "",
         skillCertUrl: fd.skillCertUrl || "",

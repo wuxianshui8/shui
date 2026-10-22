@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS `teacher_profiles` (
   `edu_cert_url`    TEXT,
   `teacher_cert_url` TEXT,
   `skill_cert_url`  TEXT,
+  -- 身份证正反面（上传后的图片地址）+ 识别结果：id_card_name/id_card_no_ocr 来自证件识别，
+  -- id_card_verified=1 表示识别出的姓名与身份证号都和用户填写的一致（不一致会在提交时被拒）
+  `id_card_front_url` TEXT,
+  `id_card_back_url`  TEXT,
+  `id_card_name`      VARCHAR(255),
+  `id_card_verified`  INT NOT NULL DEFAULT 0,
   `intro`           TEXT,
   `subjects`        TEXT,
   `stages`          TEXT,

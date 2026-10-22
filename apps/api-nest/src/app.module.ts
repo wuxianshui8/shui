@@ -30,6 +30,8 @@ import { AdminOpsService } from "./admin/admin-ops.service";
 import { PublicController } from "./public/public.controller";
 import { MessageController } from "./message/message.controller";
 import { ComplaintController } from "./complaint/complaint.controller";
+import { UploadsController } from "./upload/uploads.controller";
+import { UploadsService } from "./upload/uploads.service";
 
 @Module({
   imports: [
@@ -60,10 +62,11 @@ import { ComplaintController } from "./complaint/complaint.controller";
     AdminController, AgentController,
     TeacherController, WalletController, OrdersController, SalesController,
     AdminOpsController, PublicController, MessageController, ComplaintController,
-    PayNotifyController,
+    PayNotifyController, UploadsController,
   ],
   providers: [
     AuthService, ParentService, AddressesService, DemandsService, OrdersService, WalletService, JobsService, AdminOpsService,
+    UploadsService,
     // 全局鉴权：@Public() 之外的接口都要令牌（健康检查与 meta、登录为公开）
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

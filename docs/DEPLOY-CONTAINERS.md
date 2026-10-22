@@ -44,6 +44,12 @@ docker compose ps                     # 三个服务应为 healthy
 > 应用先于 seed 启动时新字段进不了缓存，表现为「改完没反应」。最稳的顺序是 `up -d --build` → `run --rm --build seed` → `docker compose restart app`；
 > 已经跑起来了也没关系，在后台把该规则组**原样保存一次**即可立即失效缓存（`RuleConfigService.set` 会同时清内存与 Redis）。
 
+> **图片上传的卷属主**（P46 实测踩过）：容器以 `node`(uid 1000) 运行，命名卷若被 root 拥有，
+> 上传会写失败（现象：接口 400「参数不合法」，容器日志是 `EACCES: permission denied`）。
+> 镜像里已 `mkdir -p /app/data/uploads && chown -R node:node /app/data`，**首次创建卷时** Docker 会用镜像属主初始化；
+> 旧版本创建的卷仍是 root:root，需要 `docker volume rm jiajiao_app-uploads` 后重新 `up`。
+> 应用启动日志会打印「[上传] 目录可写/不可写」，直接告诉你结果。
+
 **一键脚本（推荐 Windows）**：`deploy\up.bat` —— 自带护栏（未装 docker 时提示先开 VT-x / 装 Docker Desktop；
 `.env` 不存在时自动从模板生成并提示填 `AUTH_SECRET`），随后依次执行 `up -d --build` → `run --rm seed` → `ps`。
 实测：本机（无 docker）运行该脚本会在第 1 道护栏退出（退出码 1），不产生任何副作用文件。

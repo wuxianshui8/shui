@@ -9,7 +9,9 @@ import { walletSnapshot } from "../common/ledger";
 import { resolveRegion } from "../common/geo";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { OrdersService } from "../order/orders.service";
-
+import { UploadsService } from "../upload/uploads.service";
+import { checkIdCardMatch, maskIdCard } from "../integrations/ocr/ocr.port";
+import { recognizeIdCardFront } from "../integrations/ocr/ocr.service";
 /** 教员端：入驻、接单大盘、服务管理、订单、等级权益、收入、排课、评价、个人中心 */
 @Controller("teacher")
 @Roles("teacher")
@@ -18,6 +20,7 @@ export class TeacherController {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly rules: RuleConfigService,
     private readonly orders: OrdersService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private async rawProfile(uid: number) {
@@ -57,6 +60,11 @@ export class TeacherController {
       eduCertUrl: tp.edu_cert_url,
       teacherCertUrl: tp.teacher_cert_url,
       skillCertUrl: tp.skill_cert_url,
+      idCardFrontUrl: tp.id_card_front_url || null,
+      idCardBackUrl: tp.id_card_back_url || null,
+      // 识别出的证件姓名与校验标记：审核员据此判断「人证一致」是否已由系统核过
+      idCardName: tp.id_card_name || null,
+      idCardVerified: Number(tp.id_card_verified || 0) === 1,
       level: tp.level,
       levelName: lv?.name,
       growthScore: Number(tp.growth_score),
@@ -87,6 +95,23 @@ export class TeacherController {
     if (exist && exist.audit_status === "approved") throw biz("ALREADY_APPROVED", "您已通过资质审核");
     if (exist && exist.audit_status === "pending") throw biz("IN_REVIEW", "资料审核中，请耐心等待");
 
+    // 身份证正反面：传了正面就一定要能识别出来，且姓名/号码必须与填写的一致
+    const front = String(b.idCardFrontUrl || "").trim();
+    const back = String(b.idCardBackUrl || "").trim();
+    let idCardName: string | null = null;
+    let idCardVerified = 0;
+    if (front) {
+      const { buffer, filename } = this.uploads.readByUrl(front);
+      const ocr = await recognizeIdCardFront(buffer, { filename });
+      if (!ocr.ok) {
+        throw biz("ID_CARD_UNRECOGNIZED", "证件照片未能识别，请上传清晰、无反光的身份证人像面");
+      }
+      const match = checkIdCardMatch(ocr, { realName: String(b.realName).trim(), idCard: String(b.idCard).trim() });
+      if (!match.ok) throw biz("ID_CARD_MISMATCH", match.reason || "证件信息与填写内容不一致");
+      idCardName = String(ocr.name);
+      idCardVerified = 1;
+    }
+
     const lat = b.lat != null ? Number(b.lat) : 30.2741;
     const lng = b.lng != null ? Number(b.lng) : 120.1551;
     const region = await resolveRegion(this.ds, lat, lng);
@@ -94,6 +119,7 @@ export class TeacherController {
       b.identityType || "student", b.realName, b.idCard, b.eduCertUrl || null, b.teacherCertUrl || null,
       b.skillCertUrl || null, b.intro || "", b.subjects, b.stages || "", Math.round(Number(b.hourlyPrice)),
       Number(b.serviceRadiusKm || 5), lat, lng, JSON.stringify(b.schedule || []), b.coverArea || "",
+      front || null, back || null, idCardName, idCardVerified,
     ];
     await this.ds.transaction(async (m) => {
       if (exist) {
@@ -101,6 +127,7 @@ export class TeacherController {
           `UPDATE \`teacher_profiles\` SET \`identity_type\` = ?, \`real_name\` = ?, \`id_card\` = ?, \`edu_cert_url\` = ?,
              \`teacher_cert_url\` = ?, \`skill_cert_url\` = ?, \`intro\` = ?, \`subjects\` = ?, \`stages\` = ?, \`hourly_price\` = ?,
              \`service_radius_km\` = ?, \`base_lat\` = ?, \`base_lng\` = ?, \`schedule\` = ?, \`cover_area\` = ?,
+             \`id_card_front_url\` = ?, \`id_card_back_url\` = ?, \`id_card_name\` = ?, \`id_card_verified\` = ?,
              \`audit_status\` = 'pending', \`reject_reason\` = NULL, \`updated_at\` = ? WHERE \`user_id\` = ?`,
           [...args, nowIso(), uid],
         );
@@ -108,8 +135,9 @@ export class TeacherController {
         await m.query(
           `INSERT INTO \`teacher_profiles\` (\`user_id\`,\`identity_type\`,\`real_name\`,\`id_card\`,\`edu_cert_url\`,\`teacher_cert_url\`,
              \`skill_cert_url\`,\`intro\`,\`subjects\`,\`stages\`,\`hourly_price\`,\`service_radius_km\`,\`base_lat\`,\`base_lng\`,
-             \`schedule\`,\`cover_area\`,\`audit_status\`,\`created_at\`,\`updated_at\`)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,
+             \`schedule\`,\`cover_area\`,\`id_card_front_url\`,\`id_card_back_url\`,\`id_card_name\`,\`id_card_verified\`,
+             \`audit_status\`,\`created_at\`,\`updated_at\`)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)`,
           [uid, ...args, nowIso(), nowIso()],
         );
       }
@@ -120,7 +148,33 @@ export class TeacherController {
       await m.query("INSERT IGNORE INTO `wallets` (`user_id`,`updated_at`) VALUES (?,?)", [uid, nowIso()]);
       await audit(m, req, "teacher.apply", "users:" + uid);
     });
-    return ok({ auditStatus: "pending" });
+    return ok({ auditStatus: "pending", idCardVerified: idCardVerified === 1 });
+  }
+
+  /**
+   * 身份证识别预览：页面上传完人像面后可先调它拿识别结果，避免填完一大张表单才被打回。
+   * 只回显姓名与脱敏号码 + 与当前填写的比对结论，不回显底层通道错误。
+   */
+  @Post("ocr-idcard")
+  @HttpCode(200)
+  @Roles("teacher", "parent")
+  async ocrIdCard(@Body() b: any) {
+    const url = String(b?.url || "").trim();
+    if (!url) throw bad("请先上传身份证人像面");
+    const { buffer, filename } = this.uploads.readByUrl(url);
+    const ocr = await recognizeIdCardFront(buffer, { filename });
+    if (!ocr.ok) {
+      return ok({ recognized: false, message: "证件照片未能识别，请上传清晰、无反光的身份证人像面" });
+    }
+    const match = checkIdCardMatch(ocr, { realName: b?.realName, idCard: b?.idCard });
+    return ok({
+      recognized: true,
+      name: ocr.name,
+      idCardMasked: maskIdCard(ocr.idCard),
+      provider: ocr.provider,
+      match: { ok: match.ok, nameMatched: match.nameMatched, idCardMatched: match.idCardMatched },
+      message: match.ok ? "证件信息与填写内容一致" : match.reason,
+    });
   }
 
   @Get("profile")

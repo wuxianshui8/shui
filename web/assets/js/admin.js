@@ -33,7 +33,10 @@ const COMPLAINT_TYPE = { complaint: "客诉工单", review_appeal: "差评申诉
 const AUDIENCE = { all: "全部用户", parent: "家长", teacher: "教员", sales: "业务员", agent: "区域代理" };
 const PAY_TYPE = { pay: "支付", refund: "退款" };
 const CHANNEL = { wechat_jsapi: "微信 JSAPI", wechat_app: "微信 APP", bank: "银行卡", wechat: "微信" };
-const PHOTO_LABEL = { eduCertUrl: "学历证件", teacherCertUrl: "教师资格证", skillCertUrl: "技能证书" };
+const PHOTO_LABEL = {
+  eduCertUrl: "学历证件", teacherCertUrl: "教师资格证", skillCertUrl: "技能证书",
+  idCardFrontUrl: "身份证人像面", idCardBackUrl: "身份证国徽面",
+};
 
 const PROVIDER_ROLE_ORDER = ["parent", "teacher", "sales", "agent", "admin"];
 
@@ -839,7 +842,14 @@ function auditCard(t) {
     ${kv("课时单价", money(t.hourlyPrice) + ' <span class="faint tiny">/ 课时</span>')}
     ${t.rejectReason ? '<div class="hint danger mt12">驳回原因：' + esc(t.rejectReason) + "</div>" : ""}
     <div class="divider"></div>
-    <div class="tiny faint mb8">证件材料</div>
+    <div class="tiny faint mb8">身份证（正 / 反）${t.idCardVerified ? ' <span class="badge ok">系统已核：人证一致</span>' : ' <span class="badge gray">未做证件识别</span>'}</div>
+    <div class="thumbs">
+      ${certThumb(t.idCardFrontUrl, "idCardFrontUrl")}
+      ${certThumb(t.idCardBackUrl, "idCardBackUrl")}
+    </div>
+    ${t.idCardName ? '<div class="tiny faint mt8">证件识别姓名：' + esc(t.idCardName) + "（须与填写姓名一致）</div>" : ""}
+    <div class="divider"></div>
+    <div class="tiny faint mb8">其它证件材料</div>
     <div class="thumbs">
       ${certThumb(t.eduCertUrl, "eduCertUrl")}
       ${certThumb(t.teacherCertUrl, "teacherCertUrl")}

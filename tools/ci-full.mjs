@@ -41,6 +41,7 @@ const FULL = [
   { name: "mobile SPA（41）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
   { name: "支付回调与幂等（32）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-pay-flow.mjs" } },
   { name: "镜像运行契约（33）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },
+  { name: "入驻证件上传与识别（20）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-teacher-idcard.mjs" } },
   { name: "迁移 + MySQL 巡检（12）", cmd: ["node", "tools/gate-p9.mjs"] },
 ];
 

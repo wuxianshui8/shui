@@ -75,6 +75,13 @@ services:
       WECHAT_PAY_MAX_SKEW_SECONDS: ${WECHAT_PAY_MAX_SKEW_SECONDS:-300}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       JOBS_ENABLED: ${JOBS_ENABLED:-1}
+      # 证件识别（P46）：默认 mock（按「姓名_身份证号」文件名解析，仅本地联调）；上线改 tencent 并配密钥
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
+      TENCENT_OCR_REGION: ${TENCENT_OCR_REGION:-ap-guangzhou}
+      # 上传图片落盘目录（与下面 volumes 的挂载点一致，重建镜像不丢证件图）
+      UPLOAD_DIR: /app/data/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -82,6 +89,9 @@ services:
         condition: service_healthy
     ports:
       - "4300:4300"
+    volumes:
+      # 上传的证件/凭证图片：独立命名卷，重建镜像不丢（否则每次 up --build 后证件图全部 404）
+      - app-uploads:/app/data/uploads
     restart: unless-stopped
 
   # 一次性演示数据（不影响常驻服务）：docker compose run --rm seed
@@ -108,3 +118,4 @@ services:
 
 volumes:
   mysql-data:
+  app-uploads:

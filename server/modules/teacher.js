@@ -9,6 +9,12 @@ import { haversineKm } from "../core/geo.js";
 import { distanceFactor } from "../core/geo.js";
 import { orderView, orderViews, reviewsOfTeacher, teacherPrivate } from "../core/present.js";
 import { walletSnapshot } from "../core/ledger.js";
+import { checkIdCardMatch, maskIdCard, recognizeIdCardFront, uploadPath } from "../core/ocr.js";
+import { DATA_DIR } from "../core/db.js";
+import path from "node:path";
+
+/** 上传目录（与 auth.js 的 /api/upload 落盘位置一致） */
+const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 
 function requireApprovedProfile(userId) {
   const tp = get("SELECT * FROM teacher_profiles WHERE user_id = ?", userId);
@@ -18,7 +24,7 @@ function requireApprovedProfile(userId) {
 
 export function register(router) {
   /* ---------------- 入驻 ---------------- */
-  router.post("/api/teacher/apply", (ctx) => {
+  router.post("/api/teacher/apply", async (ctx) => {
     const b = ctx.body;
     if (!b.realName || !b.idCard) throw Err.bad("请填写真实姓名与身份证号");
     if (!/^\d{17}[\dXx]$/.test(String(b.idCard))) throw Err.bad("身份证号格式不正确");
@@ -28,39 +34,79 @@ export function register(router) {
     if (exist && exist.audit_status === "approved") throw Err.biz("ALREADY_APPROVED", "您已通过资质审核");
     if (exist && exist.audit_status === "pending") throw Err.biz("IN_REVIEW", "资料审核中，请耐心等待");
 
+    // 身份证正反面：传了人像面就一定要识别得出，且姓名/号码必须与填写的一致
+    const front = String(b.idCardFrontUrl || "").trim();
+    const back = String(b.idCardBackUrl || "").trim();
+    let idCardName = null;
+    let idCardVerified = 0;
+    if (front) {
+      const local = uploadPath(UPLOAD_DIR, front);
+      if (!local) throw Err.bad("身份证图片地址不合法");
+      const ocr = await recognizeIdCardFront(local);
+      if (!ocr.ok) throw Err.biz("ID_CARD_UNRECOGNIZED", "证件照片未能识别，请上传清晰、无反光的身份证人像面");
+      const match = checkIdCardMatch(ocr, { realName: String(b.realName).trim(), idCard: String(b.idCard).trim() });
+      if (!match.ok) throw Err.biz("ID_CARD_MISMATCH", match.reason);
+      idCardName = String(ocr.name);
+      idCardVerified = 1;
+    }
+
     const lat = b.lat != null ? Number(b.lat) : 30.2741;
     const lng = b.lng != null ? Number(b.lng) : 120.1551;
     const region = resolveRegion(lat, lng);
+    const common = [
+      b.identityType || "student", b.realName, b.idCard, b.eduCertUrl || null, b.teacherCertUrl || null,
+      b.skillCertUrl || null, b.intro || "", b.subjects, b.stages || "", Math.round(Number(b.hourlyPrice)),
+      Number(b.serviceRadiusKm || 5), lat, lng, JSON.stringify(b.schedule || []), b.coverArea || "",
+      front || null, back || null, idCardName, idCardVerified,
+    ];
 
     if (exist) {
       run(
         `UPDATE teacher_profiles SET identity_type = ?, real_name = ?, id_card = ?, edu_cert_url = ?, teacher_cert_url = ?,
          skill_cert_url = ?, intro = ?, subjects = ?, stages = ?, hourly_price = ?, service_radius_km = ?,
-         base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?, audit_status = 'pending', reject_reason = NULL, updated_at = ?
+         base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?,
+         id_card_front_url = ?, id_card_back_url = ?, id_card_name = ?, id_card_verified = ?,
+         audit_status = 'pending', reject_reason = NULL, updated_at = ?
          WHERE user_id = ?`,
-        b.identityType || "student", b.realName, b.idCard, b.eduCertUrl || null, b.teacherCertUrl || null,
-        b.skillCertUrl || null, b.intro || "", b.subjects, b.stages || "", Math.round(Number(b.hourlyPrice)),
-        Number(b.serviceRadiusKm || 5), lat, lng, JSON.stringify(b.schedule || []), b.coverArea || "",
-        nowIso(), ctx.user.id
+        ...common, nowIso(), ctx.user.id
       );
     } else {
       run(
         `INSERT INTO teacher_profiles (user_id, identity_type, real_name, id_card, edu_cert_url, teacher_cert_url,
           skill_cert_url, intro, subjects, stages, hourly_price, service_radius_km, base_lat, base_lng, schedule,
-          cover_area, audit_status, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        ctx.user.id, b.identityType || "student", b.realName, b.idCard, b.eduCertUrl || null, b.teacherCertUrl || null,
-        b.skillCertUrl || null, b.intro || "", b.subjects, b.stages || "", Math.round(Number(b.hourlyPrice)),
-        Number(b.serviceRadiusKm || 5), lat, lng, JSON.stringify(b.schedule || []), b.coverArea || "",
-        "pending", nowIso(), nowIso()
+          cover_area, id_card_front_url, id_card_back_url, id_card_name, id_card_verified,
+          audit_status, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        ctx.user.id, ...common, "pending", nowIso(), nowIso()
       );
     }
     run("UPDATE users SET role = 'teacher', real_name = ?, id_card = ?, region_id = ? WHERE id = ?",
       b.realName, b.idCard, region?.id ?? null, ctx.user.id);
     run("INSERT OR IGNORE INTO wallets (user_id, updated_at) VALUES (?,?)", ctx.user.id, nowIso());
-    audit(ctx, "teacher.apply", "users:" + ctx.user.id);
-    ok(ctx.res, { auditStatus: "pending" });
+    audit(ctx, "teacher.apply", "users:" + ctx.user.id, { idCardVerified });
+    ok(ctx.res, { auditStatus: "pending", idCardVerified: !!idCardVerified });
   });
+
+  /* 身份证识别预览：上传完人像面先给反馈，避免填完整张表才被打回 */
+  router.post("/api/teacher/ocr-idcard", async (ctx) => {
+    const url = String(ctx.body?.url || "").trim();
+    if (!url) throw Err.bad("请先上传身份证人像面");
+    const local = uploadPath(UPLOAD_DIR, url);
+    if (!local) throw Err.bad("身份证图片地址不合法");
+    const ocr = await recognizeIdCardFront(local);
+    if (!ocr.ok) {
+      return ok(ctx.res, { recognized: false, message: "证件照片未能识别，请上传清晰、无反光的身份证人像面" });
+    }
+    const match = checkIdCardMatch(ocr, { realName: ctx.body?.realName, idCard: ctx.body?.idCard });
+    ok(ctx.res, {
+      recognized: true,
+      name: ocr.name,
+      idCardMasked: maskIdCard(ocr.idCard),
+      provider: ocr.provider,
+      match: { ok: match.ok, nameMatched: match.nameMatched, idCardMatched: match.idCardMatched },
+      message: match.ok ? "证件信息与填写内容一致" : match.reason,
+    });
+  }, { roles: ["teacher", "parent"] });
 
   router.get("/api/teacher/profile", (ctx) => {
     const tp = get("SELECT * FROM teacher_profiles WHERE user_id = ?", ctx.user.id);
