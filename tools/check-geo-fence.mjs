@@ -226,14 +226,20 @@ console.log("\n== 9. 行政区数据集（按行政区设置）==");
   if (backendAreas) {
     const hit = backendAreas.searchAreas("张北", 5);
     ok("后端搜索「张北」命中张北县", hit.length > 0 && hit[0].name === "张北县", hit.map((a) => a.name).join(","));
-    const hitHz = backendAreas.searchAreas("杭州", 5);
+    const hitHz = backendAreas.searchAreas("杭州", 20);
     ok("后端搜索「杭州」把杭州市排在前面", hitHz[0]?.name === "杭州市", hitHz.map((a) => a.name).join(","));
+    ok("搜城市会展开已收录的下级区县（输入「杭州」能点到西湖区）",
+      hitHz.some((a) => a.name === "西湖区") && hitHz.some((a) => a.name === "滨江区"), `${hitHz.length} 个候选`);
     const fence = backendAreas.fenceFromCodes(["130722"]);
     ok("按 adcode 拼出的围栏非空且中心在张北附近",
       !!fence && fence.rings.length > 0 && dist(fence.center[0], 41.15) < 0.6 && dist(fence.center[1], 114.7) < 0.6,
       fence ? `${fence.rings.length} 环 / ${fence.points} 点 / 中心 ${fence.center[0].toFixed(3)},${fence.center[1].toFixed(3)}` : "null");
     const missing = backendAreas.fenceFromCodes(["130722", "999999"]);
     ok("未收录的 adcode 被标出来（不静默吞掉）", missing && missing.missing.length === 1 && missing.missing[0] === 999999);
+    const nested = backendAreas.fenceFromCodes([330100, 330106]);
+    ok("同时选上级与下级时只按上级建围栏（西湖区是杭州市的子集）",
+      nested && nested.codes.length === 1 && nested.codes[0] === 330100 && nested.names[0] === "杭州市",
+      nested ? nested.names.join("、") : "null");
     const st = backendAreas.adminAreasStatus();
     ok("后端数据集状态与文件条数一致", st.count === areas.length, `${st.count} / ${areas.length}`);
   } else {

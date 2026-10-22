@@ -63,7 +63,19 @@ export function searchAreas(q, limit = 20) {
     scored.push({ a, score: score * 10 + (LEVEL_ORDER[a.level] ?? 3) });
   }
   scored.sort((x, y) => x.score - y.score || x.a.code - y.a.code);
-  return scored.slice(0, Math.max(1, Math.min(50, Number(limit) || 20))).map((s) => s.a);
+  const max = Math.max(1, Math.min(50, Number(limit) || 20));
+  const list = scored.slice(0, max).map((s) => s.a);
+  // 命中省/市时把已收录的下级也列出来（输入「杭州」能直接点到西湖区/滨江区）
+  const extra = [];
+  for (const a of list) {
+    if (a.level === "district") continue;
+    for (const c of rows) {
+      if (c.parentCode !== a.code) continue;
+      if (list.some((x) => x.code === c.code) || extra.some((x) => x.code === c.code)) continue;
+      extra.push(c);
+    }
+  }
+  return [...list, ...extra].slice(0, max);
 }
 
 export function areasByCodes(codes) {
@@ -77,9 +89,20 @@ export function fenceFromCodes(codes) {
   const wanted = (codes || []).map((c) => Number(c)).filter((c) => Number.isFinite(c));
   const found = areasByCodes(wanted);
   if (!found.length) return null;
+  // 上级已选时下级是子集 → 只按上级建围栏
+  const all = loadAdminAreas();
+  const picked = new Set(found.map((a) => a.code));
+  const effective = found.filter((a) => {
+    let p = a.parentCode;
+    for (let guard = 0; p && guard < 10; guard++) {
+      if (picked.has(p)) return false;
+      p = all.find((x) => x.code === p)?.parentCode ?? 0;
+    }
+    return true;
+  });
   const rings = [];
   let points = 0;
-  for (const a of found) {
+  for (const a of effective) {
     for (const ring of a.rings) {
       if (ring.length >= 3) {
         rings.push(ring);
@@ -89,9 +112,9 @@ export function fenceFromCodes(codes) {
   }
   if (!rings.length) return null;
   const center = [
-    Number((found.reduce((s, a) => s + a.center[0], 0) / found.length).toFixed(6)),
-    Number((found.reduce((s, a) => s + a.center[1], 0) / found.length).toFixed(6)),
+    Number((effective.reduce((s, a) => s + a.center[0], 0) / effective.length).toFixed(6)),
+    Number((effective.reduce((s, a) => s + a.center[1], 0) / effective.length).toFixed(6)),
   ];
   const missing = wanted.filter((c) => !found.some((a) => a.code === c));
-  return { rings, center, points, codes: found.map((a) => a.code), names: found.map((a) => a.name), missing };
+  return { rings, center, points, codes: effective.map((a) => a.code), names: effective.map((a) => a.name), missing };
 }
