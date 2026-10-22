@@ -259,6 +259,12 @@ export class AdminOpsController {
   }
 
   /* ---------------- 区域 ---------------- */
+  /** 行政区搜索：?q=张北 按地名找；?codes=130722,330106 按 adcode 取边界（含 rings） */
+  @Get("regions/areas")
+  async regionAreas(@Query() q: any) {
+    return ok(this.svc.searchAreas(q?.q, q?.codes));
+  }
+
   @Get("regions")
   async regions() {
     return ok(await this.svc.regions());

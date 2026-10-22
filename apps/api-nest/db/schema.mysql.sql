@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS `regions` (
   `center_lng`      DOUBLE NOT NULL,
   `radius_km`       DOUBLE NOT NULL DEFAULT 6,
   `polygon`         TEXT,
+  `admin_codes`     TEXT,                              -- JSON 数组：按行政区设置的 adcode（多边形 = 这些边界的并集）
   `created_at`      VARCHAR(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

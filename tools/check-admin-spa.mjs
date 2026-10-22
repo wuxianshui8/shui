@@ -37,7 +37,8 @@ async function api(method, path, { token, body } = {}) {
   const chunkSrc = regionsChunk.map((f) => readFileSync(new URL("../apps/web-admin/dist/assets/" + f, import.meta.url), "utf8")).join("\n");
   assert(chunkSrc.includes("data-geo-map") && chunkSrc.includes("台湾") && chunkSrc.includes("MultiPolygon"),
     "区域管理页分包内置中国地图底图（" + Math.round(chunkSrc.length / 1024) + " KB 分包，含省级边界）");
-  assert(!/https?:\/\/[^"'\\\s]*tile/i.test(chunkSrc), "底图不依赖在线瓦片（离线可用）");
+  assert(/\{z\}.*\{x\}.*\{y\}/.test(chunkSrc) && chunkSrc.includes("autonavi"),
+    "区域管理页支持在线瓦片底图（{z}/{x}/{y} 模板，默认高德，可用 VITE_TILE_URL 替换）");
 }
 console.log("PC 管理后台验收（Vue3 + Vite + Element Plus）");
 console.log("目标服务：" + BASE + "\n");
@@ -109,6 +110,25 @@ const saved = fenceList.find((r) => r.name === "西湖区围栏验收");
 const savedPoly = saved ? (typeof saved.polygon === "string" ? JSON.parse(saved.polygon) : saved.polygon) : null;
 assert(Array.isArray(savedPoly) && savedPoly.length === 4 && Math.abs(savedPoly[0][0] - 30.45) < 1e-6,
   "区域管理页：回读围栏顶点数与坐标一致（" + (Array.isArray(savedPoly) ? savedPoly.length : 0) + " 点）");
+
+/* 按行政区设置：输入地名 → 选行政区 → 围栏 = 边界并集（多环） */
+const areaHit = await api("GET", "/admin/regions/areas?q=" + encodeURIComponent("张北"), { token });
+const areaList = areaHit.body?.data?.list || [];
+assert(areaHit.status === 200 && areaList[0]?.name === "张北县",
+  "区域管理页：输入地名搜到行政区（" + (areaList[0]?.name || "-") + "，数据集 " + (areaHit.body?.data?.dataset?.count || 0) + " 个）");
+const areaRings = await api("GET", "/admin/regions/areas?codes=130722", { token });
+const ringPts = (areaRings.body?.data?.list?.[0]?.rings || []).flat().length;
+assert(areaRings.status === 200 && ringPts > 50, "区域管理页：按 adcode 取回边界（" + ringPts + " 个顶点）");
+const byAdmin = await api("POST", "/admin/regions", {
+  token,
+  body: { name: "张北县片区验收", adminCodes: ["130722"] },
+});
+assert(byAdmin.status === 200 && (byAdmin.body.data?.adminNames || []).includes("张北县"),
+  "区域管理页：按行政区建成片区（" + ((byAdmin.body.data?.adminNames || []).join("、") || "-") + "）");
+const byAdminPoly = byAdmin.body.data?.polygon;
+const multiRings = typeof byAdminPoly === "string" ? JSON.parse(byAdminPoly) : Array.isArray(byAdminPoly) ? byAdminPoly : [];
+assert(multiRings.length >= 1 && Array.isArray(multiRings[0]) && Array.isArray(multiRings[0][0]),
+  "区域管理页：围栏存成多环多边形（" + multiRings.length + " 环 / " + multiRings.flat().length + " 点）");
 
 /* 关键写操作（与页面按钮一致） */
 const banner = (await api("GET", "/admin/banners", { token })).body.data[0];

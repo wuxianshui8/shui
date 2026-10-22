@@ -4,7 +4,7 @@
 // ============================================================
 import { all, get, run } from "./db.js";
 import { rule } from "./config.js";
-import { distanceFactor, haversineKm, pointInPolygon } from "./geo.js";
+import { distanceFactor, haversineKm, pointInAnyRing, pointInPolygon } from "./geo.js";
 import { applyRate } from "./money.js";
 import { nowIso } from "./ids.js";
 
@@ -141,7 +141,7 @@ export function resolveRegion(lat, lng) {
   for (const r of regions) {
     if (r.polygon) {
       try {
-        if (pointInPolygon(lat, lng, JSON.parse(r.polygon))) return r;
+        if (pointInAnyRing(lat, lng, JSON.parse(r.polygon))) return r;
       } catch {
         /* ignore */
       }

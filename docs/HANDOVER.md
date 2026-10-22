@@ -76,7 +76,7 @@ npm start                      # → http://localhost:4173
 | 备份/恢复回环 | `npm run db:backup` / `db:restore` | 删表后恢复：orders 3、users 12、表 37，巡检 12/12；保留策略 `--keep 2` 剪枝实测正确 |
 | 渠道对账 | `npm run pay:recon -- --self-test` / `--bill <csv>` | 自检 4 类差异全命中；真机账单一致→0 差异，改金额+删行→2 类差异退出码 1 |
 | 混沌演练 | `npm run chaos:drill` | **21 项全绿**：MySQL 挂→health 503 且业务读 400；Redis 挂→业务读仍 200；两者恢复后 200 且可登录，app 无重启 |
-| 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/147 路由**、需求逐条、后台 19 页 + 移动 11 页 |
+| 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **143/148 路由**、需求逐条、后台 19 页 + 移动 11 页 |
 | 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | 全绿（clone 时 12 步；加入单元测试与依赖审计后 **14/14** 本机复跑通过） |
 
 **迁移门禁 `gate-p9` 报「Incorrect integer value / Column cannot be null」时**：几乎都是本地参考实现的库被写脏了。

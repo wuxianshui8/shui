@@ -63,5 +63,7 @@ export function migrate() {
   ensureColumn("teacher_profiles", "id_card_back_url", "TEXT");
   ensureColumn("teacher_profiles", "id_card_name", "TEXT");
   ensureColumn("teacher_profiles", "id_card_verified", "INTEGER NOT NULL DEFAULT 0");
+  // 按行政区设置片区（老库自动补列）
+  ensureColumn("regions", "admin_codes", "TEXT");
 }
 export { DATA_DIR, DB_FILE, ROOT };

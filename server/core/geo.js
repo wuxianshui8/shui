@@ -22,6 +22,21 @@ export function pointInPolygon(lat, lng, polygon) {
   return inside;
 }
 
+/** 围栏可能是单环 [[lat,lng],...] 或多环（按行政区拼出来）[[[lat,lng],...],...] */
+export function ringsOfPolygon(polygon) {
+  if (!Array.isArray(polygon) || !polygon.length) return [];
+  const first = polygon[0];
+  if (!Array.isArray(first) || !first.length) return [];
+  if (typeof first[0] === "number") return [polygon];
+  return polygon.filter((r) => Array.isArray(r) && r.length >= 3);
+}
+
+/** 点是否落在任一环内（多环围栏 = 多个行政区的并集） */
+export function pointInAnyRing(lat, lng, polygon) {
+  for (const ring of ringsOfPolygon(polygon)) if (pointInPolygon(lat, lng, ring)) return true;
+  return false;
+}
+
 /** 距离系数：越近越高，最低保留 0.05 防止为 0 */
 export function distanceFactor(distanceKm, maxRadiusKm, minFactor = 0.05) {
   if (distanceKm == null) return minFactor;

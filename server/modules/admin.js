@@ -12,6 +12,19 @@ import { hashPassword } from "../core/auth.js";
 import { expireApplications } from "./market.js";
 import { paging, pagedResult } from "../core/paging.js";
 import { DEMO_PASSWORD } from "../core/defaults.js";
+import { adminAreasStatus, areasByCodes, fenceFromCodes, searchAreas } from "../core/admin-areas.js";
+
+/** 把 admin_codes 解析成行政区名，列表页显示「按行政区：张北县」 */
+function decorateRegion(r) {
+  let codes = [];
+  try {
+    codes = r.admin_codes ? JSON.parse(r.admin_codes) : [];
+  } catch {
+    codes = [];
+  }
+  if (!Array.isArray(codes) || !codes.length) return { adminCodes: [], adminNames: [] };
+  return { adminCodes: codes, adminNames: areasByCodes(codes).map((a) => a.name) };
+}
 
 function adminOnly(ctx) {
   if (ctx.user.role !== "admin") throw Err.forbidden();
@@ -305,7 +318,8 @@ export function register(router) {
     const pg = paging(ctx, { defaultSize: 200 });
     const total = get("SELECT COUNT(*) AS c FROM demands").c;
     const list = all(
-      `SELECT d.*, u.nickname AS parentName FROM demands d JOIN users u ON u.id = d.parent_id
+      `SELECT d.*, u.nickname AS parentName, r.name AS regionName FROM demands d JOIN users u ON u.id = d.parent_id
+       LEFT JOIN regions r ON r.id = d.region_id
        ORDER BY d.id DESC LIMIT ? OFFSET ?`,
       pg.pageSize, pg.offset
     );
@@ -376,22 +390,58 @@ export function register(router) {
   });
 
   /* ---------------- 区域与代理 ---------------- */
+  /** 行政区搜索：?q=张北 按地名找；?codes=130722,330106 按 adcode 取边界（含 rings） */
+  router.get("/api/admin/regions/areas", (ctx) => {
+    adminOnly(ctx);
+    const codesCsv = String(ctx.query.codes || "").trim();
+    if (codesCsv) {
+      const list = areasByCodes(codesCsv.split(",").map((s) => s.trim()).filter(Boolean)).map((a) => ({
+        code: a.code, name: a.name, short: a.short, level: a.level, parentCode: a.parentCode,
+        center: a.center, points: a.rings.reduce((s, r) => s + r.length, 0), rings: a.rings,
+      }));
+      return ok(ctx.res, { list });
+    }
+    const list = searchAreas(ctx.query.q, 20).map((a) => ({
+      code: a.code, name: a.name, short: a.short, level: a.level, parentCode: a.parentCode,
+      center: a.center, points: a.rings.reduce((s, r) => s + r.length, 0),
+    }));
+    ok(ctx.res, { list, dataset: adminAreasStatus() });
+  });
+
   router.get("/api/admin/regions", (ctx) => {
     adminOnly(ctx);
-    ok(ctx.res, all("SELECT * FROM regions ORDER BY id"));
+    const rows = all("SELECT * FROM regions ORDER BY id");
+    ok(ctx.res, rows.map((r) => ({ ...r, ...decorateRegion(r) })));
   });
 
   router.post("/api/admin/regions", (ctx) => {
     adminOnly(ctx);
     const b = ctx.body;
-    if (!b.name || b.centerLat == null || b.centerLng == null) throw Err.bad("请填写片区名称与中心坐标");
+    if (!b.name) throw Err.bad("请填写片区名称");
+    // 两种设置方式：① adminCodes（按行政区设置，围栏=这些边界的并集）；② polygon（按地图设置）
+    const adminCodes = Array.isArray(b.adminCodes) ? b.adminCodes.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : [];
+    let polygon = b.polygon || null;
+    let centerLat = b.centerLat == null ? 0 : Number(b.centerLat);
+    let centerLng = b.centerLng == null ? 0 : Number(b.centerLng);
+    if (adminCodes.length) {
+      const fence = fenceFromCodes(adminCodes);
+      if (!fence) throw Err.bad("所选行政区不在内置数据集中（可用「按地图设置」手绘，或导入更完整的区划边界）");
+      if (fence.missing.length) throw Err.bad("这些行政区未收录边界：" + fence.missing.join(","));
+      polygon = fence.rings;
+      if (!centerLat) centerLat = fence.center[0];
+      if (!centerLng) centerLng = fence.center[1];
+    } else if (b.centerLat == null || b.centerLng == null) {
+      throw Err.bad("请填写片区名称与中心坐标（或直接选择行政区）");
+    }
     const r = run(
-      "INSERT INTO regions (name, code, center_lat, center_lng, radius_km, polygon, created_at) VALUES (?,?,?,?,?,?,?)",
-      b.name, b.code || "R" + Date.now(), Number(b.centerLat), Number(b.centerLng),
-      Number(b.radiusKm || 6), JSON.stringify(b.polygon || []), nowIso()
+      "INSERT INTO regions (name, code, center_lat, center_lng, radius_km, polygon, admin_codes, created_at) VALUES (?,?,?,?,?,?,?,?)",
+      b.name, b.code || "R" + Date.now(), centerLat, centerLng,
+      Number(b.radiusKm || 6), polygon ? JSON.stringify(polygon) : null,
+      adminCodes.length ? JSON.stringify(adminCodes) : null, nowIso()
     );
     audit(ctx, "admin.region.create", "regions:" + r.id);
-    ok(ctx.res, get("SELECT * FROM regions WHERE id = ?", r.id));
+    const row = get("SELECT * FROM regions WHERE id = ?", r.id);
+    ok(ctx.res, { ...row, ...decorateRegion(row) });
   });
 
   router.get("/api/admin/agents", (ctx) => {

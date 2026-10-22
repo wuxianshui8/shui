@@ -5,7 +5,7 @@
 - 参考实现（`server/` + SQLite + 原生 ESM 前端）的追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md)；两套实现共用同一套 `/api` 契约。
 - 本文件引用的每个 `方法 /api/路径` 都会被 `tools/check-trace-nest.mjs` 与控制器源码比对，**引用了不存在的接口会直接报错**；
   引用的脚本文件缺失同样报错。校验命令：`npm run trace:check`。
-- 接口总表（自动生成、147 路由 / 18 控制器）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
+- 接口总表（自动生成、148 路由 / 18 控制器）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
 - 门禁简称：`e2e §n` = `test/e2e.test.js` 第 n 段；`rules` = `test/rules.test.js`；`sec` = `test/security.test.js`；
   `conc` = `tools/concurrency-mysql.mjs`；`races` = `tools/check-money-races.mjs`；`priv` = `tools/check-privacy-auth.mjs`；
   `hc` = `tools/healthcheck-mysql.mjs`；`admin` = `tools/check-admin-spa.mjs`；`mobile` = `tools/check-mobile-spa.mjs`。
@@ -79,7 +79,7 @@
 | 4.5.3 抢单超时清理 | 定时任务 `expireApplications()` + `POST /api/admin/applications/expire` | e2e §16 |
 | 4.5.3 需求池列表（状态/科目/学段/片区/加急筛选、报名数、家长手机号脱敏）+ 后台「需求池」页 | `GET /api/admin/demands` | `admin`（2 条断言 + 页面分包） |
 | 4.5.4 规则配置中心（15 组，热更新即时生效） | `GET /api/admin/rules`、`PUT /api/admin/rules/:key` | e2e §11、`rules`（50 项） |
-| 4.5.5 片区与电子围栏（后台在中国地图上直接画） | `GET /api/admin/regions`、`POST /api/admin/regions`（`polygon` 顶点数组） | `admin`（新建片区 + 多边形写入后回读顶点数）、`geo`（`tools/check-geo-fence.mjs` 32 项：投影/缩放/点内判定/底图/页面接入） |
+| 4.5.5 片区与电子围栏（后台在中国地图上直接画 / 按行政区选） | `GET /api/admin/regions`、`GET /api/admin/regions/areas`（`?q=地名` 搜索 / `?codes=adcode` 取边界）、`POST /api/admin/regions`（`polygon` 顶点数组 或 `adminCodes` 行政区列表） | `admin`（新建片区 + 多边形写入后回读顶点数 + 按行政区建片区回读多环）、`geo`（`tools/check-geo-fence.mjs` 65 项：Mercator 投影/缩放锚点/点内判定单环多环/瓦片对齐/底图与行政区数据集/页面接入） |
 | 4.5.6 财务：担保台账、支付流水、分账、对账 | `GET /api/admin/finance` | e2e §14、`hc`（12 项不变量） |
 | 4.5.6 提现审核、奖励周结、发票受理 | `POST /api/admin/withdrawals/:id/review`、`POST /api/admin/rewards/settle`、`POST /api/admin/invoices/:id/review` | e2e §8/§10/§17、`races` |
 | 4.5.6 T+N 结算 | 定时任务 `runSettlement()` + `POST /api/admin/settlement/run` | e2e §6、`races`（并发只放款一次） |
@@ -113,7 +113,7 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（45 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（19 页，含需求池/管理员账号/权限矩阵/区域管理地图） | `admin` 42 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（19 页，含需求池/管理员账号/权限矩阵/区域管理地图） | `admin` 46 项 |
 | 6.1 移动端 uni-app | `apps/web-mobile/`（11 页，H5 + 微信小程序双产物，含入驻认证与定位接单） | `mobile` 47 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
@@ -144,9 +144,9 @@
 | 条目 | 交付物 | 验证 |
 | --- | --- | --- |
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
-| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 147 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
+| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 163 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 42 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 32 + verify 15 + hc 12 = **604** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 166 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 46 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 65 + verify 15 + hc 12 = **644** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

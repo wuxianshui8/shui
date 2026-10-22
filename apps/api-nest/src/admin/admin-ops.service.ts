@@ -5,6 +5,7 @@ import { DataSource } from "typeorm";
 import { bad, biz, forbidden, notFound } from "../common/errors";
 import { nowIso } from "../common/reply";
 import { maskPhone } from "../common/geo";
+import { adminAreasStatus, areasByCodes, fenceFromCodes, searchAreas } from "../common/admin-areas";
 import { pagedResult, paging } from "../common/paging";
 import { hashPassword } from "../common/password";
 import { randomCode, randomPassword } from "../common/codes";
@@ -814,20 +815,74 @@ export class AdminOpsService {
   }
 
   /* ---------------- 区域 ---------------- */
+
+  /** 行政区搜索（按地名/简称/adcode），供「按行政区设置」输入框用 */
+  searchAreas(q: string, codesCsv?: string) {
+    if (codesCsv) {
+      const list = areasByCodes(codesCsv.split(",").map((s) => s.trim()).filter(Boolean));
+      return {
+        list: list.map((a) => ({
+          code: a.code, name: a.name, short: a.short, level: a.level, parentCode: a.parentCode,
+          center: a.center, points: a.rings.reduce((s, r) => s + r.length, 0), rings: a.rings,
+        })),
+      };
+    }
+    const list = searchAreas(q, 20);
+    return {
+      list: list.map((a) => ({
+        code: a.code, name: a.name, short: a.short, level: a.level, parentCode: a.parentCode,
+        center: a.center, points: a.rings.reduce((s, r) => s + r.length, 0),
+      })),
+      dataset: adminAreasStatus(),
+    };
+  }
+
   async regions() {
-    return this.ds.query("SELECT * FROM `regions` ORDER BY `id`");
+    const rows = await this.ds.query("SELECT * FROM `regions` ORDER BY `id`");
+    return rows.map((r: any) => ({ ...r, ...this.decorateRegion(r) }));
+  }
+
+  /** 把 admin_codes 解析成行政区名，列表页显示「按行政区：张北县」 */
+  private decorateRegion(r: any) {
+    let codes: number[] = [];
+    try {
+      codes = r.admin_codes ? JSON.parse(r.admin_codes) : [];
+    } catch {
+      codes = [];
+    }
+    if (!Array.isArray(codes) || !codes.length) return { adminCodes: [], adminNames: [] };
+    const areas = areasByCodes(codes);
+    return { adminCodes: codes, adminNames: areas.map((a) => a.name) };
   }
 
   async createRegion(ctx: any, b: any) {
     if (!String(b?.name || "").trim()) throw bad("请填写片区名称");
     const code = String(b.code || "").trim() || "R" + Date.now().toString().slice(-6);
     if (await this.one("SELECT `id` FROM `regions` WHERE `code` = ?", [code])) throw biz("CODE_EXISTS", "片区编码已存在");
+
+    // 两种设置方式：① 传 adminCodes（按行政区设置，围栏=这些边界的并集）；② 传 polygon（按地图设置）
+    const adminCodes: number[] = Array.isArray(b.adminCodes)
+      ? b.adminCodes.map((x: any) => Number(x)).filter((x: number) => Number.isFinite(x))
+      : [];
+    let polygon = b.polygon ?? null;
+    let centerLat = Number(b.centerLat ?? b.lat ?? 0);
+    let centerLng = Number(b.centerLng ?? b.lng ?? 0);
+    if (adminCodes.length) {
+      const fence = fenceFromCodes(adminCodes);
+      if (!fence) throw bad("所选行政区不在内置数据集中（可用「按地图设置」手绘，或导入更完整的区划边界）");
+      if (fence.missing.length) throw bad("这些行政区未收录边界：" + fence.missing.join(","));
+      polygon = fence.rings;
+      if (!Number.isFinite(centerLat) || centerLat === 0) centerLat = fence.center[0];
+      if (!Number.isFinite(centerLng) || centerLng === 0) centerLng = fence.center[1];
+    }
     const r = await this.ds.query(
-      "INSERT INTO `regions` (`name`,`code`,`center_lat`,`center_lng`,`radius_km`,`polygon`,`created_at`) VALUES (?,?,?,?,?,?,?)",
-      [String(b.name).trim(), code, Number(b.centerLat ?? b.lat ?? 0), Number(b.centerLng ?? b.lng ?? 0),
-        Number(b.radiusKm ?? 5), b.polygon ? JSON.stringify(b.polygon) : null, nowIso()],
+      "INSERT INTO `regions` (`name`,`code`,`center_lat`,`center_lng`,`radius_km`,`polygon`,`admin_codes`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
+      [String(b.name).trim(), code, centerLat, centerLng,
+        Number(b.radiusKm ?? 5), polygon ? JSON.stringify(polygon) : null,
+        adminCodes.length ? JSON.stringify(adminCodes) : null, nowIso()],
     );
-    await audit(this.ds, ctx, "admin.region.create", "regions:" + r.insertId, { code });
-    return this.one("SELECT * FROM `regions` WHERE `id` = ?", [r.insertId]);
+    await audit(this.ds, ctx, "admin.region.create", "regions:" + r.insertId, { code, adminCodes });
+    const row = await this.one("SELECT * FROM `regions` WHERE `id` = ?", [r.insertId]);
+    return { ...row, ...this.decorateRegion(row) };
   }
 }

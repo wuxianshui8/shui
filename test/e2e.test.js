@@ -167,6 +167,29 @@ async function loginPassword(phone) {
   assert(farApply.status >= 400 && (farApply.body?.code === "TOO_FAR" || /服务半径/.test(farApply.text)),
     "定位在远处时抢单被拒（超出服务半径）");
 
+  // 按行政区建的片区也要能正确归属（P49）：围栏是多环，点落在任一环内即归属该片区
+  const areaRegion = await api("POST", "/api/admin/regions", {
+    token: adminToken, body: { name: "张北县片区验收", adminCodes: ["130722"] },
+  });
+  assert(areaRegion.status === 200 && (areaRegion.body.data?.adminNames || []).includes("张北县"),
+    "后台按行政区建片区（" + ((areaRegion.body.data?.adminNames || []).join("、") || "-") + "）");
+  const zbCode = await api("POST", "/api/auth/send-code", { body: { phone: "13900008801" } });
+  const zbLogin = await api("POST", "/api/auth/login", { body: { phone: "13900008801", code: zbCode.body.data.devCode } });
+  const zbToken = zbLogin.body.data.token;
+  const zbDemand = await api("POST", "/api/demands", {
+    token: zbToken,
+    body: {
+      stage: "初中", subject: "数学", address: "张北县兴和路 1 号", lat: 41.287, lng: 114.764, budget: 15000,
+      remark: "按行政区片区归属验证",
+    },
+  });
+  assert(zbDemand.status === 200, "新家长在张北县发需求成功");
+  // 归属看「需求落到哪个片区」（用户账号的片区在注册绑定时已定，需求才是按地址判定）
+  const zbAdmin = await api("GET", "/api/admin/demands?page=1&pageSize=50", { token: adminToken });
+  const zbRow = (zbAdmin.body.data?.list || zbAdmin.body.data || []).find((d) => d.id === zbDemand.body.data.id);
+  assert(zbRow?.regionName === "张北县片区验收",
+    "需求按行政区围栏归属到该片区（片区=" + (zbRow?.regionName || "空") + "）");
+
   // 并发抢单：同一教员 20 次并发，只允许 1 次成功
   const grabs = await Promise.all(
     Array.from({ length: 20 }, () => api("POST", "/api/demands/" + demandId + "/apply", { token: teacherToken }))

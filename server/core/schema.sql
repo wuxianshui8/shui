@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS regions (
   center_lat  REAL NOT NULL,
   center_lng  REAL NOT NULL,
   radius_km   REAL NOT NULL DEFAULT 6,
-  polygon     TEXT,                                   -- JSON [[lat,lng],...] 电子围栏
+  polygon     TEXT,                                   -- JSON [[lat,lng],...] 电子围栏（多环：[[[lat,lng],...],...]）
+  admin_codes TEXT,                                   -- JSON 数组：按行政区设置的 adcode
   created_at  TEXT NOT NULL
 );
 

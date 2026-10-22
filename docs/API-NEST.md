@@ -43,11 +43,11 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **147** 个路由，分布在 **18** 个控制器。
+总计 **148** 个路由，分布在 **18** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
-| `admin/admin-ops.controller.ts` | 47 |
+| `admin/admin-ops.controller.ts` | 48 |
 | `teacher/teacher.controller.ts` | 18 |
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
@@ -108,6 +108,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | PUT | `/api/admin/permissions` | admin |  |
 | GET | `/api/admin/regions` | admin |  |
 | POST | `/api/admin/regions` | admin | 200 |
+| GET | `/api/admin/regions/areas` | admin |  |
 | GET | `/api/admin/risks` | admin |  |
 | POST | `/api/admin/risks/:id/handle` | admin | 200 |
 | GET | `/api/admin/rules` | admin |  |
