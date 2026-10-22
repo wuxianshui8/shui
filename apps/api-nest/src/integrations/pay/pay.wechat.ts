@@ -7,6 +7,7 @@ import {
   type PrepayInput,
   type PrepayResult,
   type RefundInput,
+  type RefundNotifyResult,
   type RefundResult,
 } from "./pay.port";
 
@@ -253,6 +254,33 @@ export class WechatPayProvider implements PayProvider {
     };
     const r = await this.request("POST", "/v3/refund/domestic/refunds", payload);
     return { refundId: String(r?.refund_id || ""), status: String(r?.status || "PROCESSING") };
+  }
+
+  /** 退款结果异步回调：与支付回调同一套验签 + 解密（微信事件里 refund_status 区分结果） */
+  async verifyRefundNotify(bodyText: string, headers: Record<string, string | undefined>): Promise<RefundNotifyResult> {
+    verifyNotification(this.cfg, bodyText, headers);
+    let json: any;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      throw new Error("退款回调体不是合法 JSON");
+    }
+    const res = json?.resource;
+    if (!res?.ciphertext) throw new Error("退款回调缺少 resource.ciphertext");
+    const data = JSON.parse(decryptNotificationResource(this.cfg.apiV3Key, res));
+    const refundCents = Number(data?.amount?.refund);
+    if (!data?.out_trade_no || !data?.out_refund_no || !Number.isInteger(refundCents)) {
+      throw new Error("解密后的退款回调缺少 out_trade_no / out_refund_no / amount.refund");
+    }
+    const refundStatus = String(data.refund_status || "UNKNOWN");
+    return {
+      outTradeNo: String(data.out_trade_no),
+      outRefundNo: String(data.out_refund_no),
+      refundId: String(data.refund_id || ""),
+      refundStatus,
+      refundCents,
+      success: refundStatus === "SUCCESS",
+    };
   }
 
   /**

@@ -1,4 +1,4 @@
-import type { NotifyResult, PayProvider, PrepayInput, PrepayResult, RefundInput, RefundResult } from "./pay.port";
+import type { NotifyResult, PayProvider, PrepayInput, PrepayResult, RefundInput, RefundNotifyResult, RefundResult } from "./pay.port";
 
 /**
  * 未接入真实支付渠道时的实现：**只用于本地/自动化**。
@@ -60,5 +60,28 @@ export class MockPayProvider implements PayProvider {
   /** mock 没有真实渠道单，关单是空操作（但要记录，便于门禁断言） */
   async close(outTradeNo: string): Promise<void> {
     this.closed.push(String(outTradeNo));
+  }
+
+  /** 仅解析 `{ out_refund_no, out_trade_no, refund_id, refund_status, amount:{refund,total} }`，无验签 */
+  async verifyRefundNotify(bodyText: string): Promise<RefundNotifyResult> {
+    let json: any;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      throw new Error("mock 退款回调不是合法 JSON");
+    }
+    const refundCents = Number(json?.amount?.refund);
+    if (!json?.out_refund_no || !json?.out_trade_no || !Number.isInteger(refundCents)) {
+      throw new Error("mock 退款回调缺少 out_refund_no / out_trade_no / amount.refund");
+    }
+    const refundStatus = String(json.refund_status || "SUCCESS");
+    return {
+      outTradeNo: String(json.out_trade_no),
+      outRefundNo: String(json.out_refund_no),
+      refundId: String(json.refund_id || "mock_" + json.out_refund_no),
+      refundStatus,
+      refundCents,
+      success: refundStatus === "SUCCESS",
+    };
   }
 }

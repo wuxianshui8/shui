@@ -354,3 +354,69 @@ test("WechatPayProvider.close：已关闭/已支付/不存在视为幂等成功�
   const p2 = new WechatPayProvider(CFG, fakeFetch([{ ok: false, status: 500, body: { code: "SYSTEM_ERROR", message: "系统异常" } }], []));
   await assert.rejects(() => p2.close("JJ1"), /SYSTEM_ERROR/);
 });
+
+
+/* ---------------- 退款结果回调 ---------------- */
+
+const REFUND_PLAIN = {
+  out_trade_no: "JJ202610220001",
+  out_refund_no: "RFJJ202610220001",
+  refund_id: "5030000001",
+  refund_status: "SUCCESS",
+  amount: { refund: 16400, total: 16400 },
+};
+
+function refundEnvelope(plain = REFUND_PLAIN, status) {
+  const body = status ? { ...plain, refund_status: status } : plain;
+  return JSON.stringify({
+    id: "evt-refund",
+    event_type: "REFUND.SUCCESS",
+    resource: { algorithm: "AEAD_AES_256_GCM", ciphertext: encryptResource(body, { nonce: NONCE, aad: AAD }), nonce: NONCE, associated_data: AAD },
+  });
+}
+
+test("MockPayProvider.verifyRefundNotify：解析退款字段与状态", async () => {
+  const p = new MockPayProvider();
+  const r = await p.verifyRefundNotify(JSON.stringify(REFUND_PLAIN));
+  assert.equal(r.outTradeNo, REFUND_PLAIN.out_trade_no);
+  assert.equal(r.refundId, REFUND_PLAIN.refund_id);
+  assert.equal(r.refundCents, 16400);
+  assert.equal(r.success, true);
+
+  const pending = await p.verifyRefundNotify(JSON.stringify({ ...REFUND_PLAIN, refund_status: "PROCESSING" }));
+  assert.equal(pending.success, false);
+
+  await assert.rejects(() => p.verifyRefundNotify("oops"), /不是合法 JSON/);
+  await assert.rejects(() => p.verifyRefundNotify(JSON.stringify({ out_trade_no: "x" })), /缺少 out_refund_no/);
+});
+
+test("WechatPayProvider.verifyRefundNotify：验签 + 解密后返回退款结果", async () => {
+  const body = refundEnvelope();
+  const p = new WechatPayProvider(CFG, fakeFetch([{ body: {} }], []));
+  const r = await p.verifyRefundNotify(body, signedHeaders(body));
+  assert.deepEqual(r, {
+    outTradeNo: "JJ202610220001",
+    outRefundNo: "RFJJ202610220001",
+    refundId: "5030000001",
+    refundStatus: "SUCCESS",
+    refundCents: 16400,
+    success: true,
+  });
+});
+
+test("WechatPayProvider.verifyRefundNotify：改包/未签名/异常状态 全部按规定处理", async () => {
+  const body = refundEnvelope();
+  const p = new WechatPayProvider(CFG, fakeFetch([{ body: {} }], []));
+  await assert.rejects(() => p.verifyRefundNotify(body, {}), /缺少 Wechatpay/);
+  await assert.rejects(() => p.verifyRefundNotify(body + " ", signedHeaders(body)), /验签失败/);
+
+  const abnormal = refundEnvelope(REFUND_PLAIN, "ABNORMAL");
+  const r = await p.verifyRefundNotify(abnormal, signedHeaders(abnormal));
+  assert.equal(r.refundStatus, "ABNORMAL");
+  assert.equal(r.success, false, "非 SUCCESS 一律视为未成功");
+
+  // 缺 resource / 非 JSON 也要明确报错，而不是抛 TypeError
+  const noRes = JSON.stringify({ id: "e", event_type: "REFUND.SUCCESS" });
+  await assert.rejects(() => p.verifyRefundNotify(noRes, signedHeaders(noRes)), /resource\.ciphertext/);
+  await assert.rejects(() => p.verifyRefundNotify("not-json", signedHeaders("not-json")), /不是合法 JSON/);
+});

@@ -50,6 +50,17 @@ export interface RefundResult {
   status: string;
 }
 
+export interface RefundNotifyResult {
+  outTradeNo: string;
+  outRefundNo: string;
+  refundId: string;
+  /** 渠道退款状态：SUCCESS / CLOSED / ABNORMAL … */
+  refundStatus: string;
+  /** 本次实际退款金额（分） */
+  refundCents: number;
+  success: boolean;
+}
+
 export interface PayProvider {
   readonly name: string;
   createPrepay(input: PrepayInput): Promise<PrepayResult>;
@@ -58,6 +69,8 @@ export interface PayProvider {
   refund(input: RefundInput): Promise<RefundResult>;
   /** 关闭未支付的渠道单（超时关单时调用；已支付/已关闭的重复关闭应当幂等，不抛错） */
   close(outTradeNo: string): Promise<void>;
+  /** 退款结果异步回调：验签失败必须抛错 */
+  verifyRefundNotify(bodyText: string, headers: Record<string, string | undefined>): Promise<RefundNotifyResult>;
 }
 
 /** 环境变量里的 PEM 常用 `\n` 转义写法，这里统一还原，避免密钥解析失败 */

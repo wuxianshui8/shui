@@ -115,6 +115,21 @@ function buildNotifyBody(outTradeNo, amountCents, state = "SUCCESS", txnId = "42
   });
 }
 
+function buildRefundNotifyBody(outTradeNo, outRefundNo, refundCents, totalCents, status = "SUCCESS") {
+  const plain = {
+    out_trade_no: outTradeNo,
+    out_refund_no: outRefundNo,
+    refund_id: "RF" + String(Date.now()).slice(-8),
+    refund_status: status,
+    amount: { refund: refundCents, total: totalCents },
+  };
+  return JSON.stringify({
+    id: "evt-refund-" + Date.now(),
+    event_type: "REFUND." + status,
+    resource: { algorithm: "AEAD_AES_256_GCM", ...encryptResource(plain) },
+  });
+}
+
 const portOpen = (p) =>
   new Promise((res) => {
     const s = net.connect({ host: "127.0.0.1", port: p }, () => {
@@ -269,6 +284,23 @@ async function main() {
   const afterApprove = (await api("GET", "/api/orders/" + o1.id, { token })).body?.data;
   ok("渠道失败后订单仍为 refunding", afterApprove?.status === "refunding", "status=" + afterApprove?.status);
   ok("渠道失败后未写入退款金额", Number(afterApprove?.refundAmount || 0) === 0, "refundAmount=" + afterApprove?.refundAmount);
+
+  /* --- 退款结果异步回调：把「受理中」的退款收敛成终态 --- */
+  const paid1 = Number(o1.amount) + Number(o1.urgent_fee || 0);
+  const rfBody = buildRefundNotifyBody(o1.orderNo, "RF" + o1.orderNo, paid1, paid1, "SUCCESS");
+
+  const rfUnsigned = await postNotify(rfBody, {});
+  ok("未签名的退款回调被拒绝", rfUnsigned.status >= 400, "HTTP " + rfUnsigned.status);
+
+  const rfOk = await (await fetch(BASE + "/api/pay/wechat/refund-notify", { method: "POST", headers: { "content-type": "application/json", ...signNotification(rfBody) }, body: rfBody })).json();
+  ok("退款回调返回 SUCCESS", rfOk?.code === "SUCCESS", JSON.stringify(rfOk));
+  const afterRefund = (await api("GET", "/api/orders/" + o1.id, { token })).body?.data;
+  ok("退款回调后订单转为 refunded", afterRefund?.status === "refunded", "status=" + afterRefund?.status);
+  ok("退款金额已写入且等于实付", Number(afterRefund?.refundAmount) === paid1, "refundAmount=" + afterRefund?.refundAmount + " / 实付 " + paid1);
+
+  const rfAgain = await (await fetch(BASE + "/api/pay/wechat/refund-notify", { method: "POST", headers: { "content-type": "application/json", ...signNotification(rfBody) }, body: rfBody })).json();
+  const afterAgain = (await api("GET", "/api/orders/" + o1.id, { token })).body?.data;
+  ok("重复退款回调用幂等（金额不变）", rfAgain?.code === "SUCCESS" && Number(afterAgain?.refundAmount) === paid1, "refundAmount=" + afterAgain?.refundAmount);
 
   stopServer();
   console.log("");

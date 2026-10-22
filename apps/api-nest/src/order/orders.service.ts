@@ -375,6 +375,66 @@ export class OrdersService {
   }
 
   /**
+   * 渠道退款结果回调（A2）：把「受理中」的退款收敛成终态，不依赖人工重试。
+   * - SUCCESS：订单 → `refunded`、担保出账、退款流水置 success（有 pending 流水就改写它，避免重复出账）
+   * - 非 SUCCESS：仅把 pending 流水置 failed 并通知家长人工跟进，订单保持 `refunding`
+   */
+  async settleRefundNotify(rawBody: string, headers: Record<string, string | undefined>) {
+    const provider = getPayProvider();
+    const r = await provider.verifyRefundNotify(rawBody, headers);
+
+    if (!r.success) {
+      const o0 = (await this.ds.query("SELECT * FROM `orders` WHERE `order_no` = ?", [r.outTradeNo]))[0];
+      if (o0) {
+        await this.ds.query("UPDATE `payments` SET `status` = 'failed' WHERE `order_id` = ? AND `type` = 'refund' AND `status` = 'pending'", [o0.id]);
+        await notify(this.ds, Number(o0.parent_id), "退款未成功", "订单 " + o0.order_no + " 渠道退款状态：" + r.refundStatus + "，平台将人工跟进", "payment");
+        await audit(this.ds, { user: { uid: 0, role: "system" } }, "order.refund.abnormal", "orders:" + o0.id, { refundStatus: r.refundStatus, refundId: r.refundId });
+      }
+      return { ignored: true, refundStatus: r.refundStatus, outTradeNo: r.outTradeNo };
+    }
+
+    return this.ds.transaction(async (m) => {
+      const o = (await m.query("SELECT * FROM `orders` WHERE `order_no` = ? FOR UPDATE", [r.outTradeNo]))[0];
+      if (!o) throw new Error("退款回调对应的订单不存在：" + r.outTradeNo);
+      // 幂等：渠道会重投同一退款回调
+      if (o.status === "refunded") return { idempotent: true, orderId: Number(o.id) };
+      if (o.status !== "refunding") return { ignored: true, status: o.status, orderId: Number(o.id) };
+
+      const amount = Number(r.refundCents);
+      const pending = (await m.query("SELECT * FROM `payments` WHERE `order_id` = ? AND `type` = 'refund' AND `status` = 'pending' FOR UPDATE", [o.id]))[0];
+      if (pending && Number(pending.amount) !== amount) {
+        throw new Error("退款金额与流水不一致：渠道 " + amount + " / 流水 " + pending.amount);
+      }
+      const upd = await m.query(
+        "UPDATE `orders` SET `status` = 'refunded', `refund_amount` = ?, `cancel_by` = 'admin', `updated_at` = ? WHERE `id` = ? AND `status` = 'refunding'",
+        [amount, nowIso(), o.id],
+      );
+      if (!Number(upd?.affectedRows ?? 1)) throw biz("BAD_STATUS", "订单状态已变更，请刷新");
+      if (pending) {
+        await m.query("UPDATE `payments` SET `trade_no` = ?, `status` = 'success' WHERE `id` = ? AND `status` = 'pending'", [
+          r.refundId || r.outRefundNo,
+          pending.id,
+        ]);
+      } else {
+        await m.query(
+          "INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
+          [o.id, o.parent_id, "refund", amount, provider.name, r.refundId || "REFUND:" + r.outRefundNo, "success", nowIso()],
+        );
+      }
+      await escrowMove(m, Number(o.id), "out", amount, "渠道退款回调入账 " + o.order_no);
+      await notify(m, Number(o.parent_id), "退款已到账", "订单 " + o.order_no + " 退款 ¥" + (amount / 100).toFixed(2) + " 已原路退回", "payment");
+      await notify(m, Number(o.teacher_id), "订单已退款", "订单 " + o.order_no + " 平台已完成退款", "order");
+      await audit(m, { user: { uid: 0, role: "system" } }, "order.refund.settled", "orders:" + o.id, {
+        amount,
+        refundId: r.refundId,
+        refundStatus: r.refundStatus,
+      });
+      const fresh = (await m.query("SELECT * FROM `orders` WHERE `id` = ?", [o.id]))[0];
+      return { settled: true, orderId: Number(o.id), order: this.view(fresh, "parent") };
+    });
+  }
+
+  /**
    * 结算入账（mock 即时支付与真实通道回调共用，保证两条路径账本完全一致）：
    * 写支付流水 → 担保台账入账 → 分账 → 推进订单状态 → 业务员提成 → 站内通知 → 审计。
    */

@@ -41,4 +41,37 @@ export class PayNotifyController {
       throw new HttpException({ code: "FAIL", message: String(e?.message || "回调处理失败").slice(0, 200) }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  /** 微信退款结果回调：与支付回调同一套验签/解密规则，只是结算逻辑不同 */
+  @Public()
+  @Post("wechat/refund-notify")
+  @HttpCode(200)
+  async wechatRefundNotify(@Req() req: any) {
+    const { rawBody, headers } = this.collect(req);
+    try {
+      const r: any = await this.orders.settleRefundNotify(rawBody, headers);
+      if (r?.idempotent) this.log.log("退款回调重复投递，已幂等忽略：" + r.orderId);
+      else if (r?.ignored) this.log.log("退款回调非成功状态（" + (r.refundStatus || r.status) + "），不入账：" + r.outTradeNo);
+      else if (r?.settled) this.log.log("退款回调入账成功：订单 " + r.orderId);
+      return { code: "SUCCESS", message: "成功" };
+    } catch (e: any) {
+      this.log.error("退款回调处理失败：" + (e?.message || e));
+      throw new HttpException({ code: "FAIL", message: String(e?.message || "回调处理失败").slice(0, 200) }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** 取「与签名逐字节一致」的原文与 wechatpay-* 头部 */
+  private collect(req: any): { rawBody: string; headers: Record<string, string | undefined> } {
+    const rawBody: string = req.rawBody
+      ? req.rawBody.toString("utf8")
+      : typeof req.body === "string"
+        ? req.body
+        : JSON.stringify(req.body ?? {});
+    const headers: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(req.headers || {})) {
+      const key = k.toLowerCase();
+      if (key.startsWith("wechatpay-")) headers[key] = Array.isArray(v) ? String(v[0]) : String(v);
+    }
+    return { rawBody, headers };
+  }
 }
