@@ -254,11 +254,30 @@ export function register(router) {
       }
     }
     if (!allowed) throw Err.forbidden("无权查看该需求");
+    // 报名优先级「读时计算」：按当前规则重算，而不是报名当时的快照（与 NestJS 版一致）
     const apps = all(
       `SELECT a.*, u.nickname, u.avatar FROM applications a JOIN users u ON u.id = a.teacher_id
        WHERE a.demand_id = ? ORDER BY a.status = 'confirmed' DESC, a.priority DESC`,
       d.id
-    ).map((a) => ({ ...a, teacher: teacherCard(a.teacher_id) }));
+    ).map((a) => {
+      const tp = get("SELECT * FROM teacher_profiles WHERE user_id = ?", a.teacher_id);
+      const snapshot = Number(a.priority);
+      const live = tp
+        ? dispatchPriority({
+            distanceKm: Number(a.distance_km),
+            levelWeight: levelInfo(tp.level).weight,
+            responseFactor: tp.response_factor,
+            urgent: !!d.urgent,
+            urgentFee: Number(d.urgent_fee),
+          })
+        : snapshot;
+      return { ...a, priority: live, prioritySnapshot: snapshot, teacher: teacherCard(a.teacher_id) };
+    });
+    apps.sort((x, y) => {
+      const cx = x.status === "confirmed" ? 1 : 0;
+      const cy = y.status === "confirmed" ? 1 : 0;
+      return cy - cx || Number(y.priority) - Number(x.priority);
+    });
     ok(ctx.res, { ...d, times: d.times ? JSON.parse(d.times) : [], applications: apps });
   });
 

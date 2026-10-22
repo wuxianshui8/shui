@@ -127,6 +127,22 @@ async function loginPassword(phone) {
   assert(cheap != null && pricey != null && pricey > cheap,
     "加急费越高派单优先级越高（¥50=" + cheap + " < ¥200=" + pricey + "）");
 
+  // 报名优先级「读时计算」（P45）：家长把加急费提高后，详情里读到的优先级应立刻跟着变，快照保留备查
+  const liveDemand = (await api("POST", "/api/demands", {
+    token: parentToken, body: { ...urgentBody, remark: "读时计算", urgent: true, urgentFee: 2000 },
+  })).body.data;
+  const liveApply = await api("POST", "/api/demands/" + liveDemand.id + "/apply", { token: teacherToken });
+  const snapshotPriority = liveApply.body.data?.priority;
+  await api("PUT", "/api/demands/" + liveDemand.id, {
+    token: parentToken, body: { urgent: true, urgentFee: 20000 },
+  });
+  const liveDetail = await api("GET", "/api/demands/" + liveDemand.id, { token: parentToken });
+  const liveApp = (liveDetail.body.data?.applications || [])[0];
+  assert(liveApp && liveApp.prioritySnapshot === snapshotPriority,
+    "报名快照保留（" + liveApp?.prioritySnapshot + "）");
+  assert(liveApp && liveApp.priority > liveApp.prioritySnapshot,
+    "加急费提高后读到的优先级立刻变大（" + liveApp?.prioritySnapshot + " → " + liveApp?.priority + "）");
+
   /* ---------- 3. 教员端抢单 + 并发 ---------- */
   section("3. 教员端：抢单并发与派单规则");
   const nearby = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });

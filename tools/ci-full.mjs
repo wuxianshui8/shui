@@ -27,7 +27,7 @@ const STEPS = [
   { name: "静态：工作流 lint", cmd: ["node", "tools/check-workflow-lint.mjs"] },
   { name: "静态：工作流证据", cmd: ["node", "tools/check-workflow-proof.mjs"] },
   { name: "P1 verify-nest（15）", cmd: ["node", "tools/verify-nest.mjs"] },
-  { name: "e2e 全套（157）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SECTION: "20" } },
+  { name: "e2e 全套（159）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SECTION: "20" } },
   { name: "security（53）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "test/security.test.js" } },
   { name: "rules（50）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "test/rules.test.js" } },
 ];

@@ -116,7 +116,55 @@ export class DemandsService {
       "SELECT a.*, u.nickname, u.avatar FROM `applications` a JOIN `users` u ON u.id = a.teacher_id WHERE a.demand_id = ? ORDER BY a.status = 'confirmed' DESC, a.priority DESC",
       [d.id],
     );
-    return { ...d, times: d.times ? JSON.parse(d.times) : [], applications: apps };
+    // 报名优先级「读时计算」：按当前规则（教员的等级权重/响应系数 + 需求此刻的加急费）重算，
+    // 而不是用报名当时的快照 —— 否则运营调完派单规则，家长看到的排序还是旧的。
+    const withLivePriority = await this.applyLivePriority(d, apps);
+    return { ...d, times: d.times ? JSON.parse(d.times) : [], applications: withLivePriority };
+  }
+
+  /**
+   * 给一组报名记录补上「此刻的优先级」：
+   * - priority = 按当前规则重算的值（家长/管理员看到的排序依据）
+   * - prioritySnapshot = 报名当时落库的值（保留，便于对账"当时为什么排这个位置"）
+   * - 教员资料缺失时回落到快照，不让一条脏数据把整个列表打挂
+   */
+  private async applyLivePriority(d: any, apps: any[]): Promise<any[]> {
+    if (!apps.length) return apps;
+    const teacherIds = [...new Set(apps.map((a) => Number(a.teacher_id)))];
+    const rows = await this.ds.query(
+      "SELECT `user_id`, `level`, `response_factor` FROM `teacher_profiles` WHERE `user_id` IN (" +
+        teacherIds.map(() => "?").join(",") + ")",
+      teacherIds,
+    );
+    const byTeacher = new Map(rows.map((r: any) => [Number(r.user_id), r]));
+    const levels = (await this.rules.get("teacher_levels")) as any[];
+    const weightOf = (level: any) => {
+      const lv = levels.find((l) => l.level === level);
+      return Number(lv?.weight ?? 1) || 1;
+    };
+    const out = [];
+    for (const a of apps) {
+      const tp: any = byTeacher.get(Number(a.teacher_id));
+      const snapshot = Number(a.priority);
+      let live = snapshot;
+      if (tp) {
+        live = await this.engine.dispatchPriority({
+          distanceKm: Number(a.distance_km),
+          levelWeight: weightOf(tp.level),
+          responseFactor: Number(tp.response_factor),
+          urgent: !!d.urgent,
+          urgentFee: Number(d.urgent_fee),
+        });
+      }
+      out.push({ ...a, priority: live, prioritySnapshot: snapshot });
+    }
+    // 已确认的排最前，其余按实时优先级降序（与原来的排序语义一致）
+    out.sort((x, y) => {
+      const cx = x.status === "confirmed" ? 1 : 0;
+      const cy = y.status === "confirmed" ? 1 : 0;
+      return cy - cx || Number(y.priority) - Number(x.priority);
+    });
+    return out;
   }
 
   async update(parentId: number, id: number, b: any) {

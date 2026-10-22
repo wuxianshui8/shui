@@ -146,7 +146,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
 | concurrency | 23/23 | | |
 
-> `e2e`（157）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
+> `e2e`（159）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
 > 而镜像内 `NODE_ENV=production` 会永久关闭该回显（安全设计）。这两条由 CI 的主机栈覆盖（run #5 全绿）。
 > 容器栈上的 9 个套件已足以证明「镜像里的 API + MySQL + Redis 组合与业务规则等价」。
 
