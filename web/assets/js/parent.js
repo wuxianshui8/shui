@@ -425,7 +425,7 @@ function timesBlockHtml(times = [{}]) {
     '<button type="button" class="btn btn-sm btn-ghost mt8" data-addtime>＋ 添加时间段</button>';
 }
 
-function demandFormHtml({ dict, addrs, urgentFee, mode = "quick", defaultId = null }) {
+function demandFormHtml({ dict, addrs, urgentFee, urgentMaxFee = null, mode = "quick", defaultId = null }) {
   const stages = (dict.stages || []).map((s) => '<option value="' + esc(s) + '">' + esc(s) + "</option>").join("");
   const subjects = (dict.subjects || []).map((s) => '<option value="' + esc(s) + '">' + esc(s) + "</option>").join("");
   const chosen = addrs.find((a) => String(a.id) === String(defaultId)) || addrs.find((a) => a.is_default) || addrs[0] || null;
@@ -456,9 +456,17 @@ function demandFormHtml({ dict, addrs, urgentFee, mode = "quick", defaultId = nu
     "</div>" +
     '<div class="field"><label for="d-remark">特殊要求</label>' +
     '<textarea class="textarea" id="d-remark" name="remark" placeholder="孩子年级、薄弱知识点、希望的教学风格等"></textarea></div>' +
-    '<div class="card flat tight row between" style="margin-bottom:14px">' +
-    '<div><div class="bold small">加急需求</div><div class="tiny faint">优先推送附近教员，加急费 ' + money(urgentFee) + "</div></div>" +
+    '<div class="card flat tight" style="margin-bottom:14px">' +
+    '<div class="row between">' +
+    '<div><div class="bold small">加急需求</div><div class="tiny faint">优先推送附近教员，加急费最低 ' + money(urgentFee) + "，可自己加价</div></div>" +
     '<button type="button" class="switch" data-urgent role="switch" aria-checked="false" aria-label="加急需求"></button></div>' +
+    '<div class="field" data-urgent-fee-box style="display:none;margin:12px 0 0">' +
+    '<label for="d-urgent-fee">加急费（元）</label>' +
+    '<input class="input" id="d-urgent-fee" name="urgentFeeYuan" type="number" inputmode="decimal" step="0.01" ' +
+    'min="' + (urgentFee / 100) + '"' + (urgentMaxFee ? ' max="' + (urgentMaxFee / 100) + '"' : "") +
+    ' value="' + (urgentFee / 100).toFixed(2) + '">' +
+    '<div class="form-hint">可填 ' + money(urgentFee) + (urgentMaxFee ? " ~ " + money(urgentMaxFee) : "") +
+    "；加急费会连同课时费一起计入订单实付金额。</div></div></div>" +
     (mode === "full"
       ? '<div class="field-row"><div class="field"><label for="d-lat">纬度</label>' +
         '<input class="input" id="d-lat" name="lat" value="' + DEFAULT_LAT + '" inputmode="decimal"></div>' +
@@ -489,7 +497,11 @@ function bindDemandForm(root, { mode, addrs, onPublished }) {
     const urgent = e.target.closest("[data-urgent]");
     if (urgent) {
       urgent.classList.toggle("on");
-      urgent.setAttribute("aria-checked", urgent.classList.contains("on") ? "true" : "false");
+      const on = urgent.classList.contains("on");
+      urgent.setAttribute("aria-checked", on ? "true" : "false");
+      // 加急费输入框只在开启加急时出现，开关关掉不该留下一个可填的金额
+      const feeBox = form.querySelector("[data-urgent-fee-box]");
+      if (feeBox) feeBox.style.display = on ? "" : "none";
       return;
     }
     if (e.target.closest("[data-fillcoord]")) {
@@ -574,6 +586,18 @@ function readDemandPayload(form, { mode, addrs }) {
       addressId = a.id;
     }
   }
+  const urgent = isOn(form.querySelector("[data-urgent]"));
+  let urgentFee = 0;
+  if (urgent) {
+    const feeInput = form.querySelector("#d-urgent-fee");
+    const yuan = Number(String(d.urgentFeeYuan ?? "").trim() || (feeInput ? feeInput.value : 0));
+    if (!(yuan > 0)) throw new Error("请填写加急费（元）");
+    const min = Number(feeInput?.min || 0);
+    const max = Number(feeInput?.max || 0);
+    if (min && yuan < min) throw new Error("加急费不能低于 " + money(cents(min)));
+    if (max && yuan > max) throw new Error("加急费最高 " + money(cents(max)));
+    urgentFee = cents(yuan);
+  }
   return {
     stage: d.stage,
     subject: d.subject,
@@ -583,7 +607,8 @@ function readDemandPayload(form, { mode, addrs }) {
     lng,
     budget: cents(d.budget),
     remark: String(d.remark || "").trim(),
-    urgent: isOn(form.querySelector("[data-urgent]")),
+    urgent,
+    urgentFee,
     times: rows,
     genderPref: d.genderPref || "",
     addressId,
@@ -774,6 +799,9 @@ async function homeView({ query }) {
   const teachers = data.teachers || [];
   const ongoing = (data.stats && data.stats.ongoingOrders) || 0;
   const urgentFee = data.urgentFee != null ? data.urgentFee : ((rules && rules.urgent && rules.urgent.fee) || 2000);
+  const urgentMaxFee = data.urgentMaxFee != null
+    ? data.urgentMaxFee
+    : Math.max(urgentFee, (rules && rules.urgent && rules.urgent.max_fee) || urgentFee * 10);
 
   const tabSwitch = '<div class="segmented mb16">' +
     '<button class="' + (tab === "form" ? "on" : "") + '" data-go="/?tab=form">我要找老师</button>' +
@@ -793,7 +821,7 @@ async function homeView({ query }) {
   const formTab =
     '<div class="card"><div class="card-title"><h3>发布家教需求</h3>' +
     '<span class="more" data-go="/demand" role="link" tabindex="0">完整表单 ›</span></div>' +
-    demandFormHtml({ dict, addrs, urgentFee, mode: "quick", defaultId: data.defaultAddress && data.defaultAddress.id }) +
+    demandFormHtml({ dict, addrs, urgentFee, urgentMaxFee, mode: "quick", defaultId: data.defaultAddress && data.defaultAddress.id }) +
     "</div>" +
     couponStrip +
     (ongoingCard || "") +
@@ -1128,9 +1156,10 @@ async function demandPage() {
   ]);
   const rules = await getRules().catch(() => null);
   const urgentFee = (rules && rules.urgent && rules.urgent.fee) || 2000;
+  const urgentMaxFee = Math.max(urgentFee, (rules && rules.urgent && rules.urgent.max_fee) || urgentFee * 10);
   setBody(
     '<div class="card"><div class="card-title"><h3>发布家教需求</h3><span class="more">填写后附近教员可抢单</span></div>' +
-    demandFormHtml({ dict, addrs, urgentFee, mode: "full", defaultId: (addrs.find((a) => a.is_default) || addrs[0] || {}).id }) +
+    demandFormHtml({ dict, addrs, urgentFee, urgentMaxFee, mode: "full", defaultId: (addrs.find((a) => a.is_default) || addrs[0] || {}).id }) +
     "</div>" +
     '<div class="section-title"><span class="bar"></span>我的需求（' + (mine || []).length + "）</div>" +
     demandListHtml(mine)

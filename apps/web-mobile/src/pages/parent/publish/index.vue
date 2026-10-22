@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 
 const form = reactive({
   stage: "初中",
@@ -9,13 +9,58 @@ const form = reactive({
   lng: 120.133,
   budget: 150,
   urgent: false,
+  urgentFeeYuan: "20",
   remark: "",
 });
 const submitting = ref(false);
 const STAGES = ["小学", "初中", "高中"];
 const SUBJECTS = ["数学", "语文", "英语", "物理", "化学"];
 
+/** 平台配置的加急费边界（元）：最低 = 标准价，最高 = 规则上限 */
+const urgentMinYuan = ref(20);
+const urgentMaxYuan = ref(200);
+
+function req(method, path, body) {
+  return new Promise((resolve) => {
+    uni.request({
+      url: "/api" + path,
+      method,
+      data: body || {},
+      header: { Authorization: "Bearer " + uni.getStorageSync("token"), "Content-Type": "application/json" },
+      success: (res) => resolve(res.data && res.data.code === 0 ? res.data.data : null),
+      fail: () => resolve(null),
+    });
+  });
+}
+
+onMounted(async () => {
+  const home = await req("GET", `/parent/home?lat=${form.lat}&lng=${form.lng}`);
+  if (home && home.urgentFee != null) {
+    urgentMinYuan.value = Number(home.urgentFee) / 100;
+    urgentMaxYuan.value = Number(home.urgentMaxFee || home.urgentFee * 10) / 100;
+    form.urgentFeeYuan = urgentMinYuan.value.toFixed(2);
+  }
+});
+
+function toggleUrgent(e) {
+  form.urgent = e.detail.value;
+  // 打开加急时把金额重置为平台标准价，避免上次清空后带着空值提交
+  if (form.urgent && !(Number(form.urgentFeeYuan) > 0)) form.urgentFeeYuan = urgentMinYuan.value.toFixed(2);
+}
+
 async function submit() {
+  let urgentFee = 0;
+  if (form.urgent) {
+    const yuan = Number(form.urgentFeeYuan);
+    if (!(yuan > 0)) return uni.showToast({ title: "请填写加急费（元）", icon: "none" });
+    if (yuan < urgentMinYuan.value) {
+      return uni.showToast({ title: `加急费不能低于 ¥${urgentMinYuan.value.toFixed(2)}`, icon: "none" });
+    }
+    if (yuan > urgentMaxYuan.value) {
+      return uni.showToast({ title: `加急费最高 ¥${urgentMaxYuan.value.toFixed(2)}`, icon: "none" });
+    }
+    urgentFee = Math.round(yuan * 100);
+  }
   submitting.value = true;
   const body = {
     stage: form.stage,
@@ -25,6 +70,7 @@ async function submit() {
     lng: Number(form.lng),
     budget: Math.round(Number(form.budget) * 100),
     urgent: form.urgent,
+    urgentFee,
     remark: form.remark,
   };
   uni.request({
@@ -82,9 +128,16 @@ async function submit() {
       <view class="muted" style="margin-bottom: 10rpx">课时预算（元）</view>
       <input v-model="form.budget" class="input" type="digit" placeholder="如 150" />
 
-      <view class="row">
-        <view>加急派单（+¥20，优先推送）</view>
-        <switch :checked="form.urgent" @change="form.urgent = $event.detail.value" />
+      <view class="row" style="margin: 20rpx 0 0">
+        <view>加急派单（优先推送附近教员）</view>
+        <switch :checked="form.urgent" @change="toggleUrgent" />
+      </view>
+      <view v-if="form.urgent" style="margin-top: 16rpx">
+        <view class="muted" style="margin-bottom: 10rpx">
+          加急费（元）· 最低 ¥{{ urgentMinYuan.toFixed(2) }}，最高 ¥{{ urgentMaxYuan.toFixed(2) }}
+        </view>
+        <input v-model="form.urgentFeeYuan" class="input" type="digit" placeholder="如 20" />
+        <view class="muted" style="margin-top: 8rpx">加急费会连同课时费一起计入订单实付金额。</view>
       </view>
 
       <view class="muted" style="margin: 20rpx 0 10rpx">备注</view>

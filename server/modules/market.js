@@ -13,6 +13,26 @@ import {
 import { haversineKm, maskPhone } from "../core/geo.js";
 import { creditInfo, reviewsOfTeacher, teacherCard, userBrief, orderView, orderViews } from "../core/present.js";
 import { createOrder } from "./orders.js";
+/**
+ * 加急费：家长可自填（加价买优先推送），但仍要有护栏。
+ * - 规则 urgent.fee = 平台标准价，也是最低价；不传金额就按它（保持老行为）
+ * - 规则 urgent.max_fee = 上限（缺省回落到 10 倍标准价），防手滑输成天价
+ * - 不开加急一律 0
+ */
+function urgentFeeOf(urgent, input) {
+  if (!urgent) return 0;
+  const cfg = rule("urgent") || {};
+  const base = Math.max(0, Math.round(Number(cfg.fee) || 0));
+  const capCfg = Math.round(Number(cfg.max_fee) || 0);
+  const cap = Math.max(base, capCfg > 0 ? capCfg : base * 10);
+  if (input === undefined || input === null || input === "") return base;
+  const n = Math.round(Number(input));
+  if (!Number.isFinite(n) || n <= 0) throw Err.bad("加急费金额不正确");
+  if (n < base) throw Err.bad(`加急费不能低于平台标准 ¥${(base / 100).toFixed(2)}`);
+  if (n > cap) throw Err.bad(`加急费最高 ¥${(cap / 100).toFixed(2)}`);
+  return n;
+}
+
 
 function coords(ctx) {
   const lat = Number(ctx.query.lat ?? ctx.body.lat);
@@ -145,6 +165,9 @@ export function register(router) {
       credit: creditInfo(ctx.user.id),
       compliance: rule("platforms").compliance_notice,
       urgentFee: rule("urgent").fee,
+      // 家长可自填加急费的区间（最低 = 平台标准价，最高 = 规则上限）
+      urgentMaxFee: Math.max(Number(rule("urgent").fee) || 0, Number(rule("urgent").max_fee) || (Number(rule("urgent").fee) || 0) * 10),
+      urgentEnabled: rule("urgent").enabled !== false,
     });
   }, { roles: ["parent"] });
 
@@ -189,7 +212,7 @@ export function register(router) {
       );
       run("UPDATE users SET region_id = ? WHERE id = ?", region.id, ctx.user.id);
     }
-    const urgentFee = b.urgent ? rule("urgent").fee : 0;
+    const urgentFee = urgentFeeOf(b.urgent, b.urgentFee);
     const r = run(
       `INSERT INTO demands (parent_id, stage, subject, mode, address_id, address, lat, lng, region_id, times, budget,
         remark, gender_pref, urgent, urgent_fee, status, created_at, updated_at)
@@ -244,6 +267,11 @@ export function register(router) {
     if (!d) throw Err.notFound("需求不存在");
     if (!["published", "paused"].includes(d.status)) throw Err.biz("BAD_STATUS", "该需求已不可编辑");
     const b = ctx.body;
+    const nextUrgent = b.urgent != null ? !!b.urgent : !!d.urgent;
+    let nextUrgentFee = Number(d.urgent_fee) || 0;
+    if (!nextUrgent) nextUrgentFee = 0;
+    else if (b.urgentFee != null) nextUrgentFee = urgentFeeOf(true, b.urgentFee);
+    else if (!d.urgent) nextUrgentFee = urgentFeeOf(true, undefined);
     run(
       "UPDATE demands SET stage = ?, subject = ?, address = ?, lat = ?, lng = ?, times = ?, budget = ?, remark = ?, urgent = ?, urgent_fee = ?, updated_at = ? WHERE id = ?",
       b.stage ?? d.stage, b.subject ?? d.subject, b.address ?? d.address,
@@ -251,7 +279,7 @@ export function register(router) {
       JSON.stringify(b.times ?? (d.times ? JSON.parse(d.times) : [])),
       b.budget != null ? Math.round(Number(b.budget)) : d.budget,
       b.remark ?? d.remark, b.urgent != null ? (b.urgent ? 1 : 0) : d.urgent,
-      b.urgent != null ? (b.urgent ? rule("urgent").fee : 0) : d.urgent_fee,
+      nextUrgentFee,
       nowIso(), d.id
     );
     ok(ctx.res, get("SELECT * FROM demands WHERE id = ?", d.id));

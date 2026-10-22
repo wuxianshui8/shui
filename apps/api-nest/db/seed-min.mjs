@@ -53,6 +53,15 @@ for (const [key, def] of Object.entries(DEFAULT_RULES)) {
   ruleCount++;
 }
 
+// 规则组的「新增字段」补齐（value 列在 ON DUPLICATE 时刻意不覆盖，避免冲掉运营改过的值）：
+// urgent.max_fee 是后来加的（家长自填加急费的上限），老库缺这个键时补默认值，不改动运营已配好的 fee/enabled。
+// 注意 CAST(? AS SIGNED)：直接传数值会被驱动当 double，写进去是 20000.0，运营在后台看到会很别扭。
+await conn.execute(
+  "UPDATE `rule_configs` SET `value` = JSON_SET(`value`, '$.max_fee', CAST(? AS SIGNED)) " +
+    "WHERE `key` = 'urgent' AND JSON_EXTRACT(`value`, '$.max_fee') IS NULL",
+  [DEFAULT_RULES.urgent.value.max_fee],
+);
+
 // 细粒度权限矩阵（仅 NestJS 版，需求 4.5.9「角色权限分配」）：
 // 权限点 → 允许调用的角色；admin 必须始终在列表内（后台保存时会强制校验，防自锁）
 const PERMISSIONS_DEFAULT = {

@@ -20,6 +20,25 @@ export class DemandsService {
   ) {}
 
 
+  /**
+   * 加急费：家长可以自己填（加价买优先推送），但必须有护栏。
+   * - 规则 urgent.fee = 平台标准/最低价，不填就按它（保持「点开关即 ¥20」的老行为）
+   * - 规则 urgent.max_fee = 上限（缺省回落到 10 倍标准价），防手滑输成 9999 元
+   * - 非加急一律 0，不接受「不开加急却带金额」
+   */
+  private urgentFeeOf(cfg: any, urgent: boolean, input: any): number {
+    if (!urgent) return 0;
+    const base = Math.max(0, Math.round(Number(cfg?.fee) || 0));
+    const capCfg = Math.round(Number(cfg?.max_fee) || 0);
+    const cap = Math.max(base, capCfg > 0 ? capCfg : base * 10);
+    if (input === undefined || input === null || input === "") return base;
+    const n = Math.round(Number(input));
+    if (!Number.isFinite(n) || n <= 0) throw bad("加急费金额不正确");
+    if (n < base) throw bad(`加急费不能低于平台标准 ¥${(base / 100).toFixed(2)}`);
+    if (n > cap) throw bad(`加急费最高 ¥${(cap / 100).toFixed(2)}`);
+    return n;
+  }
+
   /** 发布需求（需求 4.1.3）+ 自然注册归属片区（需求 5.5） */
   async create(parentId: number, b: any) {
     if (!b.stage) throw bad("请选择学段");
@@ -48,7 +67,7 @@ export class DemandsService {
     }
 
     const urgent = (await this.rules.get("urgent")) as any;
-    const urgentFee = b.urgent ? urgent.fee : 0;
+    const urgentFee = this.urgentFeeOf(urgent, !!b.urgent, b.urgentFee);
     const r = await this.ds.query(
       `INSERT INTO \`demands\` (\`parent_id\`,\`stage\`,\`subject\`,\`mode\`,\`address_id\`,\`address\`,\`lat\`,\`lng\`,\`region_id\`,\`times\`,\`budget\`,\`remark\`,\`gender_pref\`,\`urgent\`,\`urgent_fee\`,\`status\`,\`created_at\`,\`updated_at\`)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -105,6 +124,11 @@ export class DemandsService {
     if (!d) throw notFound("需求不存在");
     if (!["published", "paused"].includes(d.status)) throw biz("BAD_STATUS", "该需求已不可编辑");
     const urgent = (await this.rules.get("urgent")) as any;
+    const nextUrgent = b.urgent != null ? !!b.urgent : !!d.urgent;
+    let nextUrgentFee = Number(d.urgent_fee) || 0;
+    if (!nextUrgent) nextUrgentFee = 0;
+    else if (b.urgentFee != null) nextUrgentFee = this.urgentFeeOf(urgent, true, b.urgentFee);
+    else if (!d.urgent) nextUrgentFee = this.urgentFeeOf(urgent, true, undefined);
     await this.ds.query(
       "UPDATE `demands` SET `stage`=?,`subject`=?,`address`=?,`lat`=?,`lng`=?,`times`=?,`budget`=?,`remark`=?,`urgent`=?,`urgent_fee`=?,`updated_at`=? WHERE `id` = ?",
       [b.stage ?? d.stage, b.subject ?? d.subject, b.address ?? d.address,
@@ -112,8 +136,8 @@ export class DemandsService {
         JSON.stringify(b.times ?? (d.times ? JSON.parse(d.times) : [])),
         b.budget != null ? Math.round(Number(b.budget)) : d.budget,
         b.remark ?? d.remark,
-        b.urgent != null ? (b.urgent ? 1 : 0) : d.urgent,
-        b.urgent != null ? (b.urgent ? urgent.fee : 0) : d.urgent_fee,
+        nextUrgent ? 1 : 0,
+        nextUrgentFee,
         nowIso(), d.id],
     );
     return (await this.ds.query("SELECT * FROM `demands` WHERE `id` = ?", [d.id]))[0];

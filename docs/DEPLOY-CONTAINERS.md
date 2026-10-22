@@ -34,6 +34,9 @@ node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 
 docker compose up -d --build          # 首次会构建镜像（三份 npm install，实测约 16 分钟；有 `.dockerignore` 后重建约 18 秒）
 docker compose run --rm seed          # 灌演示数据（12 用户 / 4 教员 / 3 业务员 / 2 代理 / 演示订单）
+# ⚠️ 改过 seed 代码/规则默认值后必须加 --build：`compose run` 默认复用已有 seed 镜像，
+#    否则跑的是旧脚本（本轮就踩过：新增规则字段的补写语句没有生效，库里一直没有 max_fee）
+docker compose run --rm --build seed
 docker compose ps                     # 三个服务应为 healthy
 ```
 
@@ -139,7 +142,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
 | concurrency | 23/23 | | |
 
-> `e2e`（153）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
+> `e2e`（156）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
 > 而镜像内 `NODE_ENV=production` 会永久关闭该回显（安全设计）。这两条由 CI 的主机栈覆盖（run #5 全绿）。
 > 容器栈上的 9 个套件已足以证明「镜像里的 API + MySQL + Redis 组合与业务规则等价」。
 

@@ -189,6 +189,9 @@ export class ParentService {
       credit,
       compliance: platformCfg.compliance_notice,
       urgentFee: urgentCfg.fee,
+      // 家长可自填加急费的区间（最低 = 平台标准价，最高 = 规则上限）
+      urgentMaxFee: Math.max(Number(urgentCfg.fee) || 0, Number(urgentCfg.max_fee) || (Number(urgentCfg.fee) || 0) * 10),
+      urgentEnabled: urgentCfg.enabled !== false,
     };
   }
 

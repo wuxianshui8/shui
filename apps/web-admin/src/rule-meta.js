@@ -15,7 +15,7 @@ export const FIELD_LABELS = {
   // 通用（等级表 / 阶梯表 / 各类阈值共用）
   level: "等级", name: "名称", min: "下限", max: "上限",
   weight: "派单权重（×）", commission: "平台抽佣比例", rate: "提成比例", enabled: "是否启用",
-  fee: "加急费（分）",
+  fee: "加急费标准（分）", max_fee: "加急费上限（分）",
 
   // 派单 / 打卡 / 加急
   max_radius_km: "派单半径（公里）", push_batch: "每批推送人数",
@@ -74,7 +74,7 @@ export const FIELD_LABELS = {
 
 /** 金额字段：数据库里以「分」为单位，表单旁标注 ¥ 便于核对 */
 export const MONEY_FIELDS = new Set([
-  "fee", "min_withdraw", "register", "lead", "newbie_first",
+  "fee", "max_fee", "min_withdraw", "register", "lead", "newbie_first",
   "daily_champ", "weekly_champ", "monthly_gmv_target",
 ]);
 

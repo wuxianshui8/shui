@@ -111,7 +111,8 @@ export const DEFAULT_RULES = {
   urgent: {
     grp: "派单规则",
     label: "加急费配置",
-    value: { fee: 2000, enabled: true },
+    // fee = 平台最低加急费（家长可加价但不能低于它），max_fee = 家长可自填的上限（防手滑输错大额）
+    value: { fee: 2000, max_fee: 20000, enabled: true },
   },
   risk: {
     grp: "风控规则",

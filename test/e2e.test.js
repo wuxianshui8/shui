@@ -97,6 +97,22 @@ async function loginPassword(phone) {
   const demandId = demand.body.data.id;
   assert(demand.body.data.urgent_fee === 2000, "加急费按规则配置计入 ¥" + (demand.body.data.urgent_fee / 100).toFixed(2));
 
+  // 加急费由家长自填（P43）：带金额就用家长填的、不带就用平台标准价、越界要拒绝
+  const urgentBody = { stage: "初中", subject: "数学", address: addr.address, lat: addr.lat, lng: addr.lng, budget: 20000 };
+  const urgentSelf = await api("POST", "/api/demands", {
+    token: parentToken, body: { ...urgentBody, remark: "加急费自填", urgent: true, urgentFee: 5000 },
+  });
+  assert(urgentSelf.status === 200 && urgentSelf.body.data.urgent_fee === 5000,
+    "家长可自填加急费（¥" + ((urgentSelf.body.data.urgent_fee || 0) / 100).toFixed(2) + "）");
+  const urgentLow = await api("POST", "/api/demands", {
+    token: parentToken, body: { ...urgentBody, urgent: true, urgentFee: 100 },
+  });
+  assert(urgentLow.status >= 400, "加急费低于平台标准价被拒（" + urgentLow.status + "）");
+  const urgentHigh = await api("POST", "/api/demands", {
+    token: parentToken, body: { ...urgentBody, urgent: true, urgentFee: 30000 },
+  });
+  assert(urgentHigh.status >= 400, "加急费超过上限被拒（" + urgentHigh.status + "）");
+
   /* ---------- 3. 教员端抢单 + 并发 ---------- */
   section("3. 教员端：抢单并发与派单规则");
   const nearby = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });

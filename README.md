@@ -103,7 +103,7 @@ node test/e2e.test.js     # 或 npm test
 一键门禁（自动起停 MySQL 3307 / Redis 6380 / NestJS 4300）：
 
 ```bash
-npm run nest:gate:p6        # 既有 e2e 全套 §1–§20 → 153/153
+npm run nest:gate:p6        # 既有 e2e 全套 §1–§20 → 156/156
 npm run nest:gate:p7        # 并发验收（100 并发抢单/幂等支付/台账闭合）→ 23/23
 npm run nest:gate:races     # 资金并发对抗回归（行锁/状态守卫/分账恒等式/幂等重放）→ 27/27
 npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / health 分级 / 改密与令牌失效）→ 38/38
@@ -159,7 +159,7 @@ npm run ci:full        # 全部 28 步门禁（约 5 分钟 = 静态 15 步 + �
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-  e2e 153 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17；镜像运行契约 33
+e2e 156 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17；镜像运行契约 33
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
 - workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 28 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）
