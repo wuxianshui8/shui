@@ -150,6 +150,23 @@ async function loginPassword(phone) {
   const target = nearby.body.data.list.find((d) => d.id === demandId);
   assert(!!target, "新需求按派单半径推送给附近教员（距离 " + (target?.distanceKm ?? "-") + " km）");
 
+  // 定位接单（P48）：距离与「是否推给我」都按手机实时定位算；不传区位则回落到入驻服务基点
+  const SHANGHAI = { lat: 31.2304, lng: 121.4737 };
+  const nearLoc = await api("GET", "/api/teacher/nearby-demands?lat=" + addr.lat + "&lng=" + addr.lng, { token: teacherToken });
+  assert(nearLoc.status === 200 && nearLoc.body.data.origin?.source === "current",
+    "教员端带实时定位取附近需求（origin.source=current，半径 " + nearLoc.body.data.radiusKm + " km）");
+  const nearbyPlain = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });
+  assert(nearbyPlain.body.data.origin?.source === "profile",
+    "不传定位时回落到入驻服务基点（origin.source=profile）");
+  const farList = await api("GET", "/api/teacher/nearby-demands?lat=" + SHANGHAI.lat + "&lng=" + SHANGHAI.lng, { token: teacherToken });
+  assert(farList.status === 200 && !(farList.body.data.list || []).some((d) => d.id === demandId),
+    "定位在服务半径外时该需求不再出现在附近列表");
+  const farApply = await api("POST", "/api/demands/" + urgentSelf.body.data.id + "/apply", {
+    token: teacherToken, body: SHANGHAI,
+  });
+  assert(farApply.status >= 400 && (farApply.body?.code === "TOO_FAR" || /服务半径/.test(farApply.text)),
+    "定位在远处时抢单被拒（超出服务半径）");
+
   // 并发抢单：同一教员 20 次并发，只允许 1 次成功
   const grabs = await Promise.all(
     Array.from({ length: 20 }, () => api("POST", "/api/demands/" + demandId + "/apply", { token: teacherToken }))

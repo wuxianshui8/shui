@@ -206,7 +206,11 @@ export class DemandsService {
   }
 
   /** 教员抢单报名：唯一索引 + 条件插入保证不重复接单（需求 6.2） */
-  async apply(teacherId: number, demandId: number) {
+  /**
+   * 抢单报名。at 传「教员当前位置」时用实时定位算距离（手机端定位接单），
+   * 不传则沿用入驻时的服务基点 —— 老调用方（含 e2e）行为不变。
+   */
+  async apply(teacherId: number, demandId: number, at?: { lat?: any; lng?: any }) {
     const tp: any = (await this.ds.query("SELECT * FROM `teacher_profiles` WHERE `user_id` = ? LIMIT 1", [teacherId]))[0];
     if (!tp) throw notFound("请先完成入驻");
     if (tp.audit_status !== "approved") throw biz("NOT_APPROVED", "资质审核通过后才能接单");
@@ -216,9 +220,8 @@ export class DemandsService {
     if (d.status !== "published") throw biz("BAD_STATUS", "该需求已停止接单");
 
     const dispatch = (await this.rules.get("dispatch")) as any;
-    const distance = Number(
-      haversineKm(Number(tp.base_lat ?? 30.2741), Number(tp.base_lng ?? 120.1551), Number(d.lat), Number(d.lng)).toFixed(2),
-    );
+    const origin = this.originOf(tp, at);
+    const distance = Number(haversineKm(origin.lat, origin.lng, Number(d.lat), Number(d.lng)).toFixed(2));
     if (distance > (Number(tp.service_radius_km) || dispatch.max_radius_km)) throw biz("TOO_FAR", "该需求距离超出您的服务半径");
 
     const levels = (await this.rules.get("teacher_levels")) as any[];
@@ -242,16 +245,36 @@ export class DemandsService {
     return { ...value, lockAcquired: locked };
   }
 
-  /** 教员端附近订单（按派单优先级降序，需求 4.2.2） */
-  async nearbyForTeacher(teacherId: number) {
+  /**
+   * 当前位置解析：优先用调用方传的实时定位（手机 GPS），否则回落到入驻时填的服务基点。
+   * 两者都缺时用杭州中心兜底，保证列表不空。
+   */
+  private originOf(tp: any, at?: { lat?: any; lng?: any }) {
+    const lat = Number(at?.lat);
+    const lng = Number(at?.lng);
+    const valid =
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+    if (valid) return { lat, lng, source: "current" as const };
+    const baseLat = Number(tp?.base_lat);
+    const baseLng = Number(tp?.base_lng);
+    if (Number.isFinite(baseLat) && Number.isFinite(baseLng)) {
+      return { lat: baseLat, lng: baseLng, source: "profile" as const };
+    }
+    return { lat: 30.2741, lng: 120.1551, source: "default" as const };
+  }
+
+  /** 教员端附近订单（按派单优先级降序，需求 4.2.2）；支持按「当前位置」而非固定服务基点计算距离 */
+  async nearbyForTeacher(teacherId: number, at?: { lat?: any; lng?: any }) {
     const tp: any = (await this.ds.query("SELECT * FROM `teacher_profiles` WHERE `user_id` = ? LIMIT 1", [teacherId]))[0];
     if (!tp) throw notFound("请先完成入驻");
     if (tp.audit_status !== "approved") throw biz("NOT_APPROVED", "资质审核通过后才能接单");
     const dispatch = (await this.rules.get("dispatch")) as any;
     const levels = (await this.rules.get("teacher_levels")) as any[];
     const lv = levels.find((l) => l.level === tp.level) || levels[0];
-    const lat = Number(tp.base_lat ?? 30.2741);
-    const lng = Number(tp.base_lng ?? 120.1551);
+    const origin = this.originOf(tp, at);
+    const lat = origin.lat;
+    const lng = origin.lng;
     const rows = await this.ds.query("SELECT * FROM `demands` WHERE `status` = 'published'");
     // 一次性批量取该教员对这批需求的报名状态，避免循环内 N+1 查询
     const demandIds = rows.map((r: any) => Number(r.id));
@@ -296,6 +319,13 @@ export class DemandsService {
       });
     }
     list.sort((a, b) => b.priority - a.priority);
-    return { list, total: list.length, online: !!tp.online };
+    // 把「这次按哪个位置算的距离」一起返回：手机端要显示「当前位置」，定位失败时也要说明用的是服务基点
+    return {
+      list,
+      total: list.length,
+      online: !!tp.online,
+      origin: { lat: origin.lat, lng: origin.lng, source: origin.source },
+      radiusKm: Number(tp.service_radius_km) || dispatch.max_radius_km,
+    };
   }
 }

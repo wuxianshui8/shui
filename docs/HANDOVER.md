@@ -66,9 +66,9 @@ npm start                      # → http://localhost:4173
 | 层面 | 命令 | 结果 |
 | --- | --- | --- |
 | 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **329 断言**全绿 |
-| 正式实现全量门禁 | `npm run ci:full` | **28 步**（静态 15 + 业务 13），约 5 分钟 |
-| 静态门禁 | `npm run ci` | **15 步**，约 30 秒（含单元测试 119 用例 + 依赖审计 + 门禁自检 10 用例） |
-| 单元测试与覆盖率 | `npm run test:unit` | **119 用例**，17 个模块行覆盖 ≥ 98.5%（门禁阈值 90%） |
+| 正式实现全量门禁 | `npm run ci:full` | **30 步**（静态 16 + 业务 14），约 5 分钟 |
+| 静态门禁 | `npm run ci` | **16 步**，约 30 秒（含单元测试 152 用例 + 依赖审计 + 电子围栏 32 项 + 门禁自检 10 用例） |
+| 单元测试与覆盖率 | `npm run test:unit` | **152 用例**，22 个模块行覆盖 ≥ 98.5%（门禁阈值 90%） |
 | 依赖漏洞审计 | `npm run audit:check` | 预算制 3 个 workspace：api-nest high 2（multer 不可达）/ web-admin 0 / web-mobile high 27（构建链，只阻断 critical） |
 | 托管 Runner | push 到 `main` 自动跑 | **6 次全绿**（static 13s / integration 206~210s，484 断言/次） |
 | 容器栈功能验收 | `npm run verify:docker` | **9 套件 282 断言** |
@@ -76,7 +76,7 @@ npm start                      # → http://localhost:4173
 | 备份/恢复回环 | `npm run db:backup` / `db:restore` | 删表后恢复：orders 3、users 12、表 37，巡检 12/12；保留策略 `--keep 2` 剪枝实测正确 |
 | 渠道对账 | `npm run pay:recon -- --self-test` / `--bill <csv>` | 自检 4 类差异全命中；真机账单一致→0 差异，改金额+删行→2 类差异退出码 1 |
 | 混沌演练 | `npm run chaos:drill` | **21 项全绿**：MySQL 挂→health 503 且业务读 400；Redis 挂→业务读仍 200；两者恢复后 200 且可登录，app 无重启 |
-| 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/142 路由**、需求逐条、后台 18 页 + 移动 10 页 |
+| 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/147 路由**、需求逐条、后台 19 页 + 移动 11 页 |
 | 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | 全绿（clone 时 12 步；加入单元测试与依赖审计后 **14/14** 本机复跑通过） |
 
 **迁移门禁 `gate-p9` 报「Incorrect integer value / Column cannot be null」时**：几乎都是本地参考实现的库被写脏了。

@@ -45,7 +45,7 @@ UI 说明书「第 4 章补充：平台管理员界面（两张）」只画了**
 | 代理管理 | `/agents` | `Agents.vue` | 需求 4.5.2（签约/保证金台账/启停） |
 | 管理员账号 | `/admins` | `Admins.vue` | 需求 4.5.9（一次性口令 + 首登改密 + 启停护栏） |
 | 权限矩阵 | `/permissions` | `Permissions.vue` | 需求 4.5.9（4 权限点 × 5 角色，admin 列锁定） |
-| 区域管理 | `/regions` | `Regions.vue` | 需求 4.5.5（片区/电子围栏） |
+| 区域管理 | `/regions` | `Regions.vue` + `apps/web-admin/src/components/GeoFenceMap.vue` | 需求 4.5.5（片区/电子围栏）：**在中国地图上直接画围栏**——离线省级底图（`apps/web-admin/src/assets/china.geo.json`，34 个省级区划，随包分发不请求在线瓦片）支持滚轮锚点缩放/拖拽平移；多边形逐点落点、双击闭合、顶点可拖动微调，圆形围栏点圆心 + 输入半径；已有片区灰色叠加，点列表行载入放大。几何换算抽在 `apps/web-admin/src/geo-fence.js`（纯函数，被 `tools/check-geo-fence.mjs` 直接 import 断言） |
 | 规则配置中心 | `/rules` | `Rules.vue` + `apps/web-admin/src/components/RuleValueEditor.vue` + `apps/web-admin/src/components/RuleRowsTable.vue` | 需求 4.5.4（17 组规则热更新）：**按字段类型生成表单**（数字框 / 开关 / 标签 / 角色勾选 / 可编辑表格 / 嵌套对象），字段中文名与单位（¥、%、×）来自 `rule-meta.js`；原始 JSON 仅作「高级」只读折叠展示，不提供文本框给运营 |
 | 运营工具 | `/ops` | `Ops.vue` | 需求 4.5.8（Banner / 公告 / 优惠券） |
 | 学段 / 科目（运营工具类目） | `/catalog` | `Catalog.vue` | 需求 4.1（发单必填字段的选项维护）：字典落 `rule_configs.catalog`，保存即时生效，前端读 `/api/meta/dictionary` |

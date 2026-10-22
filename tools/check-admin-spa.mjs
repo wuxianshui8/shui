@@ -31,6 +31,13 @@ async function api(method, path, { token, body } = {}) {
     "Users", "Teachers", "Agents", "Admins", "Permissions", "Regions", "Rules", "Ops", "Risks", "Logs"];
   const missing = views.filter((v) => !distAssets.some((f) => f.startsWith(v + "-")));
   assert(missing.length === 0, "构建产物含 " + views.length + " 个页面分包" + (missing.length ? "，缺失 " + missing.join(",") : ""));
+  // 区域管理页的地图底图必须打进产物（离线，不请求在线瓦片）
+  const { readFileSync } = await import("node:fs");
+  const regionsChunk = distAssets.filter((f) => f.startsWith("Regions-") && f.endsWith(".js"));
+  const chunkSrc = regionsChunk.map((f) => readFileSync(new URL("../apps/web-admin/dist/assets/" + f, import.meta.url), "utf8")).join("\n");
+  assert(chunkSrc.includes("data-geo-map") && chunkSrc.includes("台湾") && chunkSrc.includes("MultiPolygon"),
+    "区域管理页分包内置中国地图底图（" + Math.round(chunkSrc.length / 1024) + " KB 分包，含省级边界）");
+  assert(!/https?:\/\/[^"'\\\s]*tile/i.test(chunkSrc), "底图不依赖在线瓦片（离线可用）");
 }
 console.log("PC 管理后台验收（Vue3 + Vite + Element Plus）");
 console.log("目标服务：" + BASE + "\n");
@@ -89,6 +96,19 @@ assert(regionCreate.status === 200 && regionCreate.body.code === 0 && regionCrea
 const regionList = await api("GET", "/admin/regions", { token });
 assert(regionList.status === 200 && regionList.body.data.some((r) => r.name === "临平片区验收"),
   "区域管理页：新建片区出现在片区列表（共 " + (regionList.body.data?.length || 0) + " 个片区）");
+
+/* 地图上画的多边形围栏：写入 → 回读顶点数（页面上「顶点数」列与地图叠加都依赖它） */
+const fence = [[30.45, 120.25], [30.45, 120.35], [30.38, 120.38], [30.36, 120.28]];
+const polygonCreate = await api("POST", "/admin/regions", {
+  token,
+  body: { name: "西湖区围栏验收", centerLat: 30.4, centerLng: 120.31, radiusKm: 5.5, polygon: fence },
+});
+assert(polygonCreate.status === 200 && polygonCreate.body.code === 0, "区域管理页：保存地图上画的多边形围栏（4 个顶点）");
+const fenceList = (await api("GET", "/admin/regions", { token })).body.data || [];
+const saved = fenceList.find((r) => r.name === "西湖区围栏验收");
+const savedPoly = saved ? (typeof saved.polygon === "string" ? JSON.parse(saved.polygon) : saved.polygon) : null;
+assert(Array.isArray(savedPoly) && savedPoly.length === 4 && Math.abs(savedPoly[0][0] - 30.45) < 1e-6,
+  "区域管理页：回读围栏顶点数与坐标一致（" + (Array.isArray(savedPoly) ? savedPoly.length : 0) + " 点）");
 
 /* 关键写操作（与页面按钮一致） */
 const banner = (await api("GET", "/admin/banners", { token })).body.data[0];

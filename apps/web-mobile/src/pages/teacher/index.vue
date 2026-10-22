@@ -22,15 +22,64 @@ function req(method, path, body) {
   });
 }
 
+/* ---------------- 定位接单：当前位置 / 回落到服务基点 ---------------- */
+/** 当前位置（定位失败则不带参数，后端回落到入驻服务基点） */
+const loc = ref({ lat: null, lng: null, source: "" });
+const locating = ref(false);
+const origin = ref(null);
+const radiusKm = ref(0);
+const locText = computed(() => {
+  if (locating.value) return "定位中…";
+  const o = origin.value;
+  if (!o) return loc.value.lat != null ? "已定位（" + Number(loc.value.lat).toFixed(4) + ", " + Number(loc.value.lng).toFixed(4) + "）" : "未定位";
+  if (o.source === "current") return "按当前位置（" + Number(o.lat).toFixed(4) + ", " + Number(o.lng).toFixed(4) + "）· " + radiusKm.value + "km 内";
+  return "定位不可用，按入驻服务基点（" + Number(o.lat).toFixed(4) + ", " + Number(o.lng).toFixed(4) + "）· " + radiusKm.value + "km 内";
+});
+const nearPath = () =>
+  "/teacher/nearby-demands" + (loc.value.lat != null ? "?lat=" + loc.value.lat + "&lng=" + loc.value.lng : "");
+
+
+/** 取真实定位（gcj02，与需求地址同一坐标系）；用户拒绝授权或超时就退回服务基点 */
+function getLocation() {
+  return new Promise((resolve) => {
+    uni.getLocation({
+      type: "gcj02",
+      success: (r) => resolve({ lat: Number(r.latitude.toFixed(6)), lng: Number(r.longitude.toFixed(6)), source: "current" }),
+      fail: () => resolve({ lat: null, lng: null, source: "denied" }),
+    });
+  });
+}
+async function refreshLocal() {
+  locating.value = true;
+  try {
+    loc.value = await getLocation();
+  } finally {
+    locating.value = false;
+  }
+}
+
 async function load() {
   dash.value = await req("GET", "/teacher/dashboard");
   level.value = await req("GET", "/teacher/level");
-  const list = await req("GET", "/teacher/nearby-demands");
+  await refreshLocal(); // 先拿定位，再按当前位置拉附近需求
+  const list = await req("GET", nearPath());
   demands.value = (list && list.list) || [];
+  origin.value = (list && list.origin) || null;
+  radiusKm.value = (list && list.radiusKm) || 0;
   const msgs = await req("GET", "/messages");
   unread.value = (msgs && msgs.unread) || 0;
   const mine = await req("GET", "/teacher/orders");
   orders.value = (mine && mine.list) || [];
+}
+
+/** 手动重新定位（走到别处后点一下即可按新位置接单） */
+async function relocalize() {
+  await refreshLocal();
+  const list = await req("GET", nearPath());
+  demands.value = (list && list.list) || [];
+  origin.value = (list && list.origin) || null;
+  radiusKm.value = (list && list.radiusKm) || 0;
+  toast(loc.value.lat != null ? "已按当前位置刷新附近需求" : "定位不可用，已按服务基点刷新");
 }
 
 /** 入驻状态：none / pending / approved / rejected（读 profile 判断，顺便给首页入口配色） */
@@ -61,14 +110,16 @@ const toast = (title) => uni.showToast({ title, icon: "none" });
 
 async function grab(d) {
   busy.value = "grab" + d.id;
-  const r = await req("POST", "/demands/" + d.id + "/apply", {});
+  // 带当前位置抢单：服务端用实时定位判定是否超出服务半径（定位失败则按服务基点）
+  const at = loc.value.lat != null ? { lat: loc.value.lat, lng: loc.value.lng } : {};
+  const r = await req("POST", "/demands/" + d.id + "/apply", at);
   busy.value = "";
   toast(r ? "抢单成功，等待家长确认" : "抢单失败");
   load();
 }
 
 /** 上门打卡：优先取真实定位，失败则按上课地址附近上报 */
-function getLocation(o) {
+function checkinLocation(o) {
   return new Promise((resolve) => {
     uni.getLocation({
       type: "gcj02",
@@ -80,8 +131,8 @@ function getLocation(o) {
 
 async function checkin(o) {
   busy.value = "checkin" + o.id;
-  const loc = await getLocation(o);
-  const r = await req("POST", "/orders/" + o.id + "/checkin", loc);
+  const here = await checkinLocation(o);
+  const r = await req("POST", "/orders/" + o.id + "/checkin", here);
   busy.value = "";
   toast(r ? "打卡成功（距上课地点 " + r.checkinDistance + " 米）" : "打卡失败：超出阈值或状态不符");
   load();
@@ -158,8 +209,12 @@ function goMessages() {
     </view>
 
     <view class="card">
-      <view class="card-title">附近需求（{{ demands.length }}）</view>
-      <view v-for="d in demands" :key="d.id" class="row">
+      <view class="row">
+        <view class="card-title" style="margin: 0">附近需求（{{ demands.length }}）</view>
+        <view class="tag" data-act="relocate" @click="relocalize">{{ locating ? "定位中…" : "重新定位" }}</view>
+      </view>
+      <view class="muted" style="margin-top: 8rpx">{{ locText }}</view>
+      <view v-for="d in demands" :key="d.id" class="row" style="margin-top: 16rpx">
         <view style="flex: 1">
           <view style="font-size: 26rpx">{{ d.subject }} · {{ d.stage }}</view>
           <view class="muted">{{ d.address }}</view>
@@ -169,7 +224,7 @@ function goMessages() {
           {{ busy === "grab" + d.id ? "抢单中…" : "抢单" }}
         </view>
       </view>
-      <view v-if="!demands.length" class="muted">暂无附近需求</view>
+      <view v-if="!demands.length" class="muted" style="margin-top: 12rpx">当前定位附近没有可接的需求</view>
     </view>
     <view class="card" @tap="goWallet">
       <view class="row"><view>我的钱包（提现 / 流水）</view><view class="tag">进入 →</view></view>

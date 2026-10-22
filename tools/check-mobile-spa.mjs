@@ -59,6 +59,10 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
     assert(lack.length === 0, "小程序页面与 H5 一致（含发需求页与入驻认证页）" + (lack.length ? "，缺 " + lack.join(",") : ""));
     assert(existsSync(mp + "/pages/parent/publish/index.wxml"), "小程序页面产物为 wxml/wxss（真实小程序工程）");
     assert(existsSync(mp + "/pages/teacher/apply/index.wxml"), "小程序入驻认证页也有产物（wxml）");
+    const teacherWxml = readFileSync(mp + "/pages/teacher/index.wxml", "utf8");
+    const teacherJs = readFileSync(mp + "/pages/teacher/index.js", "utf8");
+    assert(teacherWxml.includes("附近需求") && teacherJs.includes("重新定位") && teacherJs.includes("nearby-demands"),
+      "小程序教员首页含「重新定位」与附近需求入口（定位接单）");
   }
 }
 
@@ -95,6 +99,14 @@ const demand = await api("POST", "/demands", {
 });
 const grab = await api("POST", "/demands/" + demand.body.data.id + "/apply", { token: teacher.body.data.token });
 assert(grab.status === 200 && grab.body.data.applicationId > 0, "教员端：附近需求「抢单」按钮闭环（报名 ID " + grab.body.data?.applicationId + "）");
+
+/* 定位接单（P48）：附近需求按「手机实时定位」算距离，不传则回落到入驻服务基点 */
+const nearLoc = await api("GET", "/teacher/nearby-demands?lat=30.2620&lng=120.1330", { token: teacher.body.data.token });
+assert(nearLoc.status === 200 && nearLoc.body.data.origin?.source === "current" && nearLoc.body.data.radiusKm > 0,
+  "教员端：按实时定位取附近需求（半径 " + nearLoc.body.data.radiusKm + " km，" + (nearLoc.body.data.list || []).length + " 条）");
+const nearBase = await api("GET", "/teacher/nearby-demands", { token: teacher.body.data.token });
+assert(nearBase.status === 200 && nearBase.body.data.origin?.source === "profile",
+  "教员端：定位不可用时回落到入驻服务基点（页面会提示「按入驻服务基点」）");
 
 /* 教员钱包页：最低提现规则由 settlement 规则驱动（页面提交按钮同此接口） */
 const belowMin = await api("POST", "/withdrawals", {

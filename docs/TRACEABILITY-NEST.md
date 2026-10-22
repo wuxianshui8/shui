@@ -37,7 +37,7 @@
 | 4.2.1 入驻申请（资料/证件/时段/覆盖半径）与审核状态 | `POST /api/teacher/apply`（`@Roles("parent","teacher")`，审核通过才切 `role=teacher`）、`GET /api/teacher/profile`、`PUT /api/teacher/profile` | e2e §12、`priv` |
 | 4.2.2 在线/离线开关 | `POST /api/teacher/online` | e2e §3 |
 | 4.2.2 接单大盘（今日单量/课时/评分/等级） | `GET /api/teacher/dashboard` | e2e §3、`nest:bench` |
-| 4.2.2 附近需求（派单优先级降序）+ 一键抢单 | `GET /api/teacher/nearby-demands`、`POST /api/demands/:id/apply` | e2e §3、e2e §14、`conc`（100 并发无重复接单）、`rules` §派单 |
+| 4.2.2 附近需求（派单优先级降序）+ 一键抢单 | `GET /api/teacher/nearby-demands`（可带 `?lat=&lng=` 实时定位）、`POST /api/demands/:id/apply`（body 带当前位置） | e2e §3（含定位接单 4 条：`origin.source=current`/回落 `profile`/半径外不出现/远处抢单 `TOO_FAR`）、e2e §14、`conc`（100 并发无重复接单）、`rules` §派单、`mobile`（含 `?lat&lng` 契约） |
 | 4.2.3 服务管理（上下架/编辑/删除） | `GET|POST /api/teacher/services`、`PUT|DELETE /api/teacher/services/:id`、`POST /api/teacher/services/:id/toggle` | e2e §6、`mobile` |
 | 4.2.4 订单列表与详情、上门打卡（500m）、结束授课 | `GET /api/teacher/orders`、`POST /api/orders/:id/checkin`、`POST /api/orders/:id/finish` | e2e §5（超距拦截 + 风控事件）、e2e §6 |
 | 4.2.5 等级权益（成长分/等级/抽佣/派单权重/变更记录） | `GET /api/teacher/level` | e2e §7、`rules` §等级 |
@@ -79,7 +79,7 @@
 | 4.5.3 抢单超时清理 | 定时任务 `expireApplications()` + `POST /api/admin/applications/expire` | e2e §16 |
 | 4.5.3 需求池列表（状态/科目/学段/片区/加急筛选、报名数、家长手机号脱敏）+ 后台「需求池」页 | `GET /api/admin/demands` | `admin`（2 条断言 + 页面分包） |
 | 4.5.4 规则配置中心（15 组，热更新即时生效） | `GET /api/admin/rules`、`PUT /api/admin/rules/:key` | e2e §11、`rules`（50 项） |
-| 4.5.5 片区与电子围栏 | `GET /api/admin/regions`、`POST /api/admin/regions` | `admin`（新建片区写闭环） |
+| 4.5.5 片区与电子围栏（后台在中国地图上直接画） | `GET /api/admin/regions`、`POST /api/admin/regions`（`polygon` 顶点数组） | `admin`（新建片区 + 多边形写入后回读顶点数）、`geo`（`tools/check-geo-fence.mjs` 32 项：投影/缩放/点内判定/底图/页面接入） |
 | 4.5.6 财务：担保台账、支付流水、分账、对账 | `GET /api/admin/finance` | e2e §14、`hc`（12 项不变量） |
 | 4.5.6 提现审核、奖励周结、发票受理 | `POST /api/admin/withdrawals/:id/review`、`POST /api/admin/rewards/settle`、`POST /api/admin/invoices/:id/review` | e2e §8/§10/§17、`races` |
 | 4.5.6 T+N 结算 | 定时任务 `runSettlement()` + `POST /api/admin/settlement/run` | e2e §6、`races`（并发只放款一次） |
@@ -113,8 +113,8 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（45 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（18 页，含需求池/管理员账号/权限矩阵） | `admin` 38 项 |
-| 6.1 移动端 uni-app | `apps/web-mobile/`（10 页，H5 + 微信小程序双产物） | `mobile` 41 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（19 页，含需求池/管理员账号/权限矩阵/区域管理地图） | `admin` 42 项 |
+| 6.1 移动端 uni-app | `apps/web-mobile/`（11 页，H5 + 微信小程序双产物，含入驻认证与定位接单） | `mobile` 47 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
 ## 第 7 章 非功能需求
@@ -146,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 147 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 159 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 38 + mobile 44 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + verify 15 + hc 12 = **561** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 163 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 42 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 32 + verify 15 + hc 12 = **604** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

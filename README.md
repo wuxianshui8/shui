@@ -96,22 +96,22 @@ node test/e2e.test.js     # 或 npm test
 | 层 | 目录 | 技术栈 | 单端口访问 |
 | --- | --- | --- | --- |
 | 后端 API | `apps/api-nest/` | NestJS 10 + TypeScript + TypeORM(原生 SQL) + MySQL 8 + Redis | `http://localhost:4300/api/*` |
-| PC 管理后台 | `apps/web-admin/` | Vue3 + Vite + Element Plus + vue-router（18 个页面，含需求池/管理员账号/权限矩阵/区域管理） | `http://localhost:4300/admin-vue/` |
-| 移动四端 | `apps/web-mobile/` | uni-app（Vue3 语法；同一份源码产出 H5 + 微信小程序，9 个页面：家长/教员+钱包提现/业务员+奖励明细/代理+客诉） | `http://localhost:4300/m/` |
+| PC 管理后台 | `apps/web-admin/` | Vue3 + Vite + Element Plus + vue-router（19 个页面，含需求池/管理员账号/权限矩阵/区域管理） | `http://localhost:4300/admin-vue/` |
+| 移动四端 | `apps/web-mobile/` | uni-app（Vue3 语法；同一份源码产出 H5 + 微信小程序，11 个页面：家长/教员+钱包提现/业务员+奖励明细/代理+客诉） | `http://localhost:4300/m/` |
 | 既有 5 端 UI | `web/` | 零构建原生 ESM（参考实现，作为 UI 蓝本保留） | `http://localhost:4300/parent` 等 |
 
 一键门禁（自动起停 MySQL 3307 / Redis 6380 / NestJS 4300）：
 
 ```bash
-npm run nest:gate:p6        # 既有 e2e 全套 §1–§20 → 159/159
+npm run nest:gate:p6        # 既有 e2e 全套 §1–§20 → 163/163
 npm run nest:gate:p7        # 并发验收（100 并发抢单/幂等支付/台账闭合）→ 23/23
 npm run nest:gate:races     # 资金并发对抗回归（行锁/状态守卫/分账恒等式/幂等重放）→ 27/27
 npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / health 分级 / 改密与令牌失效）→ 38/38
 npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生效、admin 不可被移除）→ 17/17
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
-npm run web:admin:check     # PC 后台（Vue3+Element Plus，18 页）→ 38/38
-npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，10 页）→ 41/41
+npm run web:admin:check     # PC 后台（Vue3+Element Plus，19 页，含区域管理地图）→ 42/42
+npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，11 页）→ 47/47
 ```
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：
@@ -130,17 +130,17 @@ npm run web:mobile:build:mp                              # → apps/web-mobile/d
 ```bash
 npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（142 路由 / 16 控制器）
 npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期）
-npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（142/142 覆盖）
-npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 18 页 + 移动 10 页）
+npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（142/147 覆盖）
+npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 19 页 + 移动 11 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
-npm run test:unit      # 单元测试 + 覆盖率门禁（119 用例、17 个模块，行覆盖率 ≥ 90% 否则失败·约 5 秒）
+npm run test:unit      # 单元测试 + 覆盖率门禁（152 用例、22 个模块，行覆盖率 ≥ 90% 否则失败·约 5 秒）
 npm run audit:check    # 生产依赖漏洞预算校验（deploy/audit-budget.json：block/budget/expires·约 8 秒）
 npm run pay:recon      # 渠道对账（--self-test 自检；--bill <csv> 与库内 payments 逐笔比对）
 npm run chaos:drill    # 混沌演练：停 MySQL/Redis 验证「不崩溃 + 快失败 + 能恢复」（约 60s，会短暂停容器）
 npm run ci             # 静态门禁：tsc + 单元测试 + 依赖审计 + 接口 + 追溯 + Windows 脚本 + 文档写法（约 26 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
-npm run ci:full        # 全部 28 步门禁（约 5 分钟 = 静态 15 步 + 业务 13 步）
+npm run ci:full        # 全部 30 步门禁（约 5 分钟 = 静态 16 步 + 业务 14 步）
 ```
 
 ## 4. 容器化部署与 CI
@@ -159,9 +159,9 @@ npm run ci:full        # 全部 28 步门禁（约 5 分钟 = 静态 15 步 + �
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-e2e 159 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 44；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20
+e2e 163 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 42 + 47；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20；电子围栏几何 32
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
-- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 28 步
+- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 30 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）
 
 启用方式（需仓库远端与推送凭据）：
@@ -253,7 +253,7 @@ scripts/
   healthcheck.mjs       数据一致性巡检（12 项资金与状态不变量，可挂定时任务）
   seed-bulk.mjs         大数据量压测数据集（默认 2000 家长 / 200 教员 / 5000 订单）
 test/
-  e2e.test.js           端到端验收测试（159 项）
+  e2e.test.js           端到端验收测试（163 项）
   rules.test.js         核心业务规则专项验证（51 项）
   security.test.js      安全验收（越权 / 注入 / 脱敏 / XSS / 响应头 / 登录锁定，55 项）
   concurrency.test.js   并发验收（100 并发抢单与幂等，22 项，自动清理测试数据）
@@ -361,7 +361,7 @@ test/
 
 | 验收项 | 结果 |
 | --- | --- |
-| 功能验收 | 5 端功能全部实现，`test/e2e.test.js` 159 项断言通过；逐条对照见 `docs/TRACEABILITY.md` |
+| 功能验收 | 5 端功能全部实现，`test/e2e.test.js` 163 项断言通过；逐条对照见 `docs/TRACEABILITY.md` |
 | 资金验收 | 下单→支付→分账→冻结→结算→提现全链路跑通，两条恒等式零误差 |
 | 并发验收 | 20 并发抢单仅 1 成功、2 并发确认仅 1 成功，无重复接单 |
 | 兼容验收 | 移动端 9:16 自适应 + PC 后台响应式栅格，Chrome/Edge 正常 |

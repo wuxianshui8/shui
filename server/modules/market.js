@@ -326,8 +326,13 @@ export function register(router) {
     const tp = get("SELECT * FROM teacher_profiles WHERE user_id = ?", ctx.user.id);
     if (!tp) throw Err.notFound("请先完成入驻");
     if (tp.audit_status !== "approved") throw Err.biz("NOT_APPROVED", "资质审核通过后才能接单");
-    const lat = tp.base_lat ?? 30.2741;
-    const lng = tp.base_lng ?? 120.1551;
+    // 按当前位置算距离：手机端传 ?lat=&lng=（实时定位），否则回落到入驻服务基点
+    const qLat = Number(ctx.query.lat);
+    const qLng = Number(ctx.query.lng);
+    const hasCurrent = Number.isFinite(qLat) && Number.isFinite(qLng) && Math.abs(qLat) <= 90 && Math.abs(qLng) <= 180 && !(qLat === 0 && qLng === 0);
+    const lat = hasCurrent ? qLat : (tp.base_lat ?? 30.2741);
+    const lng = hasCurrent ? qLng : (tp.base_lng ?? 120.1551);
+    const originSource = hasCurrent ? "current" : "profile";
     const cfg = rule("dispatch");
     const rows = all("SELECT * FROM demands WHERE status = 'published'");
     const list = [];
@@ -359,7 +364,11 @@ export function register(router) {
       });
     }
     list.sort((a, b) => b.priority - a.priority);
-    ok(ctx.res, { list, total: list.length, online: !!tp.online });
+    ok(ctx.res, {
+      list, total: list.length, online: !!tp.online,
+      origin: { lat, lng, source: originSource },
+      radiusKm: tp.service_radius_km || cfg.max_radius_km,
+    });
   }, { roles: ["teacher"] });
 
   router.post("/api/demands/:id/apply", (ctx) => {
@@ -371,7 +380,13 @@ export function register(router) {
     if (!d) throw Err.notFound("需求不存在");
     if (d.status !== "published") throw Err.biz("BAD_STATUS", "该需求已停止接单");
 
-    const distance = Number(haversineKm(tp.base_lat ?? 30.2741, tp.base_lng ?? 120.1551, d.lat, d.lng).toFixed(2));
+    // 抢单同样支持当前位置：body 里带 lat/lng 就用实时定位算距离
+    const bLat = Number(ctx.body?.lat);
+    const bLng = Number(ctx.body?.lng);
+    const curOk = Number.isFinite(bLat) && Number.isFinite(bLng) && Math.abs(bLat) <= 90 && Math.abs(bLng) <= 180 && !(bLat === 0 && bLng === 0);
+    const fromLat = curOk ? bLat : (tp.base_lat ?? 30.2741);
+    const fromLng = curOk ? bLng : (tp.base_lng ?? 120.1551);
+    const distance = Number(haversineKm(fromLat, fromLng, d.lat, d.lng).toFixed(2));
     if (distance > (tp.service_radius_km || rule("dispatch").max_radius_km)) {
       throw Err.biz("TOO_FAR", "该需求距离超出您的服务半径");
     }
