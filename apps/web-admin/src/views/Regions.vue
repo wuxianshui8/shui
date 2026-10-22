@@ -127,7 +127,15 @@ async function search() {
     for (const code of selectedCodes.value) {
       if (!candidates.value.some((a) => a.code === code)) {
         const old = highlights.value.find((h) => h.code === code);
-        if (old) candidates.value.push({ code: old.code, name: old.name, level: "district", points: 0, center: old.center });
+        if (old) {
+          candidates.value.push({
+            code: old.code,
+            name: old.name,
+            level: "district",
+            points: ringsOfPolygon(old.rings).reduce((s, r) => s + r.length, 0),
+            center: old.center,
+          });
+        }
       }
     }
   } catch (e) {
