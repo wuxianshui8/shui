@@ -38,7 +38,7 @@ function runAuditOnce(dir) {
     shell: true,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    timeout: 90000,
+    timeout: 180000,
   });
   const stdout = r.stdout || "";
   const stderr = (r.stderr || "").trim();
@@ -46,7 +46,7 @@ function runAuditOnce(dir) {
   try {
     json = JSON.parse(stdout);
   } catch {
-    return { ok: false, error: (stderr || stdout).slice(0, 600) || "无输出（或超时 " + 90 + "s）", code: r.status };
+    return { ok: false, error: (stderr || stdout).slice(0, 600) || "无输出（或超时 180s）", code: r.status };
   }
   if (!json || !json.metadata || !json.metadata.vulnerabilities) {
     return { ok: false, error: "JSON 缺少 metadata.vulnerabilities", code: r.status };
@@ -118,7 +118,18 @@ for (const ws of workspaces) {
     continue;
   }
 
-  const res = runAudit(dir);
+  const res = (() => {
+    // 未安装依赖时 npm audit 会退化到「按 lockfile 远程查询」，耗时不可控（实测 CI 上 90s 超时）；
+    // 这种情况下显式跳过并记录原因，绝不假装通过——最终仍要求至少有一个 workspace 真审过（防空检查）。
+    if (!fs.existsSync(path.join(dir, "node_modules"))) {
+      skipped++;
+      warnings.push(ws.dir + " 未安装依赖（无 node_modules），本次跳过审计；CI 的 integration job 会覆盖");
+      rows.push({ dir: ws.dir, skipped: true, counts: null, blocked });
+      return null;
+    }
+    return runAudit(dir);
+  })();
+  if (res === null) continue;
   if (!res.ok) {
     if (ALLOW_SKIP) {
       skipped++;

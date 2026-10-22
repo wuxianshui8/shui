@@ -23,6 +23,7 @@ const PROOF = [
   { match: /node db\/seed-min\.mjs/, gate: "gate-p6 每次运行前执行 db/seed-min.mjs（12 用户 / 4 教员 / 3 业务员 / 2 代理）" },
   { match: /node dist\/main\.js/, gate: "verification：所有 gate-* 均以 node dist/main.js 起服并等 /api/health" },
   { match: /node test\/e2e\.test\.js/, gate: "e2e 全套 §1–§20 → 153/153" },
+  { match: /node tools\/check-audit\.mjs/, gate: "依赖漏洞审计：本机三 workspace 实测在预算内（apps/api-nest high 2 不可达 / web-admin 0 / web-mobile high 27 仅报告）" },
   { match: /node test\/security\.test\.js/, gate: "security → 53/53" },
   { match: /node test\/rules\.test\.js/, gate: "rules → 50/50" },
   { match: /node tools\/check-money-races\.mjs/, gate: "races → 27/27" },

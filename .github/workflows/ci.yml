@@ -234,6 +234,10 @@ jobs:
           node tools/check-admin-spa.mjs
           node tools/check-mobile-spa.mjs
 
+      # 三个 workspace 的 node_modules 此时都已安装（后端 + 两套前端构建），做一次真实依赖审计
+      - name: 依赖漏洞审计（全部 workspace）
+        run: node tools/check-audit.mjs
+
       - name: 重置演示数据（隔离上一步副作用）
         working-directory: apps/api-nest
         run: node ../../tools/ci-reset.mjs
