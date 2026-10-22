@@ -313,7 +313,20 @@ export function register(router) {
 
   /* ---------------- 公共字典 / 规则展示 ---------------- */
   router.get("/api/meta/dictionary", (ctx) => {
-    ok(ctx.res, DICTIONARY);
+    // 学段 / 科目以规则组 catalog 为准（后台「运营工具 → 学段 / 科目」维护），无该组时回落内置默认
+    let catalog = null;
+    try {
+      catalog = get("SELECT `value` FROM rule_configs WHERE `key` = 'catalog'");
+      catalog = catalog ? JSON.parse(catalog.value) : null;
+    } catch {
+      catalog = null;
+    }
+    const pick = (v, fallback) => (Array.isArray(v) && v.length ? v.map(String).filter(Boolean) : fallback);
+    ok(ctx.res, {
+      ...DICTIONARY,
+      stages: pick(catalog && catalog.stages, DICTIONARY.stages),
+      subjects: pick(catalog && catalog.subjects, DICTIONARY.subjects),
+    });
   }, { auth: false });
 
   router.get("/api/meta/rules-public", (ctx) => {

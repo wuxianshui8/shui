@@ -14,7 +14,7 @@ const mysql = requireFromApi("mysql2/promise");
 
 const DB = process.env.MYSQL_DATABASE || "jiajiao_migrate";
 const TRUNCATE = process.env.MIGRATE_TRUNCATE === "1";
-const BATCH = 200;
+const BATCH = Math.max(1, Number(process.env.MIGRATE_BATCH || 200)); // 可用 MIGRATE_BATCH 覆盖（排障用：1 = 逐行写）
 
 const conn = await mysql.createConnection({
   host: process.env.MYSQL_HOST || "127.0.0.1",

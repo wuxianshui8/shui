@@ -3,7 +3,7 @@
 对应第二份文档《UI 界面设计说明书 V1.0》。参考实现（`web/*.html` + 原生 ESM）的 UI 追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md) 第二部分；
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
-- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：18**
+- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：19**
 - **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：10**
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
@@ -47,6 +47,7 @@ UI 说明书「第 4 章补充：平台管理员界面（两张）」只画了**
 | 区域管理 | `/regions` | `Regions.vue` | 需求 4.5.5（片区/电子围栏） |
 | 规则配置中心 | `/rules` | `Rules.vue` | 需求 4.5.4（15 组规则热更新） |
 | 运营工具 | `/ops` | `Ops.vue` | 需求 4.5.8（Banner / 公告 / 优惠券） |
+| 学段 / 科目（运营工具类目） | `/catalog` | `Catalog.vue` | 需求 4.1（发单必填字段的选项维护）：字典落 `rule_configs.catalog`，保存即时生效，前端读 `/api/meta/dictionary` |
 | 风控与仲裁 | `/risks` | `Risks.vue` | 需求 4.5.7 |
 | 操作日志 | `/logs` | `Logs.vue` | 需求 4.5.9 |
 | 登录页（无侧栏） | `/login` | `Login.vue` | 需求 2.x 后台鉴权 |

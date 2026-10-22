@@ -19,6 +19,7 @@ const routes = [
   { path: "/regions", component: () => import("./views/Regions.vue"), meta: { title: "区域管理" } },
   { path: "/rules", component: () => import("./views/Rules.vue"), meta: { title: "规则配置中心" } },
   { path: "/ops", component: () => import("./views/Ops.vue"), meta: { title: "运营工具" } },
+  { path: "/catalog", component: () => import("./views/Catalog.vue"), meta: { title: "学段 / 科目" } },
   { path: "/risks", component: () => import("./views/Risks.vue"), meta: { title: "风控与仲裁" } },
   { path: "/logs", component: () => import("./views/Logs.vue"), meta: { title: "操作日志" } },
 ];

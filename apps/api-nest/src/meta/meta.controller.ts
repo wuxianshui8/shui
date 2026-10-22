@@ -34,8 +34,26 @@ export class MetaController {
   constructor(private readonly rules: RuleConfigService) {}
 
   @Get("dictionary")
-  dictionary() {
-    return { code: 0, message: "ok", data: DICTIONARY };
+  async dictionary() {
+    // 学段 / 科目以规则配置组 `catalog` 为准（后台「运营工具 → 学段 / 科目」可改，改后缓存即刻失效）
+    // 兼容旧库：没有该规则组时回落到内置默认，避免升级后表单变空。
+    let catalog: any = null;
+    try {
+      catalog = await this.rules.get("catalog");
+    } catch {
+      catalog = null;
+    }
+    const pick = (v: any, fallback: string[]) =>
+      Array.isArray(v) && v.length ? v.map((x: any) => String(x)).filter(Boolean) : fallback;
+    return {
+      code: 0,
+      message: "ok",
+      data: {
+        ...DICTIONARY,
+        stages: pick(catalog?.stages, DICTIONARY.stages),
+        subjects: pick(catalog?.subjects, DICTIONARY.subjects),
+      },
+    };
   }
 
   @Get("rules-public")

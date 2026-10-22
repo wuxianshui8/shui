@@ -22,6 +22,7 @@ const menus = [
   { path: "/regions", title: "区域管理", icon: "MapLocation" },
   { path: "/rules", title: "规则配置中心", icon: "SetUp" },
   { path: "/ops", title: "运营工具", icon: "Picture" },
+  { path: "/catalog", title: "学段 / 科目", icon: "Collection" },
   { path: "/risks", title: "风控与仲裁", icon: "Warning" },
   { path: "/logs", title: "操作日志", icon: "Document" },
 ];
