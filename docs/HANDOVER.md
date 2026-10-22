@@ -66,8 +66,8 @@ npm start                      # → http://localhost:4173
 | 层面 | 命令 | 结果 |
 | --- | --- | --- |
 | 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **329 断言**全绿 |
-| 正式实现全量门禁 | `npm run ci:full` | **27 步**（静态 14 + 业务 13），约 5 分钟 |
-| 静态门禁 | `npm run ci` | **14 步**，约 26 秒（含单元测试 119 用例 + 依赖审计 + 门禁自检 10 用例） |
+| 正式实现全量门禁 | `npm run ci:full` | **28 步**（静态 15 + 业务 13），约 5 分钟 |
+| 静态门禁 | `npm run ci` | **15 步**，约 30 秒（含单元测试 119 用例 + 依赖审计 + 门禁自检 10 用例） |
 | 单元测试与覆盖率 | `npm run test:unit` | **119 用例**，17 个模块行覆盖 ≥ 98.5%（门禁阈值 90%） |
 | 依赖漏洞审计 | `npm run audit:check` | 预算制 3 个 workspace：api-nest high 2（multer 不可达）/ web-admin 0 / web-mobile high 27（构建链，只阻断 critical） |
 | 托管 Runner | push 到 `main` 自动跑 | **6 次全绿**（static 13s / integration 206~210s，484 断言/次） |

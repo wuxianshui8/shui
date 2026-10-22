@@ -217,7 +217,7 @@ npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NOD
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
 npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
 npm run test:unit        # 单元测试 + 覆盖率门禁（82 用例 / 9 个纯函数模块，零第三方依赖）
-npm run ci:full          # 全量 27 步门禁（静态 14 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/支付回调/镜像运行契约/迁移巡检）
+npm run ci:full          # 全量 28 步门禁（静态 15 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/支付回调/镜像运行契约/迁移巡检）
 ```
 
 `deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；

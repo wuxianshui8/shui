@@ -496,13 +496,14 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
 | P37 超时未支付关单（A2 第 4 步） | ✅ | `PayProvider` 增加 `close(outTradeNo)`：mock 记录空操作；微信走 `POST /v3/pay/transactions/out-trade-no/{no}/close`，渠道返回 `ORDER_CLOSED`/`ORDERPAID`/`ORDER_NOT_EXIST` 视为**幂等成功**（否则定时任务会被一笔历史单反复卡住）。新增 `orders.closeExpiredUnpaid(minutes?)`：阈值取 `payment.pay_timeout_minutes`（无该规则组时默认 15 分钟；`Math.max(0.01, …)` 允许亚分钟阈值用于演练/门禁，但绝不允许 0 误杀新单）；逐单「渠道关单（失败只记日志、不阻断本地关单）→ 行锁内 `UPDATE ... WHERE status='awaiting_payment'`（按受影响行数计账）→ 预支付流水置 `closed` → 通知家长 → 审计 `order.close_expired`」。接入定时任务 `tick()`，并新增管理端手动触发 `POST /api/admin/orders/close-expired`（`@Roles("admin")`，`olderThanMinutes` 可覆盖阈值）。门禁 `check-pay-flow` 17 → **22 项**：家长调用 403、管理员执行后刚建的未支付单变 `cancelled`、二次调用 `closed=0`（幂等）；单测 119 → **122**（mock 记录关单、微信关单路径与 mchid、三类幂等错误码不抛错 + 其他错误照抛）。接口 143 → **144**；本机 `ci:full` **27/27 全绿（268s）**。累计门禁 599 → **604 项**。⚠️ 仍缺：退款渠道回写、渠道对账 |
 | P38 退款走渠道并回写（A2 第 5 步） | ✅ | 新增 `orders.refundViaChannel(orderNo, refundCents, totalCents, reason)`：mock 返回合成结果（本地/自动化不联网）；真实通道用**固定退款单号 `RF+订单号`**（渠道对同一 `out_refund_no` 幂等 → 可安全重试），渠道异常统一 `REFUND_CHANNEL_ERROR`（细节只进日志）。`admin.refundReview` 重构为**先渠道后事务**（网络调用绝不包进 DB 事务）：渠道 `SUCCESS` 才把订单落 `refunded` 并写 `payments(type=refund, trade_no=渠道退款号, status=success)`；渠道返回**非 SUCCESS**（受理中）时只落一条 `pending` 退款流水 + 审计并**保持 `refunding`**，抛 `REFUND_PROCESSING` 供运维重试——绝不「假装退款成功」。门禁 `check-pay-flow` 22 → **27 项**：家长申请退款进入 `refunding`、家长审批被拒（403）、渠道不可用时审批失败且错误码为 `REFUND_CHANNEL_ERROR`、失败后订单仍 `refunding`、`refundAmount` 仍为 0。本机 `ci:full` **27/27 全绿（266s）**；累计门禁 604 → **609 项**。⚠️ 仍缺：退款结果异步回调（受理中的单靠人工重试收敛）、渠道对账（需真实商户号与公网回调） |
 | P39 退款结果异步回调（A2 第 6 步） | ✅ | `PayProvider` 增加 `verifyRefundNotify(bodyText, headers)`：mock 解析形态；微信复用**同一套**验签（`WECHATPAY2-SHA256-RSA2048` + 时间戳防重放）与 `AEAD_AES_256_GCM` 解密，返回 `out_trade_no/out_refund_no/refund_id/refund_status/amount.refund`。新增 `POST /api/pay/wechat/refund-notify`（`@Public`，只靠验签；控制器抽出 `collect()` 统一取 rawBody 与 `wechatpay-*` 头部）。新增 `orders.settleRefundNotify`：`SUCCESS` → 行锁内把订单从 `refunding` 收敛为 `refunded`（幂等：已 `refunded` 直接返回）、**金额必须与 pending 退款流水一致**、有 pending 流水则改写它（避免二次出账）否则新增、担保出账 + 双方通知 + 审计；非 SUCCESS（`ABNORMAL`/`CLOSED`）→ 仅把 pending 流水置 `failed` 并通知家长人工跟进，订单保持 `refunding`。单测 122 → **125**（mock 解析/缺字段、微信验签+解密全链路、改包/未签名/异常状态、缺 resource 与非 JSON 明确报错）；门禁 `check-pay-flow` 27 → **32 项**（未签名退款回调被拒、SUCCESS 后订单转 `refunded` 且 `refundAmount` 等于实付、重复回调幂等）。接口 144 → **145**；本机 `ci:full` **27/27 全绿（269s）**；累计门禁 609 → **614 项**。⚠️ 仍缺：渠道对账（需真实商户号 + 对账单下载） |
+| P40 渠道对账脚本骨架（A2 收尾） | ✅ 骨架 / 🟡 真实下载待商户号 | 新增 `tools/check-recon.mjs`（`npm run pay:recon`）：把渠道账单与 `payments` 流水逐笔比对，输出**四类差异**并给退出码（0 一致 / 1 有差异 / 2 下载未实现）——① 渠道有我方无（漏记）② 我方有渠道无（未到账/虚假）③ 金额不一致（分）④ 状态不一致。三种用法：`--self-test`（内置「4 类差异各 1 条」样本，必须全部命中，且**完全一致样本不得误报**，另校验 CSV 中文表头、元→分换算、退款类型识别；无需数据库与商户号，已进 `ci-full` 静态第 5 步）；`--bill <csv>`（按 `MYSQL_MODE=docker|host` 探测查我方流水，与账单逐笔比）；`--download`（**未实现**：需真实商户号 + APIv3 证书，明确退出码 2，不静默成功）。**防空检查**：账单 0 行或我方 0 行一律判失败。端到端实测（容器库）：灌种子 + 真实下单支付（订单 ¥200.00）→ 导出一致账单 → **差异 0、退出码 0**；再构造「改一行金额 + 删一行」账单 → **2 类差异、退出码 1**。`ci:full` 27 → **28 步**（静态 15），本机 28/28 全绿（257s）；累计门禁 614 → **621 项**。⚠️ 真实对账单下载仍需商户资质 |
 | P19 后台新增 3 页 UI（需求池 / 管理员账号 / 权限矩阵） | ✅ | `Demands.vue`（状态/学段/科目/片区/加急筛选 + 分页）、`Admins.vue`（新建显示一次性口令 + 启停护栏提示）、`Permissions.vue`（4 权限点 × 5 角色矩阵，admin 列锁定）；PC 后台 15 → **18 页**，`check-admin-spa` 35 → **38** |
 | P21 移动端补「消息中心」页（第 10 页） | ✅ | `pages/messages/index`：未读数、单条已读、全部已读（订单/资金/风控/系统四类）；4 个角色首页均加带未读数的入口；`check-mobile-spa` 39 → **41**（新增路由回落 + `/messages` 契约） |
 | P20 UI 追溯矩阵（UI 说明书 ↔ 新前端） | ✅ | `docs/TRACEABILITY-UI-NEST.md`：移动端 10 页 + 后台 18 页逐页映射到 UI 说明书章节；`npm run ui:check` 校验（缺条目 → 退出码 1，实测负向验证通过）；纳入 `npm run ci` |
 | P17 细粒度权限矩阵（需求 4.5.9 角色权限分配） | ✅ | 新增规则组 `permissions`（4 个高危权限点）+ `@Perm` 装饰器 + `GET/PUT /api/admin/permissions`；`check-permissions` **17/17**（授予即时生效、撤销即失效、admin 不可移除、未知权限点被拒、审计留痕） |
 | P16 补齐后台需求池与管理员账号（需求 4.5.3 / 4.5.9） | ✅ | 新增 4 条路由（接口 136→**140**）：需求池分页筛选；管理员列表 / 新建（一次性强口令 + 首登改密）/ 启停（禁止禁自己、保底一个启用、禁用即失效令牌）；`check-admin-spa` 29→**35** |
 
-**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 41 + 27 + 38 + 17 + 15(P1) + 33(镜像运行契约) + 82(单元测试) + 32(支付回调/关单/退款/退款回调) = 614 项断言全绿；
+**新后端累计门禁：153 + 53 + 50 + 23 + 12 + 38 + 41 + 27 + 38 + 17 + 15(P1) + 33(镜像运行契约) + 82(单元测试) + 32(支付回调/关单/退款/退款回调) + 7(对账自检) = 621 项断言全绿；
 参考实现 7 套件 329 项断言零回归。**
 
 ### 1.17 P10：对抗式评审与缺陷修复
@@ -585,7 +586,7 @@ tools/check-mobile-spa.mjs 41/41   （/m/ 入口与 assets、9 条路由 history
   P16/P17/P19 陆续新增后台路由后，接口总数增至 **145**，覆盖同步为 **145/145**（`npm run trace:check` 每次都会重新核对）；
   把其中一处改成不存在的 `POST /api/orders/:id/payyy` 后，校验立即报错并退出码 1。
 - 新增 **`tools/ci-full.mjs`** 汇总门禁，三个档位：
-  `npm run ci`（静态十四步，约 26 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 27 步）。
+  `npm run ci`（静态十五步，约 30 秒）/ `npm run ci:quick`（加 verify-nest + e2e + security + rules）/ `npm run ci:full`（全部 28 步）。
   失败即中止并打印逐项耗时汇总。实测静态档：tsc 2.1s + 接口文档 0.1s + 追溯矩阵 0.1s，3 步全绿。
 
 ## 2. 后续迁移计划（按模块推进，以既有测试套件为门禁）
