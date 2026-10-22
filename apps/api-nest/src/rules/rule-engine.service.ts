@@ -23,17 +23,40 @@ export class RuleEngineService {
     return Math.max(minFactor, Number((1 - distanceKm / maxRadiusKm).toFixed(4)));
   }
 
-  /** 5.1 推送优先级 = 距离系数 × 等级权重 × 响应速度系数 */
+  /**
+   * 加急放大系数：家长自填的加急费越高，派单优先级越高。
+   * - 标准价（urgent.fee）→ dispatch.urgent_boost（默认 1.3）
+   * - 上限价（urgent.max_fee）→ dispatch.urgent_boost_max（默认 2.0）
+   * - 中间按金额线性插值；金额缺失/为 0 时只在 urgent=true 下用基准系数
+   *   （老库没有 urgent_boost_max 时也回落到基准值，行为与改造前一致）
+   */
+  async urgentBoost(cfg: any, urgentFee?: number | null): Promise<number> {
+    const base = Number(cfg?.urgent_boost) > 0 ? Number(cfg.urgent_boost) : 1;
+    const fee = Number(urgentFee);
+    if (!(fee > 0)) return base;
+    const u: any = await this.rules.get("urgent");
+    const min = Math.max(0, Number(u?.fee) || 0);
+    const capCfg = Number(u?.max_fee) || 0;
+    const cap = Math.max(min, capCfg > 0 ? capCfg : min * 10);
+    const maxBoost = Number(cfg?.urgent_boost_max);
+    if (!(maxBoost > base) || cap <= min) return base;
+    const ratio = Math.min(1, Math.max(0, (fee - min) / (cap - min)));
+    return Number((base + (maxBoost - base) * ratio).toFixed(4));
+  }
+
+  /** 5.1 推送优先级 = 距离系数 × 等级权重 × 响应速度系数 × 加急放大系数 */
   async dispatchPriority(p: {
     distanceKm: number;
     levelWeight: number;
     responseFactor: number;
     urgent?: boolean;
+    /** 需求的加急费（分）；越高的加急费放大系数越大 */
+    urgentFee?: number | null;
   }): Promise<number> {
     const cfg = await this.rules.get("dispatch");
     const df = this.distanceFactor(p.distanceKm, cfg.max_radius_km, cfg.distance_factor_min);
     let v = df * p.levelWeight * (p.responseFactor || 1);
-    if (p.urgent) v *= cfg.urgent_boost;
+    if (p.urgent) v *= await this.urgentBoost(cfg, p.urgentFee);
     return Number(v.toFixed(4));
   }
 

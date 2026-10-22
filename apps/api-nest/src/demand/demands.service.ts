@@ -180,6 +180,7 @@ export class DemandsService {
       levelWeight: lv.weight,
       responseFactor: Number(tp.response_factor),
       urgent: !!d.urgent,
+      urgentFee: Number(d.urgent_fee),
     });
     // 6.2 分布式锁：同一需求的抢单临界区串行化（Redis SET NX PX），唯一索引双保险
     const { value, locked } = await withLock(this.redis, "jiajiao:lock:demand:" + d.id, async () => {
@@ -240,6 +241,7 @@ export class DemandsService {
           levelWeight: lv.weight,
           responseFactor: Number(tp.response_factor),
           urgent: !!d.urgent,
+          urgentFee: Number(d.urgent_fee),
         }),
         appliedStatus,
         createdAt: d.created_at,

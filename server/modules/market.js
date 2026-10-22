@@ -333,6 +333,7 @@ export function register(router) {
           levelWeight: levelInfo(tp.level).weight,
           responseFactor: tp.response_factor,
           urgent: !!d.urgent,
+          urgentFee: Number(d.urgent_fee),
         }),
         appliedStatus: applied?.status || null,
         createdAt: d.created_at,
@@ -360,6 +361,7 @@ export function register(router) {
       levelWeight: levelInfo(tp.level).weight,
       responseFactor: tp.response_factor,
       urgent: !!d.urgent,
+      urgentFee: Number(d.urgent_fee),
     });
 
     return tx(() => {

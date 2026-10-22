@@ -20,7 +20,9 @@ export const FIELD_LABELS = {
   // 派单 / 打卡 / 加急
   max_radius_km: "派单半径（公里）", push_batch: "每批推送人数",
   grab_confirm_timeout_hours: "抢单确认时限（小时）",
-  distance_factor_min: "距离系数下限（×）", urgent_boost: "加急放大系数（×）",
+  distance_factor_min: "距离系数下限（×）",
+  urgent_boost: "加急放大系数（标准价，×）",
+  urgent_boost_max: "加急放大系数（加急费到上限时，×）",
   max_distance_m: "打卡最大距离（米）",
 
   // 结算
@@ -85,7 +87,7 @@ export const RATE_FIELDS = new Set([
 ]);
 
 /** 倍数字段：可以大于 1，只提示 ×N，不做 0~1 校验 */
-export const MULTIPLIER_FIELDS = new Set(["weight", "urgent_boost", "distance_factor_min"]);
+export const MULTIPLIER_FIELDS = new Set(["weight", "urgent_boost", "urgent_boost_max", "distance_factor_min"]);
 
 /** 角色代码（权限矩阵的枚举值） */
 export const ROLE_CODES = ["admin", "agent", "sales", "teacher", "parent"];

@@ -159,12 +159,31 @@ export function resolveRegion(lat, lng) {
   return best;
 }
 
-/** 推送优先级 = 距离系数 × 教员等级权重 × 响应速度系数 */
-export function dispatchPriority({ distanceKm, levelWeight, responseFactor, urgent }) {
+/**
+ * 加急放大系数：家长自填的加急费越高，派单优先级越高。
+ * 标准价（urgent.fee）取 dispatch.urgent_boost，上限价（urgent.max_fee）取 dispatch.urgent_boost_max，
+ * 中间线性插值；没有金额或老库缺 urgent_boost_max 时回落到基准系数（与改造前一致）。
+ */
+export function urgentBoostOf(cfg, urgentFee) {
+  const base = Number(cfg?.urgent_boost) > 0 ? Number(cfg.urgent_boost) : 1;
+  const fee = Number(urgentFee);
+  if (!(fee > 0)) return base;
+  const u = rule("urgent") || {};
+  const min = Math.max(0, Number(u.fee) || 0);
+  const capCfg = Number(u.max_fee) || 0;
+  const cap = Math.max(min, capCfg > 0 ? capCfg : min * 10);
+  const maxBoost = Number(cfg?.urgent_boost_max);
+  if (!(maxBoost > base) || cap <= min) return base;
+  const ratio = Math.min(1, Math.max(0, (fee - min) / (cap - min)));
+  return Number((base + (maxBoost - base) * ratio).toFixed(4));
+}
+
+/** 推送优先级 = 距离系数 × 教员等级权重 × 响应速度系数 × 加急放大系数 */
+export function dispatchPriority({ distanceKm, levelWeight, responseFactor, urgent, urgentFee }) {
   const cfg = rule("dispatch");
   const df = distanceFactor(distanceKm, cfg.max_radius_km, cfg.distance_factor_min);
   let p = df * levelWeight * (responseFactor || 1);
-  if (urgent) p *= cfg.urgent_boost;
+  if (urgent) p *= urgentBoostOf(cfg, urgentFee);
   return Number(p.toFixed(4));
 }
 

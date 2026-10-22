@@ -113,6 +113,20 @@ async function loginPassword(phone) {
   });
   assert(urgentHigh.status >= 400, "加急费超过上限被拒（" + urgentHigh.status + "）");
 
+  // 加价越高越靠前（P44）：同一地址、同一教员的视角下，加急费高的需求优先级更高
+  const highFee = await api("POST", "/api/demands", {
+    token: parentToken, body: { ...urgentBody, remark: "加急费拉满", urgent: true, urgentFee: 20000 },
+  });
+  const nearbyRank = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });
+  const rankOf = (id) => {
+    const d = (nearbyRank.body.data?.list || []).find((x) => x.id === id);
+    return d ? d.priority : null;
+  };
+  const cheap = rankOf(urgentSelf.body.data.id);
+  const pricey = rankOf(highFee.body.data.id);
+  assert(cheap != null && pricey != null && pricey > cheap,
+    "加急费越高派单优先级越高（¥50=" + cheap + " < ¥200=" + pricey + "）");
+
   /* ---------- 3. 教员端抢单 + 并发 ---------- */
   section("3. 教员端：抢单并发与派单规则");
   const nearby = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });

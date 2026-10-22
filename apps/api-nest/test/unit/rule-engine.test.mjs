@@ -9,7 +9,8 @@ import { RuleEngineService } from "../../dist/rules/rule-engine.service.js";
 import { haversineKm } from "../../dist/common/geo.js";
 
 const CFG = {
-  dispatch: { max_radius_km: 10, distance_factor_min: 0.05, urgent_boost: 1.2 },
+  dispatch: { max_radius_km: 10, distance_factor_min: 0.05, urgent_boost: 1.2, urgent_boost_max: 2 },
+  urgent: { fee: 1000, max_fee: 5000, enabled: true },
   teacher_levels: [
     { level: 1, min: 0, max: 59 },
     { level: 2, min: 60, max: 79 },
@@ -56,6 +57,38 @@ test("dispatchPriority：响应系数缺省按 1；加急单放大倍数", async
   assert.equal(await engine.dispatchPriority({ distanceKm: 5, levelWeight: 2, responseFactor: 0 }), 1, "0 视为未传");
   assert.equal(await engine.dispatchPriority({ distanceKm: 5, levelWeight: 2, responseFactor: 1, urgent: true }), 1.2);
   assert.equal(await engine.dispatchPriority({ distanceKm: 100, levelWeight: 3, responseFactor: 1 }), 0.15, "超半径仍可派单，但系数最低");
+});
+
+/* ---------------- 加急费越高越靠前（P44） ---------------- */
+
+test("urgentBoost：加急费从标准价线性升到上限系数", async () => {
+  const cfg = CFG.dispatch;
+  assert.equal(await engine.urgentBoost(cfg, 1000), 1.2, "标准价 = 基准系数");
+  assert.equal(await engine.urgentBoost(cfg, 5000), 2, "上限价 = 上限系数");
+  assert.equal(await engine.urgentBoost(cfg, 3000), 1.6, "中间值线性插值");
+  assert.equal(await engine.urgentBoost(cfg, 500), 1.2, "低于标准价按下限收敛");
+  assert.equal(await engine.urgentBoost(cfg, 999999), 2, "高于上限按上限收敛");
+});
+
+test("urgentBoost：无金额/配置缺失时回落到基准系数（老行为不变）", async () => {
+  const cfg = CFG.dispatch;
+  assert.equal(await engine.urgentBoost(cfg, undefined), 1.2);
+  assert.equal(await engine.urgentBoost(cfg, 0), 1.2);
+  assert.equal(await engine.urgentBoost({ urgent_boost: 1.3 }, 9000), 1.3, "老库缺 urgent_boost_max 不放大");
+  assert.equal(await engine.urgentBoost({ urgent_boost: 1.3, urgent_boost_max: 1 }, 9000), 1.3, "上限系数不大于基准时按基准");
+  // 老库连 urgent 规则组都没有：仍按基准系数，不报错
+  const noUrgent = new RuleEngineService({ get: async (k) => (k === "dispatch" ? { urgent_boost: 1.3, urgent_boost_max: 2 } : undefined) });
+  assert.equal(await noUrgent.urgentBoost({ urgent_boost: 1.3, urgent_boost_max: 2 }, 9000), 1.3, "缺 urgent 规则时回落到基准");
+});
+
+test("dispatchPriority：同距离同等级下，加急费越高优先级越高", async () => {
+  const base = { distanceKm: 5, levelWeight: 2, responseFactor: 1, urgent: true };
+  const seq = [];
+  for (const fee of [1000, 2000, 3000, 4000, 5000]) {
+    seq.push(await engine.dispatchPriority({ ...base, urgentFee: fee }));
+  }
+  assert.deepEqual(seq, [1.2, 1.4, 1.6, 1.8, 2], "逐个递增：" + seq.join(" < "));
+  assert.ok(seq[4] > (await engine.dispatchPriority({ distanceKm: 5, levelWeight: 2, responseFactor: 1 })), "加急高价 > 不加急");
 });
 
 /* ---------------- 等级映射 ---------------- */

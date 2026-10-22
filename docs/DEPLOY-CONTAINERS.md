@@ -40,6 +40,10 @@ docker compose run --rm --build seed
 docker compose ps                     # 三个服务应为 healthy
 ```
 
+> 灌种子后如果**改过规则默认值**（新增规则字段），要记得规则缓存有 5 分钟 TTL：
+> 应用先于 seed 启动时新字段进不了缓存，表现为「改完没反应」。最稳的顺序是 `up -d --build` → `run --rm --build seed` → `docker compose restart app`；
+> 已经跑起来了也没关系，在后台把该规则组**原样保存一次**即可立即失效缓存（`RuleConfigService.set` 会同时清内存与 Redis）。
+
 **一键脚本（推荐 Windows）**：`deploy\up.bat` —— 自带护栏（未装 docker 时提示先开 VT-x / 装 Docker Desktop；
 `.env` 不存在时自动从模板生成并提示填 `AUTH_SECRET`），随后依次执行 `up -d --build` → `run --rm seed` → `ps`。
 实测：本机（无 docker）运行该脚本会在第 1 道护栏退出（退出码 1），不产生任何副作用文件。
@@ -142,7 +146,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
 | concurrency | 23/23 | | |
 
-> `e2e`（156）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
+> `e2e`（157）与 `rules`（50）**不在容器上跑**：二者依赖 `send-code` 回显 `devCode`，
 > 而镜像内 `NODE_ENV=production` 会永久关闭该回显（安全设计）。这两条由 CI 的主机栈覆盖（run #5 全绿）。
 > 容器栈上的 9 个套件已足以证明「镜像里的 API + MySQL + Redis 组合与业务规则等价」。
 

@@ -9,6 +9,8 @@ export const DEFAULT_RULES = {
       grab_confirm_timeout_hours: 24,
       distance_factor_min: 0.05,
       urgent_boost: 1.3,
+      // 加急费越高越靠前：标准价时用 urgent_boost，到达 urgent.max_fee 时线性升到 urgent_boost_max
+      urgent_boost_max: 2,
     },
   },
   teacher_levels: {
