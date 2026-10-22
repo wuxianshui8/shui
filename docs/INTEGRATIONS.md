@@ -78,3 +78,21 @@
 - 回调依赖公网 HTTPS（B1），B1 未完成时只能用穿透域名联调，**不可直接上生产**；
 - 凭证必须走环境变量或密钥管理（B7），**不得写入仓库**；`.env` 已在 `.gitignore`；
 - 日志里不得出现完整手机号/证件号（现有 `maskPhone` 已覆盖接口返回，短信网关日志需另行脱敏）。
+
+## 6. 落地进度（2026-10-22）
+
+| 项 | 状态 | 已做 | 未做 |
+| --- | --- | --- | --- |
+| 短信（A1，腾讯云） | ✅ 代码完成，待密钥 | `src/integrations/sms/`：TC3-HMAC-SHA256 签名、SendSms 请求体、错误码分支、mock 兜底、`SMS_PROVIDER` 工厂、启动即校验配置；`sendCode` 先下发后落码；单测覆盖签名与错误分支 | 真实下发（需 5 项密钥 + 已备案签名/模板） |
+| 支付（A2，微信支付 v3） | 🟡 通道层完成 | `src/integrations/pay/`：`PayProvider` 端口、mock（本地/自动化）、微信 v3 实现（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款）；单测用本地 RSA 密钥对与自加密验证，**不需要商户号** | ① 订单流程接线（`orders.pay` 拆「建预支付单 → `payments.status=pending` → 回调确认」）；② 回调路由 `/api/pay/wechat/notify`（原始报文 + 头部透传）；③ 金额/单号一致性校验与重复回调幂等；④ 渠道对账文件解析 |
+| 打款（提现出款） | ⬜ 未做（方案已定：线下打款 + 后台确认） | — | `reviewWithdrawal` 通过时标注 `channel=offline` 与打款凭证字段；UI 文案「线下已打款」；对账口径说明 |
+
+### A2 剩余步骤（按依赖顺序，均可回归验证）
+
+1. `payments` 表增加 `prepay_id` / `channel_txn_id` 落地（回调写入），`trade_no` 上加唯一索引（幂等兜底）。
+2. `POST /api/orders/:id/pay`：`PAY_PROVIDER=mock` 保持现状（立即成功，26 步门禁零回归）；`wechat` 时改为
+   先落 `pending` 再返回 `params`，前端据 `params` 唤起。
+3. 新增 `POST /api/pay/wechat/notify`（**免鉴权**，只靠验签）：原文取 `rawBody`，头部透传给 `verifyNotify`，
+   成功后按 `out_trade_no` 行锁 + `FOR UPDATE` 入账，重复回调返回成功但不重复入账。
+4. 支付超时关单（15 分钟）与渠道 `close` 调用；退款走 `refund()` 并把渠道状态回写到 `payments`。
+5. 对账：`tools/check-recon.mjs` 下载渠道对账单，与我方 `payments`/`withdrawals` 逐笔比对。

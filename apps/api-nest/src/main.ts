@@ -6,6 +6,7 @@ import { AppModule } from "./app.module";
 import { ApiExceptionFilter } from "./common/pipes-and-filters";
 import { config } from "./config";
 import { createSmsSender } from "./integrations/sms/sms.service";
+import { createPayProvider } from "./integrations/pay/pay.service";
 
 const SECURITY_HEADERS = {
   "X-Frame-Options": "SAMEORIGIN",
@@ -26,7 +27,7 @@ const SECURITY_HEADERS = {
 };
 
 async function bootstrap() {
-  // 启动即校验外部集成配置：真实通道配错就别启动，不要等第一条验证码才炸
+  // 启动即校验外部集成配置：真实通道配错就别启动，不要等第一条验证码/第一笔支付才炸
   try {
     const sms = createSmsSender();
     if (sms.name === "mock") {
@@ -36,6 +37,17 @@ async function bootstrap() {
     }
   } catch (e: any) {
     console.error("[集成] 短信配置无效，拒绝启动：" + (e?.message || e));
+    process.exit(1);
+  }
+  try {
+    const pay = createPayProvider();
+    if (pay.name === "mock") {
+      console.warn("[集成] 支付通道=mock（不产生真实收款；上线必须配置 PAY_PROVIDER=wechat 及商户证书/密钥）");
+    } else {
+      console.log("[集成] 支付通道=" + pay.name);
+    }
+  } catch (e: any) {
+    console.error("[集成] 支付配置无效，拒绝启动：" + (e?.message || e));
     process.exit(1);
   }
 

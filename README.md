@@ -134,7 +134,7 @@ npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（
 npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 18 页 + 移动 10 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
-npm run test:unit      # 单元测试 + 覆盖率门禁（101 用例、13 个纯函数模块，行覆盖率 ≥ 90% 否则失败·约 4 秒）
+npm run test:unit      # 单元测试 + 覆盖率门禁（119 用例、17 个模块，行覆盖率 ≥ 90% 否则失败·约 5 秒）
 npm run audit:check    # 生产依赖漏洞预算校验（deploy/audit-budget.json：block/budget/expires·约 8 秒）
 npm run ci             # 静态门禁：tsc + 单元测试 + 依赖审计 + 接口 + 追溯 + Windows 脚本 + 文档写法（约 26 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
