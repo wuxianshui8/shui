@@ -105,7 +105,7 @@ jobs:
           done
           curl -fsS "$BASE_URL/api/health"
 
-      - name: e2e 全套 §1–§20（153）
+      - name: e2e 全套 §1–§20（163）
         run: node test/e2e.test.js
         env:
           E2E_MAX_SECTION: "20"
@@ -229,10 +229,11 @@ jobs:
           REDIS_PORT: "6379"
           PORT: "4300"
           RESTART_API: "1"
-      - name: PC 后台（38）与移动端（41）产物校验
+      - name: PC 后台（42）与移动端（47）产物校验
         run: |
           node tools/check-admin-spa.mjs
           node tools/check-mobile-spa.mjs
+          node tools/check-geo-fence.mjs
 
       # 三个 workspace 的 node_modules 此时都已安装（后端 + 两套前端构建），做一次真实依赖审计
       - name: 依赖漏洞审计（全部 workspace）
