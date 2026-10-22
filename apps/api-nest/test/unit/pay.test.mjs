@@ -327,3 +327,30 @@ test("getPayProvider：缓存单例，配错时 payProviderName 标记 invalid",
     resetPayProviderForTest();
   }
 });
+
+/* ---------------- 关单（超时未支付） ---------------- */
+
+test("MockPayProvider.close：记录关单请求（空操作）", async () => {
+  const p = new MockPayProvider();
+  await p.close("JJ1");
+  await p.close("JJ2");
+  assert.deepEqual(p.closed, ["JJ1", "JJ2"]);
+});
+
+test("WechatPayProvider.close：路径与 mchid 正确", async () => {
+  const calls = [];
+  const p = new WechatPayProvider(CFG, fakeFetch([{ body: {} }], calls));
+  await p.close("JJ202610220001");
+  assert.equal(calls[0].url, "https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/JJ202610220001/close");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { mchid: CFG.mchId });
+});
+
+test("WechatPayProvider.close：已关闭/已支付/不存在视为幂等成功，其他错误照抛", async () => {
+  for (const code of ["ORDER_CLOSED", "ORDERPAID", "ORDER_NOT_EXIST"]) {
+    const p = new WechatPayProvider(CFG, fakeFetch([{ ok: false, status: 400, body: { code, message: "x" } }], []));
+    await assert.doesNotReject(() => p.close("JJ1"), code + " 应当幂等");
+  }
+  const p2 = new WechatPayProvider(CFG, fakeFetch([{ ok: false, status: 500, body: { code: "SYSTEM_ERROR", message: "系统异常" } }], []));
+  await assert.rejects(() => p2.close("JJ1"), /SYSTEM_ERROR/);
+});

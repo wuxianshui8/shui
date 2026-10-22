@@ -12,6 +12,7 @@ export class MockPayProvider implements PayProvider {
   readonly name = "mock";
   readonly prepays: PrepayInput[] = [];
   readonly refunds: RefundInput[] = [];
+  readonly closed: string[] = [];
 
   async createPrepay(input: PrepayInput): Promise<PrepayResult> {
     this.prepays.push(input);
@@ -54,5 +55,10 @@ export class MockPayProvider implements PayProvider {
   async refund(input: RefundInput): Promise<RefundResult> {
     this.refunds.push(input);
     return { refundId: "mock_refund_" + input.outRefundNo, status: "SUCCESS" };
+  }
+
+  /** mock 没有真实渠道单，关单是空操作（但要记录，便于门禁断言） */
+  async close(outTradeNo: string): Promise<void> {
+    this.closed.push(String(outTradeNo));
   }
 }

@@ -254,4 +254,19 @@ export class WechatPayProvider implements PayProvider {
     const r = await this.request("POST", "/v3/refund/domestic/refunds", payload);
     return { refundId: String(r?.refund_id || ""), status: String(r?.status || "PROCESSING") };
   }
+
+  /**
+   * 关闭未支付订单：POST /v3/pay/transactions/out-trade-no/{out_trade_no}/close
+   * 渠道对「已关闭」「已支付」的重复关闭会返回错误码，这里按幂等处理（记日志不抛错），
+   * 否则定时任务会因为一笔历史订单反复失败而卡住。
+   */
+  async close(outTradeNo: string): Promise<void> {
+    try {
+      await this.request("POST", "/v3/pay/transactions/out-trade-no/" + encodeURIComponent(outTradeNo) + "/close", { mchid: this.cfg.mchId });
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      if (/ORDER_CLOSED|ORDERPAID|ORDER_NOT_EXIST/i.test(msg)) return;
+      throw e;
+    }
+  }
 }

@@ -239,6 +239,11 @@ export class AdminOpsService {
   }
 
   /** 平台强制关闭：已支付订单必须退回担保资金，保证台账闭合 */
+  /** 超时未支付关单（与定时任务同一函数）：管理端手动触发 / 补跑用 */
+  async closeExpiredOrders(olderThanMinutes?: number) {
+    return this.orders.closeExpiredUnpaid(olderThanMinutes);
+  }
+
   async closeOrder(ctx: any, id: number, reason: string) {
     return this.ds.transaction(async (m) => {
       // 行锁 + 事务内状态复查：与「到期结算」并发时不会出现「既结算又退款」

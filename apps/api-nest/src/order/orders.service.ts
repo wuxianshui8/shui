@@ -428,6 +428,48 @@ export class OrdersService {
     return this.view(fresh, "parent");
   }
 
+  /**
+   * 超时关单（A2）：超过 `payment.pay_timeout_minutes`（默认 15 分钟）仍未支付的订单自动关闭。
+   * - 真实通道先调渠道 `close`；渠道失败**不阻断**我方关单（只记日志），否则订单会被永久卡住
+   * - 幂等：只处理仍是 `awaiting_payment` 的单，按实际更新行数计数；重复调用返回 0
+   */
+  async closeExpiredUnpaid(olderThanMinutes?: number) {
+    const cfg = (await this.rules.get("payment").catch(() => ({}))) as any;
+    // 允许亚分钟阈值（演练/门禁用），但绝不允许 0 或负数把新单一刀切
+    const minutes = Math.max(0.01, Number(olderThanMinutes ?? cfg?.pay_timeout_minutes ?? 15));
+    const cutoff = new Date(Date.now() - minutes * 60000).toISOString();
+    const stale = await this.ds.query(
+      "SELECT `id`, `order_no`, `parent_id` FROM `orders` WHERE `status` = 'awaiting_payment' AND `created_at` < ? ORDER BY `id` LIMIT 200",
+      [cutoff],
+    );
+    if (!stale.length) return { closed: 0, timeoutMinutes: minutes };
+
+    const provider = getPayProvider();
+    let closed = 0;
+    for (const o of stale) {
+      if (provider.name !== "mock") {
+        try {
+          await provider.close(String(o.order_no));
+        } catch (e: any) {
+          console.error("[pay] 渠道关单失败（继续本地关单）：" + o.order_no + " " + (e?.message || e));
+        }
+      }
+      const n = await this.ds.transaction(async (m) => {
+        const upd = await m.query(
+          "UPDATE `orders` SET `status` = 'cancelled', `updated_at` = ? WHERE `id` = ? AND `status` = 'awaiting_payment'",
+          [nowIso(), o.id],
+        );
+        if (!upd.affectedRows) return 0;
+        await m.query("UPDATE `payments` SET `status` = 'closed' WHERE `order_id` = ? AND `type` = 'pay' AND `status` = 'pending'", [o.id]);
+        await notify(m, Number(o.parent_id), "订单已超时关闭", "订单 " + o.order_no + " 超过 " + minutes + " 分钟未支付，已自动关闭", "order", "/order/" + o.id);
+        await audit(m, { user: { uid: 0, role: "system" } }, "order.close_expired", "orders:" + o.id, { minutes });
+        return 1;
+      });
+      closed += Number(n) || 0;
+    }
+    return { closed, timeoutMinutes: minutes };
+  }
+
   /* ---------------- 上门打卡（默认 500 米阈值，可配置）---------------- */
   async checkin(teacherId: number, orderId: number, lat: number, lng: number) {
     const o = await this.get(orderId);

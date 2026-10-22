@@ -56,6 +56,8 @@ export interface PayProvider {
   /** 验签失败必须抛错（不得返回 success=false 蒙过去） */
   verifyNotify(bodyText: string, headers: Record<string, string | undefined>): Promise<NotifyResult>;
   refund(input: RefundInput): Promise<RefundResult>;
+  /** 关闭未支付的渠道单（超时关单时调用；已支付/已关闭的重复关闭应当幂等，不抛错） */
+  close(outTradeNo: string): Promise<void>;
 }
 
 /** 环境变量里的 PEM 常用 `\n` 转义写法，这里统一还原，避免密钥解析失败 */

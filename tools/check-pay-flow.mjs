@@ -238,6 +238,24 @@ async function main() {
   const r9 = await postNotify(stale, signNotification(stale, Math.floor(Date.now() / 1000) - 3600));
   ok("过期时间戳的回调被拒绝（防重放）", r9.status >= 400, "HTTP " + r9.status);
 
+  /* --- 超时关单（A2）：管理端手动触发，与定时任务同一函数 --- */
+  const adminLogin = await api("POST", "/api/auth/login-password", { body: { phone: "13900000001", password: PASSWORD } });
+  const adminToken = adminLogin.body?.data?.token;
+  ok("管理员登录成功", !!adminToken, "HTTP " + adminLogin.status);
+
+  const denied = await api("POST", "/api/admin/orders/close-expired", { token, body: { olderThanMinutes: 0.01 } });
+  ok("超时关单仅管理员可调用（家长 403）", denied.status === 403, "HTTP " + denied.status);
+
+  // 先等 1.2s：确保刚建的未支付单确实「老于 0.6s 阈值」，否则测的是「不误杀」而非「到点关单」
+  await sleep(1200);
+
+  const c1 = await api("POST", "/api/admin/orders/close-expired", { token: adminToken, body: { olderThanMinutes: 0.01 } });
+  ok("超时关单可执行（0.01 分钟阈值，覆盖刚建的未支付单）", c1.status === 200 && Number(c1.body?.data?.closed) >= 1, "closed=" + c1.body?.data?.closed);
+  const o2After = (await api("GET", "/api/orders/" + o2.id, { token })).body?.data;
+  ok("超时未支付单被关闭（cancelled）", o2After?.status === "cancelled", "status=" + o2After?.status);
+
+  const c2 = await api("POST", "/api/admin/orders/close-expired", { token: adminToken, body: { olderThanMinutes: 0.01 } });
+  ok("再次关单幂等（closed=0）", c2.status === 200 && Number(c2.body?.data?.closed) === 0, "closed=" + c2.body?.data?.closed);
   stopServer();
   console.log("");
   if (fails.length) {

@@ -99,6 +99,18 @@ export class AdminOpsController {
     return ok({ expired, timeoutHours: Number(((await this.rules.get("dispatch")) as any)?.grab_confirm_timeout_hours ?? 24) });
   }
 
+  /**
+   * 超时未支付关单（A2）：与定时任务同一函数，便于运维手动补跑。
+   * `olderThanMinutes` 传 0/不传走规则配置（payment.pay_timeout_minutes，默认 15）。
+   */
+  @Post("orders/close-expired")
+  @HttpCode(200)
+  async closeExpiredOrders(@Req() req: any, @Body() body: any) {
+    const r = await this.svc.closeExpiredOrders(body?.olderThanMinutes != null ? Number(body.olderThanMinutes) : undefined);
+    await audit(this.ds, req, "admin.orders.close_expired", null, { closed: r.closed, timeoutMinutes: r.timeoutMinutes });
+    return ok(r);
+  }
+
   /* ---------------- 代理管理 ---------------- */
   @Get("agents")
   async agents() {

@@ -52,6 +52,10 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         const n = await this.orders.runLessonReminders();
         if (n) this.logger.log("上课提醒已推送 " + n + " 单");
       });
+      await this.safely("closeExpiredUnpaid", async () => {
+        const r = await this.orders.closeExpiredUnpaid();
+        if (r.closed) this.logger.log("超时未支付关单 " + r.closed + " 单（阈值 " + r.timeoutMinutes + " 分钟）");
+      });
     } finally {
       this.running = false;
     }
