@@ -5,6 +5,7 @@
     { "path": "pages/parent/publish/index", "style": { "navigationBarTitleText": "发布需求" } },
     { "path": "pages/teacher/index", "style": { "navigationBarTitleText": "教员端" } },
     { "path": "pages/teacher/wallet/index", "style": { "navigationBarTitleText": "我的钱包" } },
+    { "path": "pages/teacher/apply/index", "style": { "navigationBarTitleText": "入驻认证" } },
     { "path": "pages/sales/index", "style": { "navigationBarTitleText": "业务员端" } },
     { "path": "pages/sales/rewards/index", "style": { "navigationBarTitleText": "奖励明细" } },
     { "path": "pages/agent/index", "style": { "navigationBarTitleText": "区域代理端" } },

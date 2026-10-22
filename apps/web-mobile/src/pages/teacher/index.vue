@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 const dash = ref(null);
 const level = ref(null);
@@ -32,6 +32,29 @@ async function load() {
   const mine = await req("GET", "/teacher/orders");
   orders.value = (mine && mine.list) || [];
 }
+
+/** 入驻状态：none / pending / approved / rejected（读 profile 判断，顺便给首页入口配色） */
+const auditStatus = ref("none");
+onMounted(async () => {
+  const p = await req("GET", "/teacher/profile");
+  auditStatus.value = p && p.applied ? (p.profile?.auditStatus || "pending") : "none";
+});
+const auditText = computed(() => ({
+  none: "去认证",
+  pending: "审核中",
+  approved: "已通过",
+  rejected: "待重新提交",
+}[auditStatus.value]));
+const auditHint = computed(() => ({
+  none: "提交身份证正反面与资质材料，审核通过后即可接单",
+  pending: "资料已提交，平台正在核验，无需重复提交",
+  approved: "资质已通过，可查看已提交的证件与证书",
+  rejected: "上次审核未通过，请按驳回原因修改后重新提交",
+}[auditStatus.value]));
+const auditBg = computed(() => (auditStatus.value === "approved" ? "#e7f8ee" : auditStatus.value === "rejected" ? "#fdecec" : "#eef4ff"));
+const auditColor = computed(() => (auditStatus.value === "approved" ? "#15803d" : auditStatus.value === "rejected" ? "#c02a2a" : "#1f6feb"));
+
+const goApply = () => uni.navigateTo({ url: "/pages/teacher/apply/index" });
 onMounted(load);
 
 const toast = (title) => uni.showToast({ title, icon: "none" });
@@ -93,6 +116,17 @@ function goMessages() {
       <view class="card-title">{{ user.nickname || "教员" }} · {{ dash && dash.overview ? dash.overview.level : "Lv" }}</view>
       <view class="muted" v-if="level">
         成长分 {{ level.growthScore }} · 抽佣 {{ (level.commission * 100).toFixed(0) }}% · 派单权重 {{ level.levelWeight }}
+      </view>
+    </view>
+
+    <!-- 入驻认证入口：没提交过 / 被驳回时才显著提示（已通过则只作为「查看资料」） -->
+    <view class="card" @tap="goApply">
+      <view class="row">
+        <view>入驻认证</view>
+        <view class="tag" :style="{ background: auditBg, color: auditColor }">{{ auditText }}</view>
+      </view>
+      <view class="muted" style="margin-top: 8rpx">
+        {{ auditHint }}
       </view>
     </view>
 

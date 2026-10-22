@@ -159,7 +159,7 @@ npm run ci:full        # 全部 28 步门禁（约 5 分钟 = 静态 15 步 + �
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-e2e 159 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 41；细粒度权限矩阵 17；镜像运行契约 33
+e2e 159 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 38 + 44；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
 - workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 28 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）

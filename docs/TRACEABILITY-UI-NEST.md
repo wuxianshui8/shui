@@ -4,7 +4,7 @@
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
 - **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：19**
-- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：10**
+- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：11**（第 11 个是教员入驻认证页，与 PC 同一套证件上传/识别契约）
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
 > 引用的后台路由都在 `router.js` 注册、侧栏菜单与路由自洽、声明的页面数与实际一致（漏写/写错即失败）。
@@ -19,6 +19,7 @@
 | 登录与角色分流 | `pages/login/index` | `pages/login/index.vue` | 口令登录 → 按 `role` 分流；**首登强制改密表单**（`mustChangePassword`） |
 | 第 3 章 教员端界面（接单/收入/等级） | `pages/teacher/index` | `pages/teacher/index.vue` | 课时看板、等级权益、附近需求抢单、「上门打卡（真实定位）/ 结束授课」 |
 | 第 3 章 收入与提现 | `pages/teacher/wallet/index` | `pages/teacher/wallet/index.vue` | 余额/冻结/累计收支、提现申请（最低额与手续费规则驱动、幂等键）、提现记录与流水 |
+| 第 3 章 入驻认证（资质材料） | `pages/teacher/apply/index` | `pages/teacher/apply/index.vue` | 身份类型、真实姓名/身份证号、**身份证正反面上传（缩略图 + 点击预览）**、学历/教师资格/技能证上传、擅长科目/学段、课时单价、服务半径、时间表；上传人像面即调 `/api/teacher/ocr-idcard` 回显「识别到：姓名 · 脱敏号码」与是否一致；提交走 `/api/teacher/apply`（姓名/号码与证件不一致会被服务端拒） |
 | （UI 说明书未单列业务员端） | `pages/sales/index` | `pages/sales/index.vue` | 按同规范扩展：本月注册/成交/GMV/待结奖励、双通道推广码、客户 |
 | （同上）奖励明细 | `pages/sales/rewards/index` | `pages/sales/rewards/index.vue` | 六类奖励按类型汇总与筛选、结算状态、钱包可用 |
 | 第 4 章 区域代理端界面（大盘/订单） | `pages/agent/index` | `pages/agent/index.vue` | 片区 GMV/订单/业务员、考核完成度、片区订单 |
