@@ -81,6 +81,16 @@ export class AdminController {
   @HttpCode(200)
   async refundReview(@Param("id") id: string, @Body() body: any, @Req() req: any) {
     const approve = !!body?.approve;
+    // 渠道退款必须在数据库事务之外先做（网络调用不能包在事务里，否则长事务锁表）；
+    // 退款单号固定为 RF+订单号，因此「渠道成功但本地事务回滚」时可以安全重试。
+    let ch: { refundId: string; status: string; channel: string } | null = null;
+    if (approve) {
+      const pre = (await this.ds.query("SELECT * FROM `orders` WHERE `id` = ?", [Number(id)]))[0];
+      if (pre && pre.status === "refunding" && pre.paid_at) {
+        const paid = Number(pre.amount) + Number(pre.urgent_fee);
+        ch = await this.orders.refundViaChannel(String(pre.order_no), paid, paid, body?.reason || "平台批准退款");
+      }
+    }
     const status = await this.ds.transaction(async (m) => {
       // 行锁 + 事务内状态复查：并发/重试审批只出账一次
       const o = (await m.query("SELECT * FROM `orders` WHERE `id` = ? FOR UPDATE", [Number(id)]))[0];
@@ -88,6 +98,15 @@ export class AdminController {
       if (o.status !== "refunding") throw biz("BAD_STATUS", "该订单不在退款审核中");
       if (approve) {
         const paid = Number(o.amount) + Number(o.urgent_fee);
+        // 渠道未成功（受理中/失败）→ 只落一条 pending 退款流水并保持 refunding，可安全重试
+        if (ch && ch.status !== "SUCCESS") {
+          await m.query(
+            "INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
+            [o.id, o.parent_id, "refund", paid, ch.channel, ch.refundId, "pending", nowIso()],
+          );
+          await audit(m, req, "admin.refund.channel_pending", "orders:" + o.id, { refundId: ch.refundId, status: ch.status });
+          throw biz("REFUND_PROCESSING", "渠道已受理退款（" + ch.status + "），订单保持退款中，可稍后重试或等待回调");
+        }
         // 先做状态迁移（带守卫），再出账，避免重复审批导致担保资金二次出账
         const upd = await m.query(
           "UPDATE `orders` SET `status` = 'refunded', `refund_amount` = ?, `cancel_by` = 'admin', `updated_at` = ? WHERE `id` = ? AND `status` = 'refunding'",
@@ -96,7 +115,7 @@ export class AdminController {
         if (!Number(upd?.affectedRows ?? 1)) throw biz("BAD_STATUS", "该订单不在退款审核中");
         await m.query(
           "INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
-          [o.id, o.parent_id, "refund", paid, "wechat_jsapi", tradeNo("RF"), "success", nowIso()],
+          [o.id, o.parent_id, "refund", paid, ch ? ch.channel : "wechat_jsapi", ch ? ch.refundId : tradeNo("RF"), "success", nowIso()],
         );
         await escrowMove(m, Number(o.id), "out", paid, "平台批准退款，担保资金原路退回 " + o.order_no);
         await notify(m, Number(o.parent_id), "退款已通过", "订单 " + o.order_no + " 退款 ¥" + (paid / 100).toFixed(2) + " 已原路退回", "payment");

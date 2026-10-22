@@ -256,6 +256,20 @@ async function main() {
 
   const c2 = await api("POST", "/api/admin/orders/close-expired", { token: adminToken, body: { olderThanMinutes: 0.01 } });
   ok("再次关单幂等（closed=0）", c2.status === 200 && Number(c2.body?.data?.closed) === 0, "closed=" + c2.body?.data?.closed);
+  /* --- 退款走渠道（A2 第 5 步）：wechat 模式下审批必须真的调渠道，失败不得假装退款成功 --- */
+  const ap = await api("POST", "/api/orders/" + o1.id + "/refund", { token, body: { reason: "课程取消，申请退款" } });
+  ok("家长申请退款成功（进入 refunding）", ap.status === 200 && ap.body?.data?.status === "refunding", "status=" + ap.body?.data?.status);
+
+  const denyApprove = await api("POST", "/api/admin/refunds/" + o1.id + "/review", { token, body: { approve: true } });
+  ok("退款审批需要后台权限（家长被拒）", denyApprove.status === 403 || denyApprove.status === 401, "HTTP " + denyApprove.status);
+
+  // 本机没有真实商户号/网络 → 渠道退款必然失败；关键是**不能把订单错误标记成已退款**
+  const approve = await api("POST", "/api/admin/refunds/" + o1.id + "/review", { token: adminToken, body: { approve: true } });
+  ok("渠道不可用时退款审批失败且给出明确错误码", approve.status >= 400 && approve.body?.code === "REFUND_CHANNEL_ERROR", "HTTP " + approve.status + " " + (approve.body?.code || ""));
+  const afterApprove = (await api("GET", "/api/orders/" + o1.id, { token })).body?.data;
+  ok("渠道失败后订单仍为 refunding", afterApprove?.status === "refunding", "status=" + afterApprove?.status);
+  ok("渠道失败后未写入退款金额", Number(afterApprove?.refundAmount || 0) === 0, "refundAmount=" + afterApprove?.refundAmount);
+
   stopServer();
   console.log("");
   if (fails.length) {

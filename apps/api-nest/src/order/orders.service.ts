@@ -677,6 +677,33 @@ export class OrdersService {
     });
   }
 
+  /**
+   * 渠道退款（A2）：把「平台批准退款」接到真实渠道。
+   * - mock 通道返回合成结果（本地/自动化不联网）
+   * - 真实通道用固定 `out_refund_no = RF + 订单号`，渠道对同一退款单号幂等，便于安全重试
+   * - 返回值里的 status 决定我方是否落 `refunded`：只有 SUCCESS 才算钱真的回去了
+   */
+  async refundViaChannel(orderNo: string, refundCents: number, totalCents: number, reason: string) {
+    const provider = getPayProvider();
+    if (provider.name === "mock") {
+      return { refundId: "mock_refund_" + orderNo, status: "SUCCESS", channel: "wechat_jsapi" };
+    }
+    try {
+      const r = await provider.refund({
+        outTradeNo: String(orderNo),
+        outRefundNo: "RF" + String(orderNo),
+        refundCents: Number(refundCents),
+        totalCents: Number(totalCents),
+        reason: String(reason || "平台批准退款").slice(0, 80),
+      });
+      return { refundId: r.refundId || "REFUND:" + orderNo, status: r.status || "PROCESSING", channel: provider.name };
+    } catch (e: any) {
+      // 渠道错误细节只进日志，前端只看到「稍后重试」，避免泄露商户配置
+      console.error("[pay] 渠道退款失败：" + String(orderNo) + " " + (e?.message || e));
+      throw biz("REFUND_CHANNEL_ERROR", "退款渠道暂时不可用，订单保持退款中，请稍后重试");
+    }
+  }
+
   async applyRefund(parentId: number, orderId: number, reason: string) {
     if (!reason) throw bad("请填写退款原因");
     const id = await this.ds.transaction(async (m) => {
