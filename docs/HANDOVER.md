@@ -79,6 +79,18 @@ npm start                      # → http://localhost:4173
 | 接口/需求/UI 追溯 | `api:doc:check` / `trace:check` / `ui:check` | **142/142 路由**、需求逐条、后台 18 页 + 移动 10 页 |
 | 全新克隆自包含 | `git clone` → `npm install` → `ci --static` | 全绿（clone 时 12 步；加入单元测试与依赖审计后 **14/14** 本机复跑通过） |
 
+**迁移门禁 `gate-p9` 报「Incorrect integer value / Column cannot be null」时**：几乎都是本地参考实现的库被写脏了。
+`data/app.db` 在多次 gate 串跑或中断后可能出现整行错位（例如 `audit_logs` 里出现 `orders` 的列值），
+迁移写入 MySQL 严格模式就会报类型错误。修法是删掉本地库让它按 `server/core/schema.sql` 重建：
+
+```powershell
+Remove-Item data\app.db* -Force
+node tools\gate-p9.mjs
+```
+
+`data/` 已在 `.gitignore`，脏库不会进仓库；该现象与代码无关（`git stash` 后同样复现）。
+排障时可用 `MIGRATE_BATCH=1` 让迁移逐行写入，报错会精确到行号。
+
 官方校验器：`actionlint 1.7.12` + `shellcheck 0.11.0`（零告警）、`compose-spec` JSON Schema（固定 commit 随仓库提交）。
 
 ## 5. 已知限制（如实记录，不是待办）
