@@ -151,10 +151,18 @@ async function upsertTeacher(phone, name, subjects, growth, level, lat, lng, reg
     [uid, "in_service", name, subjects, "初中,高中", price, 5, lat, lng, "approved", 1, growth, level, 4.8, 3, 30, 1.0, now, now],
   );
   await conn.execute("INSERT IGNORE INTO `wallets` (`user_id`,`updated_at`) VALUES (?,?)", [uid, now]);
-  await conn.execute(
-    "INSERT IGNORE INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`description`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    [uid, subjects.split(",")[0] + " 一对一上门", subjects, "初中,高中", price, 5, "演示服务", "on", now, now],
+  // teacher_services 没有唯一索引，INSERT IGNORE 不会去重 → 先查后插，保证重复跑种子不会叠加演示服务
+  const svcTitle = subjects.split(",")[0] + " 一对一上门";
+  const [svcHave] = await conn.query(
+    "SELECT `id` FROM `teacher_services` WHERE `teacher_id` = ? AND `title` = ? LIMIT 1",
+    [uid, svcTitle],
   );
+  if (!svcHave.length) {
+    await conn.execute(
+      "INSERT INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`description`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      [uid, svcTitle, subjects, "初中,高中", price, 5, "演示服务", "on", now, now],
+    );
+  }
   return uid;
 }
 const teacherZhang = await upsertTeacher("13900000201", "张老师", "数学,物理", 2350, "Lv5", 30.261, 120.132, xh.id, 20000, "zhang");
