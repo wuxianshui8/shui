@@ -22,6 +22,12 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "VARCHAR(255) DEFAULT NULL",
     why: "用户软删除标记（删除=打标记+匿名化，业务台账保留）",
   },
+  {
+    table: "users",
+    column: "username",
+    ddl: "VARCHAR(64) DEFAULT NULL",
+    why: "教员端「用户名 + 密码」登录（可空；唯一性由接口与种子保证）",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {

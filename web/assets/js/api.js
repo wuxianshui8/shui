@@ -77,6 +77,16 @@ export async function loginByPassword(phone, password, expectRole) {
   return data;
 }
 
+/** 账号密码登录：account 可以是用户名，也可以是手机号（教员端「用户名 + 密码」） */
+export async function loginByAccount(account, password, expectRole) {
+  const data = await api.post("/api/auth/login-account", { account, password });
+  if (expectRole && data.user.role !== expectRole && data.user.role !== "admin") {
+    throw new ApiError("该账号不是" + expectRole + "角色（当前：" + data.user.role + "）", "ROLE_MISMATCH", 400);
+  }
+  session.save(data.token, data.user);
+  return data;
+}
+
 export async function loginByCode(phone, code) {
   const data = await api.post("/api/auth/login", { phone, code });
   session.save(data.token, data.user);

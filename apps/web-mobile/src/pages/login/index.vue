@@ -59,7 +59,8 @@ function enter(data) {
 async function login() {
   loading.value = true;
   try {
-    const data = await api("POST", "/auth/login-password", { phone: phone.value, password: password.value });
+    // 手机号或用户名都可以（教员端常用「用户名 + 密码」，家长/业务员用手机号）
+    const data = await api("POST", "/auth/login-account", { account: String(phone.value || "").trim(), password: password.value });
     if (data.user && data.user.mustChangePassword) {
       // 初始口令必须先改：服务端在改密前只放行 change-password / me
       pendingUser.value = data.user;
@@ -133,7 +134,7 @@ async function changePassword() {
       <view class="muted" style="margin-bottom: 24rpx">移动端 · uni-app（家长 / 教员 / 业务员 / 区域代理）</view>
 
       <template v-if="!needChange">
-        <input v-model="phone" class="input" placeholder="手机号" />
+        <input v-model="phone" class="input" placeholder="手机号 / 用户名" />
         <input v-model="password" class="input" password placeholder="口令" />
         <view class="btn" @click="login">{{ loading ? "登录中…" : "登录 / 注册" }}</view>
 

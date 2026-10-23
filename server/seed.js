@@ -32,10 +32,10 @@ if (get("SELECT COUNT(*) AS c FROM users").c > 0 && !RESET) {
 const PW = hashPassword(DEMO_PASSWORD);
 const ago = (d) => new Date(Date.now() - d * 86400000).toISOString();
 
-function mkUser({ phone, nickname, role, regionId = null, realName = null, idCard = null }) {
+function mkUser({ phone, nickname, role, regionId = null, realName = null, idCard = null, username = null }) {
   const r = run(
-    "INSERT INTO users (phone, password_hash, nickname, role, status, real_name, id_card, region_id, created_at, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    phone, PW, nickname, role, "active", realName, idCard, regionId, ago(40), ago(0)
+    "INSERT INTO users (phone, username, password_hash, nickname, role, status, real_name, id_card, region_id, created_at, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    phone, username, PW, nickname, role, "active", realName, idCard, regionId, ago(40), ago(0)
   );
   run("INSERT OR IGNORE INTO wallets (user_id, updated_at) VALUES (?,?)", r.id, nowIso());
   return r.id;
@@ -99,6 +99,21 @@ const salesIds = SALES_DEFS.map((s, i) => {
 });
 
 /* ---------------- 教员 ---------------- */
+// 教员端「用户名 + 密码」登录用的用户名（小写，唯一）；留空的账号只能用手机号登录
+const TEACHER_USERNAMES = {
+  "13900000201": "zhang",
+  "13900000202": "li",
+  "13900000203": "wangxue",
+  "13900000204": "liuchang",
+  "13900000205": "chenzihao",
+  "13900000206": "zhaomin",
+  "13900000207": "sunhaoran",
+  "13900000208": "zhouya",
+  "13900000209": "wujiahao",
+  "13900000210": "zhengxiao",
+  "13900000211": "huanglei",
+  "13900000212": "linjing",
+};
 const TEACHER_DEFS = [
   { name: "张老师", phone: "13900000201", identity: "in_service", subjects: "数学,物理", stages: "初中,高中", price: 20000, growth: 2350, region: 0, lat: 30.2610, lng: 120.1320 },
   { name: "李思远", phone: "13900000202", identity: "student", subjects: "英语", stages: "小学,初中", price: 12000, growth: 720, region: 0, lat: 30.2540, lng: 120.1260 },
@@ -114,7 +129,7 @@ const TEACHER_DEFS = [
   { name: "林静", phone: "13900000212", identity: "student", subjects: "英语", stages: "小学,初中", price: 11000, growth: 420, region: 3, lat: 30.4150, lng: 119.9960 },
 ];
 const teacherIds = TEACHER_DEFS.map((t, i) => {
-  const uid = mkUser({ phone: t.phone, nickname: t.name, role: "teacher", regionId: regionIds[t.region], realName: t.name, idCard: "33010619950101" + String(1000 + i) });
+  const uid = mkUser({ phone: t.phone, nickname: t.name, role: "teacher", regionId: regionIds[t.region], realName: t.name, idCard: "33010619950101" + String(1000 + i), username: TEACHER_USERNAMES[t.phone] });
   const lv = levelByScore(t.growth);
   const audit = i === TEACHER_DEFS.length - 1 ? "pending" : "approved";
   run(

@@ -10,6 +10,7 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `users` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `phone`           VARCHAR(191) UNIQUE,
+  `username`        VARCHAR(64) UNIQUE,               -- 教员端「用户名 + 密码」登录用（可空，唯一，小写存储）
   `password_hash`   TEXT,
   `nickname`        VARCHAR(255) NOT NULL,
   `avatar`          VARCHAR(255),

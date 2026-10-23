@@ -138,6 +138,7 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
     "H5 产物按身份类型区分证书（在职教师→教师资格证 / 学生→学生证 / 社会→技能证书）");
   assert(bundle.includes("资质材料"), "H5 产物有「资质材料」版块");
   assert(bundle.includes("backgroundImage"), "上传后的证件图用背景图渲染（框内 background-size: cover 自适应）");
+  assert(bundle.includes("/auth/login-account") && bundle.includes("手机号 / 用户名"), "移动端登录页支持「手机号 / 用户名 + 口令」登录");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {
@@ -211,6 +212,22 @@ assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
   const resetAv = await api("PUT", "/parent/avatar", { token: parent.body.data.token, body: { avatar: null } });
   assert(resetAv.status === 200 && resetAv.body.data.hasAvatar === false && resetAv.body.data.user.avatar === null,
     "家长头像：传 null 可恢复默认首字母头像");
+}
+
+// 教员端「用户名 + 密码」登录（account = 用户名或手机号）
+{
+  const tLogin = await api("POST", "/auth/login-account", { body: { account: "zhang", password: PW } });
+  assert(tLogin.status === 200 && tLogin.body.data.user.role === "teacher", "教员端用户名密码登录：zhang / a123456 → 教员 token");
+  const tUpper = await api("POST", "/auth/login-account", { body: { account: "ZHANG", password: PW } });
+  assert(tUpper.status === 200 && tUpper.body.data.user.id === tLogin.body.data.user.id, "用户名大小写不敏感（ZHANG = zhang）");
+  const tPhone = await api("POST", "/auth/login-account", { body: { account: "13900000201", password: PW } });
+  assert(tPhone.status === 200 && tPhone.body.data.user.id === tLogin.body.data.user.id, "同一接口用手机号也能登录（account 兼容手机号）");
+  const tBad = await api("POST", "/auth/login-account", { body: { account: "zhang", password: "wrong-pass-1" } });
+  assert(tBad.status === 400 && tBad.body.code === "BAD_CREDENTIALS", "错误密码被拒（BAD_CREDENTIALS，不泄露账号是否存在）");
+  const tEmpty = await api("POST", "/auth/login-account", { body: { account: "", password: PW } });
+  assert(tEmpty.status === 400, "空用户名被拒");
+  const tMe = await api("GET", "/auth/me", { token: tLogin.body.data.token });
+  assert(tMe.status === 200 && tMe.body.data.user.id === tLogin.body.data.user.id, "用户名登录拿到的 token 可用（/auth/me）");
 }
 
 console.log("\n=================================================");

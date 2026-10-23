@@ -204,22 +204,43 @@ export class AuthService {
 
   /** 口令登录：失败次数锁定由规则配置中心驱动（risk.login_fail_limit），429 + LOGIN_LOCKED */
   async loginByPassword(phone: string, password: string, ip = "") {
+    const p = String(phone || "").trim();
+    const user: any = (await this.ds.query("SELECT * FROM `users` WHERE `phone` = ? LIMIT 1", [p]))[0] || null;
+    return this.finishPasswordLogin(user, password, (ip || "-") + ":" + p, "手机号或密码错误");
+  }
+
+  /**
+   * 账号密码登录（教员端「用户名 + 密码」，需求 4.2）：`account` 既可以是手机号，也可以是用户名。
+   * 用户名小写比对（库里也存小写）；错误提示统一「用户名或密码错误」，不区分「账号不存在」与「口令错」，
+   * 避免被用来枚举账号。
+   */
+  async loginByAccount(account: string, password: string, ip = "") {
+    const acc = String(account || "").trim();
+    if (!acc) throw bad("请输入用户名或手机号");
+    const isPhone = /^1\d{10}$/.test(acc);
+    const user: any = isPhone
+      ? ((await this.ds.query("SELECT * FROM `users` WHERE `phone` = ? LIMIT 1", [acc]))[0] || null)
+      : ((await this.ds.query("SELECT * FROM `users` WHERE `username` = ? LIMIT 1", [acc.toLowerCase()]))[0] || null);
+    return this.finishPasswordLogin(user, password, (ip || "-") + ":" + acc.toLowerCase(), "用户名或密码错误");
+  }
+
+  /** 口令校验 + 失败锁定 + 发令牌（手机号登录与用户名登录共用同一套规则） */
+  private async finishPasswordLogin(user: any, password: string, key: string, errMsg: string) {
     const cfg = (await this.rules.get("risk")) as any;
     const limit = Math.max(1, Number(cfg?.login_fail_limit ?? 5));
     const lockMin = Math.max(1, Number(cfg?.lock_minutes ?? 15));
-    const key = (ip || "-") + ":" + phone;
     const rec = loginFails.get(key);
     if (rec && rec.count >= limit && rec.until > Date.now()) {
       const mins = Math.max(1, Math.ceil((rec.until - Date.now()) / 60000));
       throw tooMany("LOGIN_LOCKED", "登录失败次数过多，请 " + mins + " 分钟后再试");
     }
-    const user: any = (await this.ds.query("SELECT * FROM `users` WHERE `phone` = ? LIMIT 1", [phone]))[0];
     if (!user || !verifyPassword(password, user.password_hash)) {
       const cur = loginFails.get(key) || { count: 0, until: 0 };
       cur.count += 1;
       if (cur.count >= limit) cur.until = Date.now() + lockMin * 60000;
       loginFails.set(key, cur);
-      throw bad("手机号或密码错误");
+      // 统一错误码：前端可据此提示「账号或口令错误」，也与参考实现口径一致
+      throw biz("BAD_CREDENTIALS", errMsg);
     }
     if (user.status === "disabled") throw forbidden("账号已被禁用");
     loginFails.delete(key);

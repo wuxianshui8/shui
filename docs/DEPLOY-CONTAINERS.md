@@ -147,7 +147,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | 套件 | 结果 | 套件 | 结果 |
 | --- | --- | --- | --- |
 | security | 53/53 | admin SPA | 58/58 |
-| races | 27/27 | mobile SPA | 80/80 |
+| races | 27/27 | mobile SPA | 87/87 |
 | privacy | 38/38 | 镜像运行契约 | 33/33 |
 | permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
 | concurrency | 23/23 | | |

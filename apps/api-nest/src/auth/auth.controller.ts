@@ -60,6 +60,16 @@ export class AuthController {
     return ok(await this.auth.loginByPassword(String(body.phone || "").trim(), String(body.password || ""), ip));
   }
 
+  /** 账号密码登录（教员端「用户名 + 密码」）：account 可填用户名或手机号 */
+  @Public()
+  @HttpCode(200)
+  @Post("login-account")
+  async loginAccount(@Body() body: { account?: string; username?: string; password?: string }, @Req() req: any) {
+    const ip = clientIp(req);
+    const account = String(body?.account ?? body?.username ?? "").trim();
+    return ok(await this.auth.loginByAccount(account, String(body?.password || ""), ip));
+  }
+
   @Get("me")
   async me(@Req() req: any) {
     return ok({ user: await this.auth.me(req.user.uid) });

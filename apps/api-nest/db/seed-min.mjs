@@ -95,10 +95,19 @@ console.log(`MySQL 种子完成：用户 ${u.c}，片区 ${rg.c}，规则 ${rc.c
 const PW = hashPassword(DEMO_PASSWORD);
 async function upsertUser(phone, nickname, role, extra = {}) {
   const exist = await conn.execute("SELECT `id` FROM `users` WHERE `phone` = ?", [phone]);
-  if (exist[0].length) return exist[0][0].id;
+  if (exist[0].length) {
+    // 老库补用户名（教员端「用户名 + 密码」登录用），只在为空时写，不覆盖已改过的
+    if (extra.username) {
+      await conn.execute("UPDATE `users` SET `username` = ? WHERE `phone` = ? AND (`username` IS NULL OR `username` = '')", [
+        extra.username,
+        phone,
+      ]);
+    }
+    return exist[0][0].id;
+  }
   const [r] = await conn.execute(
-    "INSERT INTO `users` (`phone`,`password_hash`,`nickname`,`role`,`status`,`region_id`,`real_name`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
-    [phone, PW, nickname, role, "active", extra.regionId ?? null, extra.realName ?? null, now],
+    "INSERT INTO `users` (`phone`,`username`,`password_hash`,`nickname`,`role`,`status`,`region_id`,`real_name`,`created_at`) VALUES (?,?,?,?,?,?,?,?,?)",
+    [phone, extra.username ?? null, PW, nickname, role, "active", extra.regionId ?? null, extra.realName ?? null, now],
   );
   return r.insertId;
 }
@@ -130,8 +139,8 @@ for (const target of ["parent", "teacher"]) {
 }
 
 // 教员（西湖 数学/物理 Lv5 在线；滨江 数学 Lv2）
-async function upsertTeacher(phone, name, subjects, growth, level, lat, lng, regionId, price) {
-  const uid = await upsertUser(phone, name, "teacher", { regionId, realName: name });
+async function upsertTeacher(phone, name, subjects, growth, level, lat, lng, regionId, price, username = null) {
+  const uid = await upsertUser(phone, name, "teacher", { regionId, realName: name, username });
   await conn.execute(
     `INSERT IGNORE INTO \`teacher_profiles\` (\`user_id\`,\`identity_type\`,\`real_name\`,\`subjects\`,\`stages\`,\`hourly_price\`,
       \`service_radius_km\`,\`base_lat\`,\`base_lng\`,\`audit_status\`,\`online\`,\`growth_score\`,\`level\`,\`rating_avg\`,\`rating_count\`,
@@ -146,8 +155,8 @@ async function upsertTeacher(phone, name, subjects, growth, level, lat, lng, reg
   );
   return uid;
 }
-const teacherZhang = await upsertTeacher("13900000201", "张老师", "数学,物理", 2350, "Lv5", 30.261, 120.132, xh.id, 20000);
-const teacherChen = await upsertTeacher("13900000205", "陈子豪", "数学", 340, "Lv2", 30.21, 120.21, bj.id, 10000);
+const teacherZhang = await upsertTeacher("13900000201", "张老师", "数学,物理", 2350, "Lv5", 30.261, 120.132, xh.id, 20000, "zhang");
+const teacherChen = await upsertTeacher("13900000205", "陈子豪", "数学", 340, "Lv2", 30.21, 120.21, bj.id, 10000, "chenzihao");
 
 // 家长（西湖）：档案 + 钱包 + 地址 + 归属
 const parentId = await upsertUser("13900000301", "家长·周女士", "parent", { regionId: xh.id, realName: "周女士" });

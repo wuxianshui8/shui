@@ -3,7 +3,7 @@
    流程：上线接单 → 抢单 → 上门定位打卡 → 结束授课 → 结算提现
    所有金额：后端为「分」整数；展示用 money()/yuan()，提交用 cents()
    ============================================================ */
-import { api, session, idemKey, loginByCode, loginByPassword } from "./api.js";
+import { api, session, idemKey, loginByCode, loginByPassword, loginByAccount } from "./api.js";
 import {
   esc, money, yuan, cents, fmtDate, fromNow, stars, levelBadge, statusBadge,
   avatar, toast, toastOk, toastErr, confirmDialog, promptDialog, sheet,
@@ -161,23 +161,38 @@ async function runAction(el) {
 }
 
 /* ---------------- 登录层 ---------------- */
+/** 登录方式：code（手机号 + 验证码）/ account（用户名 + 密码） */
+let loginMode = "code";
+
 function loginHtml() {
+  const modeCode = loginMode === "code";
   return '' +
     '<div class="brandmark" aria-hidden="true">🎓</div>' +
     "<h2>教员端登录</h2>" +
-    '<p class="lead">接单大厅 · 服务上架 · 定位打卡 · 等级权益 · 收入提现<br>演示账号 <b>13900000201</b>（张老师 · 已审核 · 在线）</p>' +
+    '<p class="lead">接单大厅 · 服务上架 · 定位打卡 · 等级权益 · 收入提现<br>演示账号 <b>13900000201</b> 或用户名 <b>zhang</b>（张老师 · 已审核 · 在线），口令 a123456</p>' +
+    '<div class="segmented mt16" role="tablist">' +
+    '<button type="button" class="' + (modeCode ? "on" : "") + '" data-lg="mode-code">手机号验证码</button>' +
+    '<button type="button" class="' + (!modeCode ? "on" : "") + '" data-lg="mode-account">用户名密码</button>' +
+    "</div>" +
     '<div class="card mt16" style="margin-bottom:0">' +
-    '<div class="field"><label for="lg-phone">手机号</label>' +
-    '<input class="input" id="lg-phone" type="tel" inputmode="numeric" maxlength="11" value="13900000201" autocomplete="tel"></div>' +
-    '<div class="field"><label for="lg-code">验证码</label><div class="code-row">' +
-    '<input class="input" id="lg-code" inputmode="numeric" maxlength="6" placeholder="6 位数字" autocomplete="one-time-code">' +
-    '<button class="btn btn-ghost" type="button" data-lg="send">获取验证码</button></div></div>' +
+    (modeCode
+      ? ('<div class="field"><label for="lg-phone">手机号</label>' +
+        '<input class="input" id="lg-phone" type="tel" inputmode="numeric" maxlength="11" value="13900000201" autocomplete="tel"></div>' +
+        '<div class="field"><label for="lg-code">验证码</label><div class="code-row">' +
+        '<input class="input" id="lg-code" inputmode="numeric" maxlength="6" placeholder="6 位数字" autocomplete="one-time-code">' +
+        '<button class="btn btn-ghost" type="button" data-lg="send">获取验证码</button></div></div>')
+      : ('<div class="field"><label for="lg-account">用户名</label>' +
+        '<input class="input" id="lg-account" type="text" maxlength="32" value="zhang" autocomplete="username" placeholder="用户名或手机号"></div>' +
+        '<div class="field"><label for="lg-pwd">密码</label>' +
+        '<input class="input" id="lg-pwd" type="password" maxlength="64" value="a123456" autocomplete="current-password" placeholder="登录密码"></div>' +
+        '<div class="form-hint">用户名由平台开通时分配（如 zhang）；也可直接填手机号。</div>')) +
     '<label class="login-check mt8"><input type="checkbox" id="lg-agree" checked>' +
     "<span>我已阅读并同意《用户协议》《隐私政策》《退款规则》，同意平台按公示规则派单与结算</span></label>" +
-    '<button class="btn btn-primary btn-block mt16" type="button" data-lg="login">登录 / 注册</button>' +
-    '<button class="btn btn-sm btn-ghost btn-block mt8" type="button" data-lg="pwd" style="box-shadow:none">使用演示密码登录（a123456）</button>' +
+    '<button class="btn btn-primary btn-block mt16" type="button" data-lg="' + (modeCode ? "login" : "account-login") + '">' +
+    (modeCode ? "登录 / 注册" : "登录") + "</button>" +
+    (modeCode ? '<button class="btn btn-sm btn-ghost btn-block mt8" type="button" data-lg="pwd" style="box-shadow:none">使用演示密码登录（a123456）</button>' : "") +
     "</div>" +
-    '<p class="tiny faint mt16 center">教员须通过资质审核后方可上线接单；微信登录请前往家长端</p>';
+    '<p class="tiny faint mt16 center">教员须通过资质审核后方可上线接单；忘记密码请联系片区代理重置</p>';
 }
 
 function showLogin() {
@@ -210,16 +225,35 @@ function ensureTeacherRole() {
 function bindLogin(root) {
   const phoneEl = $("#lg-phone", root);
   const codeEl = $("#lg-code", root);
+  const accountEl = $("#lg-account", root);
+  const pwdEl = $("#lg-pwd", root);
   root.addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-lg]");
     if (!btn) return;
     const kind = btn.dataset.lg;
-    const phone = (phoneEl.value || "").trim();
+    const phone = (phoneEl && phoneEl.value ? phoneEl.value : "").trim();
     const label = btn.textContent;
     const busy = (on, txt) => {
       btn.disabled = on;
       btn.textContent = on ? txt : label;
     };
+
+    // 切换登录方式：重绘登录层，不丢输入（用户名/密码会带上当前值）
+    if (kind === "mode-code" || kind === "mode-account") {
+      const next = kind === "mode-account" ? "account" : "code";
+      if (next === loginMode) return;
+      const keepAccount = accountEl ? accountEl.value : "";
+      const keepPwd = pwdEl ? pwdEl.value : "";
+      loginMode = next;
+      showLogin();
+      const a2 = document.querySelector("#lg-account");
+      const p2 = document.querySelector("#lg-pwd");
+      if (a2 && keepAccount) a2.value = keepAccount;
+      if (p2 && keepPwd) p2.value = keepPwd;
+      const focusEl = document.querySelector(next === "account" ? "#lg-pwd" : "#lg-code");
+      if (focusEl) focusEl.focus();
+      return;
+    }
 
     if (kind === "send") {
       if (!/^1\d{10}$/.test(phone)) return toastErr("请输入正确的手机号");
@@ -240,7 +274,20 @@ function bindLogin(root) {
     if (!$("#lg-agree", root).checked) return toastErr("请先阅读并同意平台协议");
     busy(true, "登录中…");
     try {
-      if (kind === "pwd") {
+      if (kind === "account-login") {
+        // 用户名 + 密码：用户名或手机号都可以，走统一的账号密码接口
+        const account = (accountEl.value || "").trim();
+        const password = pwdEl.value || "";
+        if (!account) {
+          busy(false);
+          return toastErr("请输入用户名或手机号");
+        }
+        if (!password) {
+          busy(false);
+          return toastErr("请输入密码");
+        }
+        await loginByAccount(account, password);
+      } else if (kind === "pwd") {
         await loginByPassword(phone, "a123456");
       } else {
         const code = (codeEl.value || "").trim();

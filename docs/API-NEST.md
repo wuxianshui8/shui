@@ -43,7 +43,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **156** 个路由，分布在 **18** 个控制器。
+总计 **157** 个路由，分布在 **18** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
@@ -52,7 +52,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
 | `admin/admin.controller.ts` | 9 |
-| `auth/auth.controller.ts` | 8 |
+| `auth/auth.controller.ts` | 9 |
 | `demand/demands.controller.ts` | 8 |
 | `parent/parent.controller.ts` | 6 |
 | `public/public.controller.ts` | 6 |
@@ -161,6 +161,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | POST | `/api/auth/change-password` | 登录用户 | 200 |
 | POST | `/api/auth/deactivate` | 登录用户 | 200 |
 | POST | `/api/auth/login` | 公开 | 无需令牌，200 |
+| POST | `/api/auth/login-account` | 公开 | 无需令牌，200 |
 | POST | `/api/auth/login-password` | 公开 | 无需令牌，200 |
 | GET | `/api/auth/me` | 登录用户 |  |
 | POST | `/api/auth/send-code` | 公开 | 无需令牌，200 |

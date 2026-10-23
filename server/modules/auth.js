@@ -198,6 +198,28 @@ export function register(router) {
     ok(ctx.res, { token: signToken(user.id, user.role), user: publicUser(loadUser(user.id)) });
   }, { auth: false });
 
+  // 账号密码登录（教员端「用户名 + 密码」）：account 既可以是用户名，也可以是手机号
+  // 用户名小写比对；错误提示统一「用户名或密码错误」，不区分账号不存在与口令错（防枚举）
+  router.post("/api/auth/login-account", (ctx) => {
+    const account = String(ctx.body.account || ctx.body.username || "").trim();
+    if (!account) throw Err.bad("请输入用户名或手机号");
+    const password = String(ctx.body.password || "");
+    const key = account.toLowerCase();
+    const guard = loginGuard(ctx, key);
+    const user = /^1\d{10}$/.test(account)
+      ? get("SELECT * FROM users WHERE phone = ?", account)
+      : get("SELECT * FROM users WHERE username = ?", key);
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      loginFail(guard);
+      throw Err.biz("BAD_CREDENTIALS", "用户名或密码错误");
+    }
+    loginPass(guard);
+    if (user.status === "disabled") throw Err.forbidden("账号已被禁用");
+    run("UPDATE users SET last_login_at = ? WHERE id = ?", nowIso(), user.id);
+    audit({ ...ctx, user: publicUser(user) }, "auth.loginAccount", "users:" + user.id);
+    ok(ctx.res, { token: signToken(user.id, user.role), user: publicUser(user) });
+  }, { auth: false });
+
   router.post("/api/auth/login-password", (ctx) => {
     const phone = String(ctx.body.phone || "").trim();
     const password = String(ctx.body.password || "");

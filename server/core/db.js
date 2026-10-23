@@ -67,5 +67,6 @@ export function migrate() {
   ensureColumn("regions", "admin_codes", "TEXT");
   // 用户软删除标记（删除 = 打标记 + 匿名化，业务台账保留）
   ensureColumn("users", "deleted_at", "TEXT");
+  ensureColumn("users", "username", "TEXT");
 }
 export { DATA_DIR, DB_FILE, ROOT };

@@ -11,6 +11,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   phone         TEXT UNIQUE,
+  username      TEXT UNIQUE,                          -- 教员端「用户名 + 密码」登录（可空，小写）
   password_hash TEXT,
   nickname      TEXT NOT NULL,
   avatar        TEXT,

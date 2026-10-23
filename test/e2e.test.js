@@ -925,6 +925,27 @@ async function loginPassword(phone) {
       "证件缩略图在框内 object-fit: cover（自适应不拉伸）");
   }
 
+  // 教员端登录层：「用户名 + 密码」登录方式（account = 用户名或手机号）
+  {
+    const tLogin = await api("POST", "/api/auth/login-account", { body: { account: "zhang", password: PW } });
+    assert(tLogin.status === 200 && tLogin.body.data.user.role === "teacher", "教员端用户名密码登录：zhang / a123456 → 教员 token");
+    const tUpper = await api("POST", "/api/auth/login-account", { body: { account: "ZHANG", password: PW } });
+    assert(tUpper.body.data && tUpper.body.data.user.id === tLogin.body.data.user.id, "用户名大小写不敏感（ZHANG = zhang）");
+    const tPhone = await api("POST", "/api/auth/login-account", { body: { account: "13900000201", password: PW } });
+    assert(tPhone.body.data && tPhone.body.data.user.id === tLogin.body.data.user.id, "同一接口用手机号也能登录（account 兼容手机号）");
+    const tBad = await api("POST", "/api/auth/login-account", { body: { account: "zhang", password: "wrong-pass-1" } });
+    assert(tBad.status === 400 && tBad.body.code === "BAD_CREDENTIALS", "错误密码被拒（BAD_CREDENTIALS）");
+    const tEmpty = await api("POST", "/api/auth/login-account", { body: { account: "", password: PW } });
+    assert(tEmpty.status === 400, "空用户名被拒");
+    const teacherHtml = await (await fetch(BASE + "/teacher.html")).text();
+    const tjs = await (await fetch(BASE + "/assets/js/teacher.js")).text();
+    assert(tjs.includes("data-lg=\"mode-account\"") && tjs.includes("用户名密码") && teacherHtml.includes("teacher.js"),
+      "教员端登录界面有「用户名密码」登录方式");
+    assert(tjs.includes("loginByAccount("), "教员端登录调用账号密码登录（loginByAccount → /api/auth/login-account）");
+    assert((await (await fetch(BASE + "/assets/js/api.js")).text()).includes("/api/auth/login-account"),
+      "前端 api 层已接 /api/auth/login-account");
+  }
+
   // 家长头像：可上传图片并设为头像（登录态），外链地址被拒，null 可恢复默认
   {
     const pngDataUrl =
