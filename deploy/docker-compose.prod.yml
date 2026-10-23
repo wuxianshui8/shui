@@ -1,0 +1,123 @@
+# ============================================================
+# 云服务器部署（测试 / 预发）：用本机构建好的镜像，不在服务器上构建
+#
+#   1) 本机导出镜像：docker save jiajiao-app:latest | 传到服务器后 docker load
+#   2) 服务器：cp .env.prod.example .env（填 AUTH_SECRET / DB_PASSWORD）
+#   3) 起服务：docker compose -f docker-compose.prod.yml up -d
+#   4) 灌演示数据：docker compose -f docker-compose.prod.yml run --rm seed
+#
+# 与 docker-compose.yml 的差别（都是「对外暴露面」相关）：
+#   - MySQL / Redis 不映射宿主机端口（只在 compose 内网可达）
+#   - app 只绑 127.0.0.1:4300，由宿主机 Nginx 反代 + HTTPS 对外
+#   - MySQL 用 DB_PASSWORD 强口令（不再允许空口令）
+#   - app/seed 直接用镜像 jiajiao-app:latest，不触发 build
+#   - TRUST_PROXY=1（前面有 Nginx，需按 X-Forwarded-For 取真实 IP）
+# ============================================================
+name: jiajiao
+
+services:
+  mysql:
+    image: mysql:8.0
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
+      MYSQL_ALLOW_EMPTY_PASSWORD: "no"
+      MYSQL_DATABASE: jiajiao
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动建表（37 张表）
+      - ../apps/api-nest/db/schema.mysql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+
+  app:
+    image: jiajiao-app:latest
+    environment:
+      NODE_ENV: production
+      PORT: "4300"
+      AUTH_SECRET: ${AUTH_SECRET:?请在 deploy/.env 设置 AUTH_SECRET（>=32 字符）}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
+      MYSQL_DATABASE: jiajiao
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      DEV_SMS: "0"
+      # 前置 Nginx：按 X-Forwarded-For 取真实 IP（否则登录锁定可被伪造 XFF 绕过）
+      TRUST_PROXY: "1"
+      JOBS_ENABLED: ${JOBS_ENABLED:-1}
+      SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      TENCENT_SMS_SECRET_ID: ${TENCENT_SMS_SECRET_ID:-}
+      TENCENT_SMS_SECRET_KEY: ${TENCENT_SMS_SECRET_KEY:-}
+      TENCENT_SMS_SDK_APP_ID: ${TENCENT_SMS_SDK_APP_ID:-}
+      TENCENT_SMS_SIGN_NAME: ${TENCENT_SMS_SIGN_NAME:-}
+      TENCENT_SMS_TEMPLATE_ID: ${TENCENT_SMS_TEMPLATE_ID:-}
+      PAY_PROVIDER: ${PAY_PROVIDER:-mock}
+      WECHAT_PAY_APP_ID: ${WECHAT_PAY_APP_ID:-}
+      WECHAT_PAY_MCH_ID: ${WECHAT_PAY_MCH_ID:-}
+      WECHAT_PAY_SERIAL_NO: ${WECHAT_PAY_SERIAL_NO:-}
+      WECHAT_PAY_PRIVATE_KEY: ${WECHAT_PAY_PRIVATE_KEY:-}
+      WECHAT_PAY_APIV3_KEY: ${WECHAT_PAY_APIV3_KEY:-}
+      WECHAT_PAY_PLATFORM_PUBLIC_KEY: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:-}
+      WECHAT_PAY_NOTIFY_URL: ${WECHAT_PAY_NOTIFY_URL:-}
+      WECHAT_PAY_MAX_SKEW_SECONDS: ${WECHAT_PAY_MAX_SKEW_SECONDS:-300}
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
+      TENCENT_OCR_REGION: ${TENCENT_OCR_REGION:-ap-guangzhou}
+      WECHAT_APPID: ${WECHAT_APPID:-}
+      WECHAT_SECRET: ${WECHAT_SECRET:-}
+      WECHAT_OAUTH: ${WECHAT_OAUTH:-0}
+      WECHAT_OAUTH_REDIRECT_ALLOWLIST: ${WECHAT_OAUTH_REDIRECT_ALLOWLIST:-}
+      WECHAT_USERINFO: ${WECHAT_USERINFO:-1}
+      UPLOAD_DIR: /app/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      # 只绑回环：外网只能经 Nginx（443/80）进来，4300 不对公网开放
+      - "127.0.0.1:4300:4300"
+    volumes:
+      - app-uploads:/app/data/uploads
+    restart: always
+
+  # 一次性演示数据：docker compose -f docker-compose.prod.yml run --rm seed
+  seed:
+    image: jiajiao-app:latest
+    profiles: ["seed"]
+    environment:
+      NODE_ENV: production
+      AUTH_SECRET: ${AUTH_SECRET:?请在 deploy/.env 设置 AUTH_SECRET（>=32 字符）}
+      DEV_SMS: "0"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
+      MYSQL_DATABASE: jiajiao
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["node", "db/seed-min.mjs"]
+
+volumes:
+  mysql-data:
+  app-uploads:

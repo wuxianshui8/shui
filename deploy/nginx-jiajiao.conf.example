@@ -1,0 +1,72 @@
+# ============================================================
+# Nginx 站点配置示例（云服务器测试/预发）
+#   放到 /etc/nginx/conf.d/jiajiao.conf，把 DOMAIN 全部换成你的域名，然后：
+#     sudo nginx -t && sudo systemctl reload nginx
+#
+# 前置条件：
+#   1) 域名 A 记录已指向服务器公网 IP
+#   2) 腾讯云安全组放行 80 与 443（443 默认可能是关的）
+#   3) 证书：sudo certbot --nginx -d DOMAIN（或先跑下面的 acme-challenge 段拿证书）
+#   4) 应用只监听 127.0.0.1:4300（见 docker-compose.prod.yml），所以必须经本反代
+# ============================================================
+
+# --- HTTP：仅用于 ACME 校验与跳转 HTTPS ---
+server {
+    listen 80;
+    server_name DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- HTTPS ---
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name DOMAIN;
+
+    ssl_certificate     /etc/letsencrypt/live/DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # 图片上传走 base64（单张 ≤2MB），留足请求体余量
+    client_max_body_size 8m;
+
+    # 传到上游的超时（对账/导出类接口可能略慢）
+    proxy_connect_timeout 10s;
+    proxy_send_timeout    120s;
+    proxy_read_timeout    120s;
+
+    location / {
+        proxy_pass http://127.0.0.1:4300;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # 应用 TRUST_PROXY=1 时按这个头取真实 IP（登录锁定 / 注册频控依赖它）
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+    }
+
+    # 健康检查不写访问日志，避免刷日志
+    location = /api/health {
+        access_log off;
+        proxy_pass http://127.0.0.1:4300/api/health;
+        proxy_set_header Host $host;
+    }
+}
+
+# Connection 头的 map 需要写在 /etc/nginx/nginx.conf 的 http{} 里；若不方便，
+# 可把上面两行 Upgrade/Connection 删掉（本应用没有 WebSocket，删掉不影响功能）。
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}

@@ -149,7 +149,8 @@ if (doc?.name !== "jiajiao") problems.push(`顶层 name 应为 jiajiao，实际 
 for (const name of ["mysql", "redis", "app"]) {
   if (!doc?.services?.[name]) problems.push(`缺少服务 ${name}`);
 }
-if (doc?.services?.app?.build?.dockerfile !== "deploy/Dockerfile") problems.push("app.build.dockerfile 应为 deploy/Dockerfile");
+// 开发 compose 必须 build（本地构建镜像）；云服务器用的 .prod.yml 是 image 形态（镜像由本机导出）
+if (doc?.services?.app?.build && doc.services.app.build.dockerfile !== "deploy/Dockerfile") problems.push("app.build.dockerfile 应为 deploy/Dockerfile");
 if (!doc?.services?.seed?.profiles?.includes("seed")) problems.push("seed 服务应使用 profiles: [seed]（不随 up 常起）");
 const appEnv = doc?.services?.app?.environment ?? {};
 for (const key of ["AUTH_SECRET", "NODE_ENV", "MYSQL_HOST", "REDIS_HOST", "DEV_SMS"]) {
