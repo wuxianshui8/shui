@@ -71,7 +71,7 @@
 | 条目 | 实现（NestJS） | 验证 |
 | --- | --- | --- |
 | 4.5.1 数据总览 | `GET /api/admin/overview` | e2e §16、`admin` |
-| 4.5.2 用户管理（列表/筛选/禁用） | `GET /api/admin/users`、`POST /api/admin/users/:id/toggle` | e2e §16、`sec` |
+| 4.5.2 用户管理（列表/筛选/禁用/**删除家长与教员**） | `GET /api/admin/users`、`POST /api/admin/users/:id/toggle`、`DELETE /api/admin/users/:id` | e2e §3/§16、`admin`（有需求/报名/订单/评价/提现/资金流水/归属绑定时拒绝并提示禁用；代理走代理管理页）、`sec` |
 | 4.5.2 教员审核、驳回、手动调级 | `GET /api/admin/teachers/pending`、`POST /api/admin/teachers/:id/audit`、`POST /api/admin/teachers/:id/level` | e2e §12、`admin` |
 | 4.5.2 代理管理（新增/编辑/启停/**删除**/保证金台账） | `GET|POST /api/admin/agents`、`GET|PUT|DELETE /api/admin/agents/:id`、`POST /api/admin/agents/:id/toggle`、`POST /api/admin/agents/:id/deposit` | e2e §3/§16、`admin`（新增返回一次性口令、有业务数据拒绝删除并提示禁用、空白账号可删） |
 | 4.5.3 全平台订单（筛选/导出/改价/强制关闭释放担保） | `GET /api/admin/orders`、`GET /api/admin/orders/export`、`POST /api/admin/orders/:id/price`、`POST /api/admin/orders/:id/close` | e2e §16、`races`（关闭已完成订单冲销冻结） |
@@ -113,7 +113,7 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（45 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（19 页，含需求池/管理员账号/权限矩阵/区域管理地图） | `admin` 51 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（19 页，含需求池/管理员账号/权限矩阵/区域管理地图） | `admin` 54 项 |
 | 6.1 移动端 uni-app | `apps/web-mobile/`（11 页，H5 + 微信小程序双产物，含入驻认证与定位接单） | `mobile` 47 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
@@ -146,7 +146,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 169 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 51 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **656** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 171 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 54 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **661** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

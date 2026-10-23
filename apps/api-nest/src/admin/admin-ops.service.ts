@@ -132,6 +132,70 @@ export class AdminOpsService {
     return { status: next };
   }
 
+  /**
+   * 删除普通用户（家长 / 教员）——与「删除代理」同一套思路：
+   * 只删「没留下任何业务痕迹」的账号，有任何交易/内容记录就拒绝，并逐条说明原因。
+   *
+   * 业务上为什么不能硬删：需求、报名、订单、评价、提现这些是资金与对账的对手方，
+   * 删了会让历史订单查不到人、分账对不上、投诉无法追溯。这种账号应「禁用」。
+   */
+  async deleteUser(ctx: any, id: number) {
+    const u: any = await this.one("SELECT * FROM `users` WHERE `id` = ?", [id]);
+    if (!u) throw notFound("用户不存在");
+    if (u.role === "admin") throw forbidden("管理员账号不可在用户管理里删除");
+    if (u.role === "agent" || u.role === "sales") {
+      throw biz("USE_DEDICATED_PAGE", "代理请到「代理管理」删除，业务员请到「业务员」相关页面处理");
+    }
+    if (u.role !== "parent" && u.role !== "teacher") throw bad("只支持删除家长或教员账号");
+
+    const blockers: string[] = [];
+    const push = (n: number, label: string) => { if (n) blockers.push(label.replace("{n}", String(n))); };
+    if (u.role === "parent") {
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `demands` WHERE `parent_id` = ?", [id]), "发过 {n} 条需求");
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `orders` WHERE `parent_id` = ?", [id]), "有 {n} 笔订单");
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `reviews` WHERE `parent_id` = ?", [id]), "有 {n} 条评价");
+    } else {
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `applications` WHERE `teacher_id` = ?", [id]), "有 {n} 条报名记录");
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `orders` WHERE `teacher_id` = ?", [id]), "有 {n} 笔订单");
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `withdrawals` WHERE `user_id` = ?", [id]), "有 {n} 笔提现记录");
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `reviews` WHERE `teacher_id` = ?", [id]), "收到 {n} 条评价");
+    }
+    const w: any = await this.one("SELECT `balance`,`frozen` FROM `wallets` WHERE `user_id` = ?", [id]);
+    if (w && (Number(w.balance) !== 0 || Number(w.frozen) !== 0)) {
+      blockers.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元未提现");
+    }
+    push(await this.cnt("SELECT COUNT(*) AS c FROM `wallet_txns` WHERE `user_id` = ?", [id]), "有 {n} 条资金流水");
+    if (u.role === "parent") {
+      push(await this.cnt("SELECT COUNT(*) AS c FROM `bindings` WHERE `user_id` = ?", [id]), "已有 {n} 条片区/业务员归属绑定");
+    }
+    if (blockers.length) {
+      throw biz("USER_HAS_DATA", "该账号还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
+    }
+
+    await this.ds.transaction(async (m) => {
+      await m.query("DELETE FROM `addresses` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `favorites` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `user_coupons` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `messages` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `bindings` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `wallets` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `wallet_txns` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `credit_logs` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `parent_profiles` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `teacher_services` WHERE `teacher_id` = ?", [id]);
+      await m.query("DELETE FROM `growth_logs` WHERE `teacher_id` = ?", [id]);
+      await m.query("DELETE FROM `level_logs` WHERE `teacher_id` = ?", [id]);
+      await m.query("DELETE FROM `teacher_profiles` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `users` WHERE `id` = ? AND `role` IN ('parent','teacher')", [id]);
+      await audit(m, ctx, "admin.user.delete", "users:" + id, {
+        nickname: u.nickname ?? null,
+        phone: maskPhone(u.phone ?? ""),
+        role: u.role,
+      });
+    });
+    return { deleted: true, userId: id, role: u.role };
+  }
+
   /* ---------------- 教员入驻审核 ---------------- */
   async pendingTeachers() {
     const rows = await this.ds.query(

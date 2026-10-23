@@ -156,6 +156,24 @@ const agentAfter = (await api("GET", "/admin/agents", { token })).body.data || [
 assert(agentDel.status === 200 && !agentAfter.some((a) => Number(a.user_id) === Number(agentNewId)),
   "代理管理页：删除无业务数据的代理成功（剩余 " + agentAfter.length + " 个）");
 
+/* 用户管理：删除家长/教员（有业务数据拒绝，空白账号可删） */
+const newPhone = "13900007811";
+const newCode = await api("POST", "/auth/send-code", { body: { phone: newPhone } });
+const newLogin = await api("POST", "/auth/login", { body: { phone: newPhone, code: newCode.body.data.devCode } });
+const newUserId = newLogin.body.data?.user?.id;
+const parentList = await api("GET", "/admin/users?page=1&pageSize=50&role=parent", { token });
+const busyParent = (parentList.body.data?.list || []).find((u) => String(u.phone || "").includes("0301"));
+const busyDel = await api("DELETE", "/admin/users/" + (busyParent?.id ?? 0), { token });
+assert(busyDel.status >= 400 && (busyDel.body?.code === "USER_HAS_DATA" || /业务数据/.test(busyDel.text)),
+  "用户管理页：有业务数据的家长拒绝删除并提示改用禁用（" + busyDel.status + "）");
+const agentViaUser = await api("DELETE", "/admin/users/2", { token });
+assert(agentViaUser.status >= 400 && (agentViaUser.body?.code === "USE_DEDICATED_PAGE" || /代理管理/.test(agentViaUser.text)),
+  "用户管理页：代理账号不走这里删除（引导到代理管理）");
+const blankDel = await api("DELETE", "/admin/users/" + newUserId, { token });
+const afterDel = await api("GET", "/admin/users?page=1&pageSize=50&keyword=" + encodeURIComponent("13900007811"), { token });
+assert(blankDel.status === 200 && (afterDel.body.data?.list || []).length === 0,
+  "用户管理页：删除无业务数据的新家长账号成功");
+
 /* 关键写操作（与页面按钮一致） */
 const banner = (await api("GET", "/admin/banners", { token })).body.data[0];
 const bnToggle = await api("POST", "/admin/banners/" + banner.id + "/toggle", { token });

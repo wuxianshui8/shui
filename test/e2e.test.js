@@ -205,6 +205,18 @@ async function loginPassword(phone) {
   assert(agentGone.status === 200 && !agentList2.some((a) => Number(a.user_id) === Number(agentNew.body.data.id)),
     "删除无业务数据的代理成功（剩余 " + agentList2.length + " 个）");
 
+  // 普通用户删除（P52）：家长/教员空白账号可删，有业务数据或角色不匹配时拒绝
+  const uCode = await api("POST", "/api/auth/send-code", { body: { phone: "13900008803" } });
+  const uLogin = await api("POST", "/api/auth/login", { body: { phone: "13900008803", code: uCode.body.data.devCode } });
+  const uId = uLogin.body.data.user.id;
+  const agentsAsUser = await api("DELETE", "/api/admin/users/2", { token: adminToken });
+  assert(agentsAsUser.status >= 400 && (agentsAsUser.body?.code === "USE_DEDICATED_PAGE" || /代理管理/.test(agentsAsUser.text)),
+    "用户管理里删代理被引导到代理管理");
+  const blankUserDel = await api("DELETE", "/api/admin/users/" + uId, { token: adminToken });
+  const uLeft = (await api("GET", "/api/admin/users?page=1&pageSize=50&keyword=13900008803", { token: adminToken })).body.data || {};
+  assert(blankUserDel.status === 200 && (uLeft.list || []).length === 0,
+    "删除无业务数据的新家长账号成功");
+
   // 并发抢单：同一教员 20 次并发，只允许 1 次成功
   const grabs = await Promise.all(
     Array.from({ length: 20 }, () => api("POST", "/api/demands/" + demandId + "/apply", { token: teacherToken }))

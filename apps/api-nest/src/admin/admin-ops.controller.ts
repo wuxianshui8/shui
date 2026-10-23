@@ -43,6 +43,12 @@ export class AdminOpsController {
     return ok(await this.svc.toggleUser(req, Number(id)));
   }
 
+  /** 删除普通用户（家长/教员）：有需求/报名/订单/评价/提现/资金余额时拒绝并说明原因 */
+  @Delete("users/:id")
+  async deleteUser(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.svc.deleteUser(req, Number(id)));
+  }
+
   @Get("teachers/pending")
   async pendingTeachers() {
     return ok(await this.svc.pendingTeachers());

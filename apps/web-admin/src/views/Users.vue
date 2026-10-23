@@ -39,6 +39,30 @@ async function toggle(row) {
     if (e !== "cancel") ElMessage.error(e.message || String(e));
   }
 }
+
+/**
+ * 删除家长/教员账号：只删「没有业务痕迹」的账号。
+ * 有需求/报名/订单/评价/提现/资金流水/归属绑定时后端会拒绝并逐条说明，此时应改用「禁用」。
+ */
+async function remove(row) {
+  try {
+    await ElMessageBox.confirm(
+      "确定删除「" + row.nickname + "」（" + (ROLE[row.role] || row.role) + "）？<br />" +
+        "会一并清掉其个人资料、地址、收藏、消息；<b>有需求/报名/订单/评价/提现/资金流水时无法删除</b>，请改用「禁用」。",
+      "删除账号",
+      { type: "warning", dangerouslyUseHTMLString: true, confirmButtonText: "确认删除", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await api.del("/admin/users/" + row.id);
+    ElMessage.success("已删除账号：" + row.nickname);
+    load();
+  } catch (e) {
+    ElMessageBox.alert(e.message || String(e), "无法删除", { type: "warning", confirmButtonText: "知道了" });
+  }
+}
 </script>
 
 <template>
@@ -83,11 +107,19 @@ async function toggle(row) {
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="注册时间" width="180" />
-      <el-table-column label="操作" width="100" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button size="small" text :type="row.status === 'active' ? 'danger' : 'primary'" @click="toggle(row)">
             {{ row.status === "active" ? "禁用" : "启用" }}
           </el-button>
+          <el-button
+            v-if="row.role === 'parent' || row.role === 'teacher'"
+            size="small"
+            text
+            type="danger"
+            :data-del="row.id"
+            @click="remove(row)"
+          >删除</el-button>
         </template>
       </el-table-column>
     </el-table>

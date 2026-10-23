@@ -152,6 +152,60 @@ export function register(router) {
     ok(ctx.res, { status: next });
   });
 
+  // 删除普通用户（家长/教员）：有业务数据时拒绝并逐条说明，只删空白账号
+  router.del("/api/admin/users/:id", (ctx) => {
+    adminOnly(ctx);
+    const u = get("SELECT * FROM users WHERE id = ?", ctx.params.id);
+    if (!u) throw Err.notFound("用户不存在");
+    if (u.role === "admin") throw Err.forbidden("管理员账号不可在用户管理里删除");
+    if (u.role === "agent" || u.role === "sales") {
+      throw Err.biz("USE_DEDICATED_PAGE", "代理请到「代理管理」删除，业务员请到「业务员」相关页面处理");
+    }
+    if (u.role !== "parent" && u.role !== "teacher") throw Err.bad("只支持删除家长或教员账号");
+    const id = Number(u.id);
+    const blockers = [];
+    const push = (n, label) => { if (n) blockers.push(label.replace("{n}", String(n))); };
+    if (u.role === "parent") {
+      push(get("SELECT COUNT(*) AS c FROM demands WHERE parent_id = ?", id).c, "发过 {n} 条需求");
+      push(get("SELECT COUNT(*) AS c FROM orders WHERE parent_id = ?", id).c, "有 {n} 笔订单");
+      push(get("SELECT COUNT(*) AS c FROM reviews WHERE parent_id = ?", id).c, "有 {n} 条评价");
+    } else {
+      push(get("SELECT COUNT(*) AS c FROM applications WHERE teacher_id = ?", id).c, "有 {n} 条报名记录");
+      push(get("SELECT COUNT(*) AS c FROM orders WHERE teacher_id = ?", id).c, "有 {n} 笔订单");
+      push(get("SELECT COUNT(*) AS c FROM withdrawals WHERE user_id = ?", id).c, "有 {n} 笔提现记录");
+      push(get("SELECT COUNT(*) AS c FROM reviews WHERE teacher_id = ?", id).c, "收到 {n} 条评价");
+    }
+    const w = get("SELECT balance, frozen FROM wallets WHERE user_id = ?", id);
+    if (w && (Number(w.balance) !== 0 || Number(w.frozen) !== 0)) {
+      blockers.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元未提现");
+    }
+    push(get("SELECT COUNT(*) AS c FROM wallet_txns WHERE user_id = ?", id).c, "有 {n} 条资金流水");
+    if (u.role === "parent") {
+      push(get("SELECT COUNT(*) AS c FROM bindings WHERE user_id = ?", id).c, "已有 {n} 条片区/业务员归属绑定");
+    }
+    if (blockers.length) {
+      throw Err.biz("USER_HAS_DATA", "该账号还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
+    }
+    tx(() => {
+      run("DELETE FROM addresses WHERE user_id = ?", id);
+      run("DELETE FROM favorites WHERE user_id = ?", id);
+      run("DELETE FROM user_coupons WHERE user_id = ?", id);
+      run("DELETE FROM messages WHERE user_id = ?", id);
+      run("DELETE FROM bindings WHERE user_id = ?", id);
+      run("DELETE FROM wallets WHERE user_id = ?", id);
+      run("DELETE FROM wallet_txns WHERE user_id = ?", id);
+      run("DELETE FROM credit_logs WHERE user_id = ?", id);
+      run("DELETE FROM parent_profiles WHERE user_id = ?", id);
+      run("DELETE FROM teacher_services WHERE teacher_id = ?", id);
+      run("DELETE FROM growth_logs WHERE teacher_id = ?", id);
+      run("DELETE FROM level_logs WHERE teacher_id = ?", id);
+      run("DELETE FROM teacher_profiles WHERE user_id = ?", id);
+      run("DELETE FROM users WHERE id = ? AND role IN ('parent','teacher')", id);
+      audit(ctx, "admin.user.delete", "users:" + id, { nickname: u.nickname ?? null, phone: maskPhone(u.phone ?? ""), role: u.role });
+    });
+    ok(ctx.res, { deleted: true, userId: id, role: u.role });
+  });
+
   router.get("/api/admin/teachers/pending", (ctx) => {
     adminOnly(ctx);
     const list = all(
