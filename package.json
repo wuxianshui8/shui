@@ -71,7 +71,8 @@
     "verify:docker": "node tools/verify-docker.mjs",
     "db:backup": "node tools/db-backup.mjs",
     "db:restore": "node tools/db-restore.mjs",
-    "smoke:online": "node tools/smoke-online.mjs"
+    "smoke:online": "node tools/smoke-online.mjs",
+    "deploy:switch-domain": "node tools/switch-domain.mjs"
   },
   "dependencies": {}
 }

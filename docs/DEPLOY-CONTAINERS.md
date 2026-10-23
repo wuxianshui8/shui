@@ -311,4 +311,27 @@ $env:SMOKE_BASE = "https://www.kd211.com"; npm run smoke:online
 
 要彻底恢复域名访问，三选一：① 在腾讯云为该域名做 **ICP 备案**（境内服务器唯一合规解）；② 把服务迁到**境外/香港**服务器（免备案，但延迟与中国大陆访问速度有代价）；③ 换一个**已备案**域名指向本机（把 `/etc/letsencrypt` 与 Nginx 的 `server_name` 换掉即可）。
 
-⚠️ 另：apex `kd211.com` 还没有 A 记录（只有 `www`），补记录后才能签 apex 证书。
+## 8.2 备案通过后一键切回域名 HTTPS
+
+```powershell
+$env:DEPLOY_HOST = "kd211"; $env:DEPLOY_SUDO = "1"
+$env:DOMAIN = "www.kd211.com"; $env:DOMAIN_ALT = "kd211.com"
+$env:LETSENCRYPT_EMAIL = "admin@kd211.com"
+node tools/switch-domain.mjs --dry-run     # 只探测 + 预演
+node tools/switch-domain.mjs               # 真切换（默认把按 IP 的临时入口移除）
+```
+
+`tools/switch-domain.mjs`（`npm run deploy:switch-domain`）按顺序做：
+
+1. **拦截探测**：域名 A 记录是否指向本机；`http(s)://域名/` 是否仍被 302 到 `webblock` 或 TLS 被重置。
+   拦截**按请求间歇生效**，所以 4 个 URL 各探两次，任一命中就判定「仍被拦截」并**直接拒绝执行**（避免把现在能用的 IP 入口关掉）。`--force` 可强切。
+2. **过渡配置 + 签证书**：先写「域名仅 HTTP + ACME」配置（可选保留 IP 兜底段），再 `certbot certonly --webroot`；
+   apex 若还没解析到本机，会自动跳过而不让整张证书失败。
+3. **最终配置**：`80 → 443` 跳转 + HTTPS + HSTS；默认移除 `80 default_server`（`--keep-ip` 保留）。
+4. **外部复验**：`http` 必须 301、`https` 四入口必须 200，否则非零退出。
+
+任一步失败都会把 Nginx 配置回滚到 `/etc/nginx/jiajiao.conf.bak`（`set -o pipefail` 保证 certbot 的失败不会被管道吞掉）。
+
+**演练记录（2026-10-23，仍在拦截状态下用 `--force --keep-ip` 实跑）**：过渡配置、证书复用、最终配置写入与 reload 全部走通；外部复验 5 项按预期失败（拦截未解除）；演练后按 IP 的四个入口仍 200、业务冒烟 17/17 未回归。
+
+⚠️ **证书续期风险**：`certbot renew` 走 HTTP-01，需要 Let's Encrypt 能从公网访问 `http://域名/.well-known/acme-challenge/`；域名被拦截期间续期必然失败（演练中 `--dry-run` 即 1 failure）。当前证书有效期到 **2027-01-21**，请在此前完成备案（或在到期前换已备案域名/迁境外），否则 HTTPS 会过期。
