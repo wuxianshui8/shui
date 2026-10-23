@@ -8,6 +8,7 @@ import { dispatchPriority, levelByScore, levelInfo, resolveRegion } from "../cor
 import { haversineKm } from "../core/geo.js";
 import { distanceFactor } from "../core/geo.js";
 import { orderView, orderViews, reviewsOfTeacher, teacherPrivate } from "../core/present.js";
+import { teacherApproveCancel, teacherRejectCancel } from "./orders.js";
 import { walletSnapshot } from "../core/ledger.js";
 import { checkIdCardMatch, maskIdCard, recognizeIdCardFront, uploadPath } from "../core/ocr.js";
 import { DATA_DIR } from "../core/db.js";
@@ -251,12 +252,26 @@ export function register(router) {
     const status = ctx.query.status;
     let where = "o.teacher_id = ?";
     const params = [ctx.user.id];
-    if (status === "awaiting") { where += " AND o.status = 'awaiting_payment'"; }
+    // pendingCancel=1：只返回「家长申请取消、等教员处理」的订单（教员端待处理用）
+    if (ctx.query.pendingCancel === "1") {
+      where += " AND o.cancel_requested_at IS NOT NULL AND o.status IN ('pending_class','awaiting_parent_confirm')";
+    } else if (status === "awaiting") { where += " AND o.status = 'awaiting_payment'"; }
     else if (status === "pending") { where += " AND o.status IN ('pending_class','in_class','awaiting_parent_confirm')"; }
     else if (status === "completed") { where += " AND o.status IN ('completed','settled')"; }
     else if (status === "cancelled") { where += " AND o.status IN ('cancelled','refunded','refunding')"; }
     const list = orderViews(all("SELECT o.* FROM orders o WHERE " + where + " ORDER BY o.id DESC", ...params), "teacher");
-    ok(ctx.res, { list, total: list.length });
+    ok(ctx.res, { list, total: list.length, pendingCancel: ctx.query.pendingCancel === "1" || undefined });
+  }, { roles: ["teacher"] });
+
+  /* ---------------- 教员端处理「家长取消申请」：退款 / 驳回 ---------------- */
+  router.post("/api/teacher/orders/:id/cancel-approve", (ctx) => {
+    const order = teacherApproveCancel(ctx, ctx.params.id);
+    ok(ctx.res, orderView(order, "teacher"));
+  }, { roles: ["teacher"] });
+
+  router.post("/api/teacher/orders/:id/cancel-reject", (ctx) => {
+    const order = teacherRejectCancel(ctx, ctx.params.id, ctx.body.reason);
+    ok(ctx.res, orderView(order, "teacher"));
   }, { roles: ["teacher"] });
 
   /* ---------------- 等级权益 ---------------- */

@@ -68,5 +68,9 @@ export function migrate() {
   // 用户软删除标记（删除 = 打标记 + 匿名化，业务台账保留）
   ensureColumn("users", "deleted_at", "TEXT");
   ensureColumn("users", "username", "TEXT");
+  // 家长取消申请（教员端「退款 / 驳回」）
+  ensureColumn("orders", "cancel_requested_at", "TEXT");
+  ensureColumn("orders", "cancel_rejected_at", "TEXT");
+  ensureColumn("orders", "cancel_reject_reason", "TEXT");
 }
 export { DATA_DIR, DB_FILE, ROOT };

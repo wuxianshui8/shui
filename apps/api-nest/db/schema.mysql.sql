@@ -194,6 +194,9 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `remind_sent`     INT NOT NULL DEFAULT 0,
   `cancel_by`       VARCHAR(255),
   `cancel_reason`   TEXT,
+  `cancel_requested_at` VARCHAR(255),               -- 家长申请取消的时间（教员端同意/驳回后清空）
+  `cancel_rejected_at`  VARCHAR(255),               -- 教员最近一次驳回取消的时间
+  `cancel_reject_reason` TEXT,                      -- 教员驳回理由（回给家长）
   `penalty`         INT NOT NULL DEFAULT 0,
   `refund_amount`   BIGINT NOT NULL DEFAULT 0,
   `remark`          TEXT,

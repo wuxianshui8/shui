@@ -546,6 +546,26 @@ function orderCard(o) {
   storeOrder(o);
   const p = o.parent || {};
   const acts = [];
+  // 家长申请取消：这一单要教员先处理，卡片上直接给「退款 / 驳回」
+  if (o.cancelRequested) {
+    acts.push('<button class="btn btn-primary btn-sm" data-act="cancel-approve" data-id="' + o.id + '">同意退款</button>');
+    acts.push('<button class="btn btn-outline btn-sm" data-act="cancel-reject" data-id="' + o.id + '">驳回</button>');
+    return '<article class="card" data-go="/order/' + o.id + '" role="link" tabindex="0" style="cursor:pointer;border-color:#f0c987">' +
+      '<div class="row between"><div class="row" style="gap:6px"><span class="badge amber">家长申请取消</span>' +
+      '<span class="tag">' + esc(o.stage) + "·" + esc(o.subject) + "</span></div>" +
+      '<span class="tiny faint">' + fromNow(o.cancelRequestedAt || o.createdAt) + "</span></div>" +
+      '<div class="mt12 small">🕒 ' + fmtDate(o.lessonTime, "time") + "</div>" +
+      '<div class="mt8 small muted ellipsis">📍 ' + esc(o.address) + "</div>" +
+      (o.cancelReason ? '<div class="mt8 tiny" style="color:#b06f00">家长原因：' + esc(o.cancelReason) + "</div>" : "") +
+      '<div class="dashed-top row between">' +
+      '<div class="row" style="gap:8px">' + avatar(p.nickname, p.avatar, "sm") +
+      '<div><div class="small bold">' + esc(p.nickname || "家长") + "</div>" +
+      '<div class="tiny faint">待您处理（超时平台自动退款）</div></div></div>' +
+      '<div class="center"><div class="tiny faint">待退金额</div><div class="money" style="font-size:16px">' +
+      money(Number(o.amount) + Number(o.urgentFee || 0)) + "</div></div></div>" +
+      '<div class="btn-row mt12">' + acts.join("") + "</div>" +
+      "</article>";
+  }
   if (o.status === "pending_class") acts.push('<button class="btn btn-primary btn-sm" data-act="detail" data-id="' + o.id + '">去打卡</button>');
   if (o.status === "in_class") acts.push('<button class="btn btn-primary btn-sm" data-act="detail" data-id="' + o.id + '">结束授课</button>');
   if (o.status === "awaiting_parent_confirm") acts.push('<button class="btn btn-outline btn-sm" disabled>等待家长确认</button>');
@@ -567,20 +587,44 @@ function orderCard(o) {
 
 async function ordersView({ query }) {
   const status = query.status || "";
-  chrome({ title: "我的订单", sub: "上门授课 · 担保结算", tab: "/orders" });
+  const pendingCancel = query.pendingCancel === "1";
+  chrome({ title: pendingCancel ? "待处理取消申请" : "我的订单", sub: "上门授课 · 担保结算", tab: "/orders" });
   setBody(loadingHtml());
-  const res = await api.get("/api/teacher/orders", status ? { status } : {});
+  const res = await api.get("/api/teacher/orders", pendingCancel ? { pendingCancel: "1" } : status ? { status } : {});
   const list = res.list || [];
   const tabs = '<div class="tabs">' + ORDER_TABS.map((t) =>
-    '<button class="' + (status === t.v ? "on" : "") + '" data-go="/orders' + (t.v ? "?status=" + t.v : "") + '">' + t.t + "</button>"
-  ).join("") + "</div>";
+    '<button class="' + (!pendingCancel && status === t.v ? "on" : "") + '" data-go="/orders' + (t.v ? "?status=" + t.v : "") + '">' + t.t + "</button>"
+  ).join("") +
+    '<button class="' + (pendingCancel ? "on" : "") + '" data-go="/orders?pendingCancel=1">待处理取消</button></div>';
   setBody(tabs + (list.length
-    ? list.map((o) => orderCard(o)).join("")
-    : '<div class="card">' + emptyHtml(status ? "该分类下暂无订单" : "还没有订单，去接单中心抢一单吧", "📋") +
+    ? (pendingCancel ? '<p class="tiny faint mb12">家长提交的取消申请共 ' + list.length + " 单；同意即按规则退款，驳回订单继续履约（超时未处理平台自动退款）。</p>" : "") +
+      list.map((o) => orderCard(o)).join("")
+    : '<div class="card">' + emptyHtml(pendingCancel ? "暂无待处理的取消申请" : status ? "该分类下暂无订单" : "还没有订单，去接单中心抢一单吧", "📋") +
       '<button class="btn btn-ghost btn-sm btn-block" data-go="/">去接单中心</button></div>'));
   setActions({
     detail: (el) => {
       location.hash = "#/order/" + el.dataset.id;
+    },
+    "cancel-approve": async (el) => {
+      const o = state.orderCache.get(String(el.dataset.id));
+      const amount = o ? money(Number(o.amount) + Number(o.urgentFee || 0)) : "";
+      const yes = await confirmDialog("同意退款", "同意家长取消订单" + (amount ? "，将按规则退款 " + amount : "") + "？退款后订单结束。", "同意并退款", true);
+      if (!yes) return;
+      await api.post("/api/teacher/orders/" + encodeURIComponent(el.dataset.id) + "/cancel-approve", {});
+      toastOk("已同意取消并退款");
+      ROUTER.render();
+    },
+    "cancel-reject": async (el) => {
+      const reason = await promptDialog(
+        "驳回取消申请",
+        "如：距离上课不足 2 小时，已按约定备好课件",
+        { confirmText: "驳回", textarea: false }
+      );
+      if (reason == null) return;
+      if (String(reason).trim().length < 2) return toastErr("请填写驳回理由（至少 2 个字）");
+      await api.post("/api/teacher/orders/" + encodeURIComponent(el.dataset.id) + "/cancel-reject", { reason: String(reason).trim() });
+      toastOk("已驳回，订单继续履约");
+      ROUTER.render();
     },
   });
 }
@@ -620,6 +664,12 @@ function checkinSheet(o) {
 
 function teacherBar(o) {
   const contact = '<button class="btn btn-outline" data-act="contact" data-id="' + o.id + '">联系家长</button>';
+  // 家长申请取消：这条订单的第一优先动作是「退款 / 驳回」
+  if (o.cancelRequested) {
+    return contact +
+      '<button class="btn btn-outline" data-act="cancel-reject" data-id="' + o.id + '">驳回</button>' +
+      '<button class="btn btn-primary wide" data-act="cancel-approve" data-id="' + o.id + '">同意退款</button>';
+  }
   if (o.status === "awaiting_payment") {
     return contact +
       '<button class="btn btn-outline btn-sm" data-act="cancel" data-id="' + o.id + '">拒单</button>' +
@@ -668,6 +718,20 @@ async function orderDetailView({ params }) {
     }[o.status] || "") + "</div></div>" + statusBadge(o.status, o.statusText) + "</div>" +
     (o.freeCancelDeadline ? '<div class="tiny faint mt8">家长免费取消截止：' + fmtDate(o.freeCancelDeadline, "time") + "</div>" : "") +
     "</div>" +
+
+    (o.cancelRequested
+      ? '<div class="card" style="border-color:#f0c987"><div class="card-title"><h3>家长申请取消</h3>' +
+        '<span class="more">' + fmtDate(o.cancelRequestedAt, "time") + " 提交</span></div>" +
+        '<div class="hint" style="border-color:#f0c987;background:#fff9ec;color:#8a5a00;border-radius:12px">' +
+        "家长申请取消，原因：" + esc(o.cancelReason || "未填写") + "。同意即按规则退款，驳回则订单继续履约；超时未处理平台自动退款。</div>" +
+        '<div class="btn-row mt12"><button class="btn btn-outline btn-sm" data-act="cancel-reject" data-id="' + o.id + '">驳回</button>' +
+        '<button class="btn btn-primary btn-sm" data-act="cancel-approve" data-id="' + o.id + '">同意退款</button></div></div>'
+      : "") +
+    (o.cancelRejectedAt && !o.cancelRequested
+      ? '<div class="card"><div class="card-title"><h3>取消申请记录</h3></div>' +
+        kv("最近驳回时间", fmtDate(o.cancelRejectedAt, "time")) +
+        kv("驳回理由", esc(o.cancelRejectReason || "-")) + "</div>"
+      : "") +
 
     '<div class="card"><div class="card-title"><h3>学生需求</h3></div>' +
     kv("科目 / 学段", esc(o.subject) + " · " + esc(o.stage)) +
@@ -747,6 +811,30 @@ async function orderDetailView({ params }) {
       if (!reason) return;
       await api.post("/api/orders/" + o.id + "/cancel", { reason });
       toastOk("订单已取消");
+      ROUTER.render();
+    },
+    "cancel-approve": async () => {
+      const paid = money(Number(o.amount) + Number(o.urgentFee || 0));
+      const yes = await confirmDialog(
+        "同意退款",
+        "家长申请取消订单" + (o.cancelReason ? "（原因：" + o.cancelReason + "）" : "") +
+          "。同意后将按规则退款（免费取消窗口内全额，否则扣违约金作为您的补偿），退款金额上限 " + paid + "。",
+        "同意并退款",
+      );
+      if (!yes) return;
+      const r = await api.post("/api/teacher/orders/" + o.id + "/cancel-approve", {});
+      toastOk("已同意取消，退款 ¥" + ((r && r.refundAmount) / 100).toFixed(2));
+      ROUTER.render();
+    },
+    "cancel-reject": async () => {
+      const reason = await promptDialog("驳回取消申请", "如：距离上课不足 2 小时，已按约定备好课件", {
+        confirmText: "驳回",
+        textarea: false,
+      });
+      if (reason == null) return;
+      if (String(reason).trim().length < 2) return toastErr("请填写驳回理由（至少 2 个字）");
+      await api.post("/api/teacher/orders/" + o.id + "/cancel-reject", { reason: String(reason).trim() });
+      toastOk("已驳回，订单继续履约");
       ROUTER.render();
     },
     income: () => {

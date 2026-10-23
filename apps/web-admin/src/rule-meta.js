@@ -29,6 +29,7 @@ export const FIELD_LABELS = {
   freeze_days: "冻结天数（T+N 结算）", min_withdraw: "最低提现金额（分）",
   withdraw_fee_rate: "提现手续费比例", free_cancel_hours: "免费取消时限（小时）",
   cancel_penalty_rate: "违约扣款比例",
+  cancel_auto_approve_minutes: "取消申请自动同意（分钟）",
 
   // 代理 / 业务员
   fee_share_rate: "代理分成（占服务费比例）", mgmt_rate: "管理费比例",

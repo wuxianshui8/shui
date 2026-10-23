@@ -204,6 +204,11 @@ function composeOrderView(o, viewerRole, parts, { mask = false } = {}) {
     settleAt: o.settle_at,
     cancelBy: o.cancel_by,
     cancelReason: o.cancel_reason,
+    // 取消申请：cancelRequested 为真 = 家长已申请取消、等教员端「退款 / 驳回」
+    cancelRequestedAt: o.cancel_requested_at || null,
+    cancelRequested: !!o.cancel_requested_at,
+    cancelRejectedAt: o.cancel_rejected_at || null,
+    cancelRejectReason: o.cancel_reject_reason || null,
     penalty: o.penalty,
     refundAmount: o.refund_amount,
     remark: o.remark,

@@ -198,6 +198,9 @@ CREATE TABLE IF NOT EXISTS orders (
   remind_sent   INTEGER NOT NULL DEFAULT 0,           -- 上课前提醒是否已发送
   cancel_by     TEXT,
   cancel_reason TEXT,
+  cancel_requested_at TEXT,                       -- 家长申请取消的时间（教员同意/驳回后清空）
+  cancel_rejected_at  TEXT,                       -- 教员最近一次驳回取消的时间
+  cancel_reject_reason TEXT,                      -- 教员驳回理由（回给家长）
   penalty       INTEGER NOT NULL DEFAULT 0,
   refund_amount INTEGER NOT NULL DEFAULT 0,
   remark        TEXT,

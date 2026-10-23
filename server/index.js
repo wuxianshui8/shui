@@ -9,7 +9,7 @@ import { Router } from "./core/router.js";
 import { fail, sendJson } from "./core/http.js";
 import { get } from "./core/db.js";
 import { escrowBalance } from "./core/ledger.js";
-import { runSettlement, runLessonReminders } from "./modules/orders.js";
+import { runSettlement, runLessonReminders, autoApproveCancelRequests } from "./modules/orders.js";
 import { expireApplications } from "./modules/market.js";
 import * as authModule from "./modules/auth.js";
 import * as marketModule from "./modules/market.js";
@@ -169,6 +169,13 @@ setInterval(() => {
     if (r) console.log("[reminder] 上课提醒已推送 " + r + " 单");
   } catch (err) {
     console.error("[reminder-error]", err.message);
+  }
+  try {
+    // 家长取消申请超时未被教员处理 → 自动按同意退款（钱不能一直押在担保账户里）
+    const c = autoApproveCancelRequests();
+    if (c.approved) console.log("[cancel-request] 取消申请超时自动同意 " + c.approved + " 单（阈值 " + c.minutes + " 分钟）");
+  } catch (err) {
+    console.error("[cancel-request-error]", err.message);
   }
 }, 60 * 1000).unref();
 

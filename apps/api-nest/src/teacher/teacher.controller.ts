@@ -343,8 +343,28 @@ export class TeacherController {
 
   /* ---------------- 订单 / 等级 / 收入 ---------------- */
   @Get("orders")
-  async ordersList(@Query("status") status: string, @Req() req: any) {
-    return ok(await this.orders.listBy(Number(req.user.uid), "teacher", status));
+  async ordersList(@Query("status") status: string, @Query("pendingCancel") pendingCancel: string, @Req() req: any) {
+    const list = await this.orders.listBy(Number(req.user.uid), "teacher", status);
+    // pendingCancel=1：只要「家长申请取消、等教员处理」的订单（教员端「待处理」用）
+    if (pendingCancel === "1") {
+      const rows = (list && list.list ? list.list : []).filter((o: any) => o.cancelRequested);
+      return ok({ list: rows, total: rows.length, pendingCancel: true });
+    }
+    return ok(list);
+  }
+
+  /** 教员端「退款」：同意家长的取消申请（按规则重算退款额并释放担保） */
+  @Post("orders/:id/cancel-approve")
+  @HttpCode(200)
+  async approveCancel(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.orders.approveCancelRequest(Number(req.user.uid), Number(id)));
+  }
+
+  /** 教员端「驳回」：不同意取消（订单回到原状态，理由回给家长） */
+  @Post("orders/:id/cancel-reject")
+  @HttpCode(200)
+  async rejectCancel(@Param("id") id: string, @Body() body: { reason?: string }, @Req() req: any) {
+    return ok(await this.orders.rejectCancelRequest(Number(req.user.uid), Number(id), String(body?.reason || "")));
   }
 
   /** 等级权益（需求 5.3）：成长分 → 等级 → 抽佣与派单权重 */

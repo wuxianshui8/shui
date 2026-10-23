@@ -962,6 +962,48 @@ async function loginPassword(phone) {
     assert(resetAv.status === 200 && resetAv.body.data.hasAvatar === false, "家长头像：传 null 恢复默认首字母头像");
   }
 
+  // 家长取消订单 → 教员端「退款 / 驳回」（申请制：教员处理前不动钱）
+  {
+    const mkOrder = async (remark) => {
+      const d = await api("POST", "/api/demands", {
+        token: parentToken,
+        body: { stage: "初中", subject: "语文", address: "西湖区文三路 128 号", lat: 30.2741, lng: 120.1551, budget: 12000, remark },
+      });
+      await api("POST", "/api/demands/" + d.body.data.id + "/apply", { token: teacherToken });
+      const apps = await api("GET", "/api/demands/" + d.body.data.id, { token: parentToken });
+      const c = await api("POST", "/api/demands/" + d.body.data.id + "/confirm", {
+        token: parentToken, body: { applicationId: apps.body.data.applications[0].id },
+      });
+      const oid = c.body.data.id;
+      await api("POST", "/api/orders/" + oid + "/pay", { token: parentToken, idem: "e2e-cancel-" + oid });
+      return oid;
+    };
+    const oid = await mkOrder("e2e 取消申请");
+    const req = await api("POST", "/api/orders/" + oid + "/cancel", { token: parentToken, body: { reason: "孩子临时有事" } });
+    assert(req.status === 200 && req.body.data.cancelRequested === true && req.body.data.status === "pending_class",
+      "家长取消已付款订单 → 变成「取消申请」，订单与钱都不动");
+    const dup = await api("POST", "/api/orders/" + oid + "/cancel", { token: parentToken, body: { reason: "重复点" } });
+    assert(dup.status === 400 && dup.body.code === "CANCEL_REQUESTED", "重复提交取消申请被拒");
+    const pend = await api("GET", "/api/teacher/orders?pendingCancel=1", { token: teacherToken });
+    assert((pend.body.data.list || []).some((o) => o.id === oid), "教员端「待处理取消」列表能看到这条申请");
+    const reject = await api("POST", "/api/teacher/orders/" + oid + "/cancel-reject", {
+      token: teacherToken, body: { reason: "距上课不足 2 小时，已备好课件" },
+    });
+    assert(reject.status === 200 && reject.body.data.cancelRequested === false && reject.body.data.status === "pending_class",
+      "教员驳回 → 订单继续履约，理由与时间留痕");
+    const again = await api("POST", "/api/orders/" + oid + "/cancel", { token: parentToken, body: { reason: "还是要取消" } });
+    assert(again.status === 200 && again.body.data.cancelRequested === true, "驳回后家长可再次申请取消");
+    const escrow0 = (await api("GET", "/api/admin/finance", { token: adminToken })).body.data.summary.escrow;
+    const ok = await api("POST", "/api/teacher/orders/" + oid + "/cancel-approve", { token: teacherToken });
+    assert(ok.status === 200 && ok.body.data.status === "refunded" && ok.body.data.refundAmount > 0,
+      "教员点「退款」→ 订单转已退款（¥" + ((ok.body.data?.refundAmount || 0) / 100).toFixed(2) + "）");
+    const escrow1 = (await api("GET", "/api/admin/finance", { token: adminToken })).body.data.summary.escrow;
+    assert(escrow0 - escrow1 === ok.body.data.refundAmount, "退款同步释放担保资金（台账闭合）", "before=" + escrow0 + " after=" + escrow1);
+    const tjs2 = await (await fetch(BASE + "/assets/js/teacher.js")).text();
+    assert(tjs2.includes("cancel-approve") && tjs2.includes("cancel-reject") && tjs2.includes("待处理取消"),
+      "教员端界面有「同意退款 / 驳回」与「待处理取消」入口");
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

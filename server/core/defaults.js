@@ -103,6 +103,8 @@ export const DEFAULT_RULES = {
       withdraw_fee_rate: 0.006,
       free_cancel_hours: 4,
       cancel_penalty_rate: 0.2,
+      // 家长取消申请超过该分钟数教员仍未处理 → 平台自动按同意退款（钱不能一直押在担保账户里）
+      cancel_auto_approve_minutes: 120,
     },
   },
   checkin: {

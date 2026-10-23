@@ -56,6 +56,10 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         const r = await this.orders.closeExpiredUnpaid();
         if (r.closed) this.logger.log("超时未支付关单 " + r.closed + " 单（阈值 " + r.timeoutMinutes + " 分钟）");
       });
+      await this.safely("autoApproveCancel", async () => {
+        const r = await this.orders.autoApproveCancelRequests();
+        if (r.approved) this.logger.log("取消申请超时自动同意 " + r.approved + " 单（阈值 " + r.minutes + " 分钟）");
+      });
     } finally {
       this.running = false;
     }

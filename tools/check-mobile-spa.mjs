@@ -230,6 +230,70 @@ assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
   assert(tMe.status === 200 && tMe.body.data.user.id === tLogin.body.data.user.id, "用户名登录拿到的 token 可用（/auth/me）");
 }
 
+// 家长取消订单 → 教员端「退款 / 驳回」（取消改成申请制，教员处理前不动钱）
+{
+  // 管理员 token 只用于读担保余额（验证退款台账闭合）
+  const admin = await api("POST", "/auth/login-password", { body: { phone: "13900000001", password: PW } });
+  // 造一单：家长发需求 → 教员报名 → 家长确认 → 支付
+  const mk = async (remark) => {
+    const d = await api("POST", "/demands", {
+      token: parent.body.data.token,
+      body: { stage: "初中", subject: "语文", address: "西湖区文三路 128 号", lat: 30.262, lng: 120.133, budget: 12000, remark },
+    });
+    await api("POST", "/demands/" + d.body.data.id + "/apply", { token: teacher.body.data.token });
+    const apps = await api("GET", "/demands/" + d.body.data.id, { token: parent.body.data.token });
+    const c = await api("POST", "/demands/" + d.body.data.id + "/confirm", {
+      token: parent.body.data.token, body: { applicationId: apps.body.data.applications[0].id },
+    });
+    const oid = c.body.data.id;
+    await api("POST", "/orders/" + oid + "/pay", { token: parent.body.data.token, idem: "gate-cancel-pay-" + oid });
+    return oid;
+  };
+
+  // ① 家长取消 → 只提交申请，钱不动，订单仍是 pending_class
+  const oid = await mk("取消申请-驳回用例");
+  const reqCancel = await api("POST", "/orders/" + oid + "/cancel", { token: parent.body.data.token, body: { reason: "孩子临时有事" } });
+  assert(reqCancel.status === 200 && reqCancel.body.data.cancelRequested === true,
+    "家长取消已付款订单 → 变成「取消申请」（cancelRequested=true）");
+  assert(reqCancel.body.data.status === "pending_class", "提交申请时不改订单状态、不退款（仍是待上课）", reqCancel.body.data.status);
+  const dup = await api("POST", "/orders/" + oid + "/cancel", { token: parent.body.data.token, body: { reason: "再点一次" } });
+  assert(dup.status === 400 && dup.body.code === "CANCEL_REQUESTED", "重复提交取消申请被拒（CANCEL_REQUESTED）");
+  const pending = await api("GET", "/teacher/orders?pendingCancel=1", { token: teacher.body.data.token });
+  assert((pending.body.data.list || []).some((o) => o.id === oid), "教员端「待处理取消」列表能看到这条申请");
+
+  // ② 教员驳回 → 订单继续履约，理由回给家长
+  const rejectNoReason = await api("POST", "/teacher/orders/" + oid + "/cancel-reject", { token: teacher.body.data.token, body: { reason: "" } });
+  assert(rejectNoReason.status === 400, "驳回必须填理由（空理由 400）");
+  const rejected = await api("POST", "/teacher/orders/" + oid + "/cancel-reject", {
+    token: teacher.body.data.token, body: { reason: "距上课不足 2 小时，已备好课件" },
+  });
+  assert(rejected.status === 200 && rejected.body.data.cancelRequested === false && rejected.body.data.status === "pending_class",
+    "教员驳回后订单回到正常履约（cancelRequested=false）");
+  assert(rejected.body.data.cancelRejectReason && rejected.body.data.cancelRejectedAt, "驳回理由与时间已记录（家长端可见）");
+
+  // ③ 家长再申请 → 教员同意退款 → 订单退款、担保释放
+  const again = await api("POST", "/orders/" + oid + "/cancel", { token: parent.body.data.token, body: { reason: "还是要取消" } });
+  assert(again.status === 200 && again.body.data.cancelRequested === true, "驳回后家长可再次提交取消申请");
+  const escrowBefore = (await api("GET", "/admin/finance", { token: admin.body.data.token })).body.data.summary.escrow;
+  const approved = await api("POST", "/teacher/orders/" + oid + "/cancel-approve", { token: teacher.body.data.token });
+  assert(approved.status === 200 && approved.body.data.status === "refunded", "教员同意退款 → 订单转已退款");
+  assert(approved.body.data.refundAmount > 0, "退款金额已写入（¥" + ((approved.body.data.refundAmount || 0) / 100).toFixed(2) + "）");
+  const escrowAfter = (await api("GET", "/admin/finance", { token: admin.body.data.token })).body.data.summary.escrow;
+  assert(escrowBefore - escrowAfter === approved.body.data.refundAmount, "退款同步释放担保资金（台账闭合）",
+    "before=" + escrowBefore + " after=" + escrowAfter);
+  const approveAgain = await api("POST", "/teacher/orders/" + oid + "/cancel-approve", { token: teacher.body.data.token });
+  assert(approveAgain.status === 400, "已退款订单不能再同意一次（幂等保护）");
+
+  // ④ 越权：别的教员不能处理
+  const oid2 = await mk("取消申请-越权用例");
+  await api("POST", "/orders/" + oid2 + "/cancel", { token: parent.body.data.token, body: { reason: "越权测试" } });
+  const otherTeacher = await api("POST", "/auth/login-account", { body: { account: "chenzihao", password: PW } });
+  const cross = await api("POST", "/teacher/orders/" + oid2 + "/cancel-approve", { token: otherTeacher.body.data.token });
+  assert(cross.status === 403, "非本单教员不能替别人退款（403）", cross.status);
+  const cleanup = await api("POST", "/teacher/orders/" + oid2 + "/cancel-approve", { token: teacher.body.data.token });
+  assert(cleanup.status === 200, "本单教员可以处理自己的取消申请");
+}
+
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {

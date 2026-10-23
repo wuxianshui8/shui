@@ -91,6 +91,11 @@ export class OrdersService {
       settleAt: o.settle_at,
       cancelBy: o.cancel_by,
       cancelReason: o.cancel_reason,
+      // 取消申请状态：cancelRequested 为真 = 家长已申请取消、等教员端「退款 / 驳回」
+      cancelRequestedAt: o.cancel_requested_at || null,
+      cancelRequested: !!o.cancel_requested_at,
+      cancelRejectedAt: o.cancel_rejected_at || null,
+      cancelRejectReason: o.cancel_reject_reason || null,
       penalty: Number(o.penalty),
       refundAmount: Number(o.refund_amount),
       remark: o.remark,
@@ -700,6 +705,17 @@ export class OrdersService {
 
       if (o.status === "awaiting_payment") {
         await m.query("UPDATE `orders` SET `status` = 'cancelled', `cancel_by` = ?, `cancel_reason` = ?, `updated_at` = ? WHERE `id` = ?", [role, reason, nowIso(), o.id]);
+      } else if (isParent && o.status !== "in_class") {
+        // 家长取消已付款订单 → 变成「取消申请」，由教员在教员端选「退款」或「驳回」；
+        // 钱一分不动，等教员处理（超时未处理由定时任务自动按同意退款，不会把家长卡住）。
+        if (o.cancel_requested_at) throw biz("CANCEL_REQUESTED", "已提交取消申请，正在等教员确认，请勿重复提交");
+        await m.query("UPDATE `orders` SET `cancel_requested_at` = ?, `cancel_reason` = ?, `cancel_reject_reason` = NULL, `updated_at` = ? WHERE `id` = ?",
+          [nowIso(), reason, nowIso(), o.id]);
+        await notify(m, Number(o.teacher_id), "家长申请取消订单",
+          "订单 " + o.order_no + " 家长申请取消" + (reason ? "。原因：" + reason : "") + "，请在「待处理」里选择退款或驳回",
+          "order", "/order/" + o.id);
+        await audit(m, { user: { uid: userId, role } }, "order.cancelRequest", "orders:" + o.id, { reason });
+        return this.view((await m.query("SELECT * FROM `orders` WHERE `id` = ? LIMIT 1", [o.id]))[0], "parent");
       } else {
         const paid = Number(o.amount) + Number(o.urgent_fee);
         if (isParent) {
@@ -733,8 +749,101 @@ export class OrdersService {
         "订单 " + o.order_no + " 已取消" + (refund > 0 ? "，退款 ¥" + (refund / 100).toFixed(2) : "") + (reason ? "。原因：" + reason : ""),
         "order", "/order/" + o.id);
       await audit(m, { user: { uid: userId, role } }, "order.cancel", "orders:" + o.id, { refund, penalty, reason });
-      return this.view(await this.get(o.id), role === "teacher" ? "teacher" : "parent");
+      return this.view((await m.query("SELECT * FROM `orders` WHERE `id` = ? LIMIT 1", [o.id]))[0], role === "teacher" ? "teacher" : "parent");
     });
+  }
+
+  /**
+   * 教员端「退款」：同意家长的取消申请 —— 按当前时间重算退款（免费取消窗口内全额，否则扣违约金给教员），
+   * 释放担保、写退款流水、订单转 refunded，并通知家长。
+   * 只有「有取消申请 + 订单属于该教员 + 状态还是可取消」才放行，重复点击会 400。
+   */
+  async approveCancelRequest(teacherId: number, orderId: number, actorRole = "teacher") {
+    return this.ds.transaction(async (m) => {
+      const o = (await m.query("SELECT * FROM `orders` WHERE `id` = ? FOR UPDATE", [orderId]))[0];
+      if (!o) throw notFound("订单不存在");
+      if (Number(o.teacher_id) !== teacherId && actorRole !== "admin") throw forbidden("只能处理自己订单的取消申请");
+      if (!o.cancel_requested_at) throw biz("NO_CANCEL_REQUEST", "该订单没有待处理的取消申请");
+      if (["completed", "settled", "cancelled", "refunded"].includes(o.status)) throw biz("BAD_STATUS", "当前订单状态不可退款");
+
+      const settlement = (await this.rules.get("settlement")) as any;
+      const credit = (await this.rules.get("credit_rules")) as any;
+      const paid = Number(o.amount) + Number(o.urgent_fee);
+      const freeHours = Number(settlement.free_cancel_hours ?? 4);
+      const deadline = new Date(new Date(o.lesson_time).getTime() - freeHours * 3600000).getTime();
+      let refund = paid;
+      let penalty = 0;
+      if (Date.now() > deadline) {
+        penalty = applyRate(paid, Number(settlement.cancel_penalty_rate ?? 0.2));
+        refund = paid - penalty;
+        await this.applyCredit(m, Number(o.parent_id), Number(credit.cancel_within_4h ?? -8), "课前 " + freeHours + " 小时内取消订单", Number(o.id));
+        await m.query("UPDATE `parent_profiles` SET `cancel_count` = `cancel_count` + 1 WHERE `user_id` = ?", [o.parent_id]);
+      }
+      await escrowMove(m, Number(o.id), "out", refund, "订单退款 " + o.order_no);
+      if (penalty > 0) {
+        await walletAdd(m, Number(o.teacher_id), penalty, { orderId: Number(o.id), type: "compensation", remark: "家长临时取消违约金补偿（订单 " + o.order_no + "）" });
+      }
+      await m.query("INSERT INTO `payments` (`order_id`,`user_id`,`type`,`amount`,`channel`,`trade_no`,`status`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
+        [o.id, o.parent_id, "refund", refund, "wechat_jsapi", tradeNo("RF"), "success", nowIso()]);
+      await m.query(
+        "UPDATE `orders` SET `status` = 'refunded', `cancel_by` = 'parent', `penalty` = ?, `refund_amount` = ?, `cancel_requested_at` = NULL, `updated_at` = ? WHERE `id` = ?",
+        [penalty, refund, nowIso(), o.id],
+      );
+      await notify(m, Number(o.parent_id), "取消申请已同意，退款已原路退回",
+        "订单 " + o.order_no + " 教员已同意取消，退款 ¥" + (refund / 100).toFixed(2) + (penalty > 0 ? "（扣除违约金 ¥" + (penalty / 100).toFixed(2) + "）" : "（全额）"),
+        "payment", "/order/" + o.id);
+      await audit(m, { user: { uid: teacherId, role: actorRole } }, "order.cancelApprove", "orders:" + o.id, { refund, penalty });
+      return this.view((await m.query("SELECT * FROM `orders` WHERE `id` = ? LIMIT 1", [o.id]))[0], "teacher");
+    });
+  }
+
+  /**
+   * 教员端「驳回」：不同意取消 —— 订单保持原状态，只清掉申请并记录驳回理由，
+   * 家长端会看到「教员已驳回 + 理由」，可以再申请或走客服。
+   */
+  async rejectCancelRequest(teacherId: number, orderId: number, reason: string, actorRole = "teacher") {
+    const why = String(reason || "").trim();
+    if (why.length < 2) throw bad("请填写驳回理由（至少 2 个字）");
+    return this.ds.transaction(async (m) => {
+      const o = (await m.query("SELECT * FROM `orders` WHERE `id` = ? FOR UPDATE", [orderId]))[0];
+      if (!o) throw notFound("订单不存在");
+      if (Number(o.teacher_id) !== teacherId && actorRole !== "admin") throw forbidden("只能处理自己订单的取消申请");
+      if (!o.cancel_requested_at) throw biz("NO_CANCEL_REQUEST", "该订单没有待处理的取消申请");
+      if (["completed", "settled", "cancelled", "refunded"].includes(o.status)) throw biz("BAD_STATUS", "当前订单状态不可驳回取消");
+      await m.query(
+        "UPDATE `orders` SET `cancel_requested_at` = NULL, `cancel_rejected_at` = ?, `cancel_reject_reason` = ?, `updated_at` = ? WHERE `id` = ?",
+        [nowIso(), why, nowIso(), o.id],
+      );
+      await notify(m, Number(o.parent_id), "教员驳回了你的取消申请",
+        "订单 " + o.order_no + " 教员不同意取消，理由：" + why + "。如仍有异议可联系客服申请仲裁",
+        "order", "/order/" + o.id);
+      await audit(m, { user: { uid: teacherId, role: actorRole } }, "order.cancelReject", "orders:" + o.id, { reason: why });
+      return this.view((await m.query("SELECT * FROM `orders` WHERE `id` = ? LIMIT 1", [o.id]))[0], "teacher");
+    });
+  }
+
+  /**
+   * 定时任务：取消申请超时自动同意（规则 `settlement.cancel_auto_approve_minutes`，默认 120 分钟）。
+   * 为什么必须有：教员不处理时家长的钱不能一直押在担保账户里。
+   */
+  async autoApproveCancelRequests() {
+    const settlement = (await this.rules.get("settlement")) as any;
+    const mins = Math.max(1, Number(settlement.cancel_auto_approve_minutes ?? 120));
+    const cutoff = new Date(Date.now() - mins * 60000).toISOString();
+    const rows = await this.ds.query(
+      "SELECT `id`, `teacher_id` FROM `orders` WHERE `cancel_requested_at` IS NOT NULL AND `cancel_requested_at` <= ? AND `status` IN ('pending_class','awaiting_parent_confirm') LIMIT 50",
+      [cutoff],
+    );
+    let done = 0;
+    for (const r of rows) {
+      try {
+        await this.approveCancelRequest(Number(r.teacher_id), Number(r.id), "system");
+        done++;
+      } catch {
+        /* 单个失败不影响其它订单；下一轮会再试 */
+      }
+    }
+    return { approved: done, scanned: rows.length, minutes: mins };
   }
 
   /**

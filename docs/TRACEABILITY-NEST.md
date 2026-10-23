@@ -24,7 +24,8 @@
 | 4.1.2 运营位：Banner / 公告 / 优惠券 | `GET /api/public/banners`、`GET /api/public/announcements`、`GET /api/public/coupons` | e2e §15 |
 | 4.1.3 发布需求（学段/科目/地址/时间/预算/加急）与编辑、暂停、撤销、确认接单 | `POST /api/demands`、`PUT /api/demands/:id`、`POST /api/demands/:id/action`、`GET /api/demands/mine`、`GET /api/demands/:id`、`POST /api/demands/:id/confirm` | e2e §2、e2e §4 |
 
-| 4.1.5 订单分类与详情、取消、确认完成、申请退款 | `GET /api/parent/orders`、`GET /api/orders/:id`、`POST /api/orders/:id/cancel`、`POST /api/orders/:id/confirm`、`POST /api/orders/:id/refund` | e2e §4/§6/§13 |
+| 4.1.5 订单分类与详情、取消、确认完成、申请退款 | `GET /api/parent/orders`、`GET /api/orders/:id`、`POST /api/orders/:id/cancel`（已付款单转「取消申请」）、`POST /api/orders/:id/confirm`、`POST /api/orders/:id/refund` | e2e §4/§6/§13、e2e §21（取消申请） |
+| 4.1.5 家长取消 → 教员端「退款 / 驳回」（取消申请制 + 超时自动退款） | `GET /api/teacher/orders`（`?pendingCancel=1` 只看待处理取消）、`POST /api/teacher/orders/:id/cancel-approve`、`POST /api/teacher/orders/:id/cancel-reject` | e2e §21、mobile（8 项：申请不退款/重复 400/驳回必填理由/再申请/同意退款/台账闭合/二次同意 400/越权 403） |
 | 4.1.5 上课前 1 小时提醒 | 定时任务 `runLessonReminders()`，阈值 `notify.lesson_remind_minutes`；后台手动触发 `POST /api/admin/reminders/run` | e2e §18 |
 | 4.1.6 担保支付（幂等）、消费/退款记录 | `POST /api/orders/:id/pay`、`GET /api/wallet`、`GET /api/wallet/txns` | e2e §4、`races`（幂等重放）、e2e §14 |
 | 4.1.6 发票申请 | `POST /api/invoices`（仅本人订单、唯一约束） | e2e §17、`hc`（发票唯一性） |
@@ -148,7 +149,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 87 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 101 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

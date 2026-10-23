@@ -146,6 +146,47 @@ async function finish(o) {
   load();
 }
 
+/** 教员「同意退款」：家长取消申请 → 按规则退款（金额以服务端重算为准） */
+async function approveCancel(o) {
+  const paid = money(Number(o.amount || 0) + Number(o.urgentFee || 0));
+  const yes = await new Promise((resolve) => {
+    uni.showModal({
+      title: "同意退款",
+      content: "同意家长取消订单" + (paid ? "，按规则退款上限 " + paid : "") + "？退款后订单结束。",
+      confirmText: "同意并退款",
+      success: (r) => resolve(!!r.confirm),
+      fail: () => resolve(false),
+    });
+  });
+  if (!yes) return;
+  busy.value = "approve" + o.id;
+  const r = await req("POST", "/teacher/orders/" + o.id + "/cancel-approve", {});
+  busy.value = "";
+  toast(r ? "已同意取消，退款 " + money(r.refundAmount) : "操作失败");
+  load();
+}
+
+/** 教员「驳回」：不同意取消，订单继续履约（理由必填，会展示给家长） */
+async function rejectCancel(o) {
+  const reason = await new Promise((resolve) => {
+    uni.showModal({
+      title: "驳回取消申请",
+      editable: true,
+      placeholderText: "如：距离上课不足 2 小时，已按约定备好课件",
+      confirmText: "驳回",
+      success: (r) => resolve(r.confirm ? r.content || "" : null),
+      fail: () => resolve(null),
+    });
+  });
+  if (reason == null) return;
+  if (String(reason).trim().length < 2) return toast("请填写驳回理由（至少 2 个字）");
+  busy.value = "reject" + o.id;
+  const r = await req("POST", "/teacher/orders/" + o.id + "/cancel-reject", { reason: String(reason).trim() });
+  busy.value = "";
+  toast(r ? "已驳回，订单继续履约" : "操作失败");
+  load();
+}
+
 const money = (c) => "¥" + (Number(c || 0) / 100).toFixed(2);
 
 function goWallet() {
@@ -197,7 +238,16 @@ function goMessages() {
           <view class="muted">{{ o.statusText }}</view>
         </view>
         <view>
-          <view v-if="o.status === 'pending_class'" class="btn" style="padding: 10rpx 20rpx" @click="checkin(o)">
+          <!-- 家长申请取消：教员在这里选「退款」或「驳回」 -->
+          <template v-if="o.cancelRequested">
+            <view class="btn" style="padding: 10rpx 20rpx; margin-bottom: 8rpx" @click="approveCancel(o)">
+              {{ busy === "approve" + o.id ? "处理中…" : "同意退款" }}
+            </view>
+            <view class="btn ghost" style="padding: 10rpx 20rpx" @click="rejectCancel(o)">
+              {{ busy === "reject" + o.id ? "处理中…" : "驳回" }}
+            </view>
+          </template>
+          <view v-else-if="o.status === 'pending_class'" class="btn" style="padding: 10rpx 20rpx" @click="checkin(o)">
             {{ busy === "checkin" + o.id ? "打卡中…" : "上门打卡" }}
           </view>
           <view v-else-if="o.status === 'in_class'" class="btn" style="padding: 10rpx 20rpx" @click="finish(o)">

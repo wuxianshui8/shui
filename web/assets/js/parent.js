@@ -717,16 +717,19 @@ function orderActions() {
       const paid = Number(el.dataset.paid || 0) > 0;
       const yes = await confirmDialog(
         "取消订单",
-        paid ? "该订单已支付。开课前 4 小时内取消将扣除 20% 违约金，并影响您的信用分。确认取消？" : "取消后需求将关闭，教员无法再接单。确认取消该订单？",
-        "继续取消",
+        paid
+          ? "该订单已支付。提交后由教员确认：教员同意则按规则退款（开课前 4 小时内取消会扣 20% 违约金并影响信用分），驳回则订单继续；2 小时内未处理平台自动退款。确认提交取消申请？"
+          : "取消后需求将关闭，教员无法再接单。确认取消该订单？",
+        paid ? "提交取消申请" : "继续取消",
         true
       );
       if (!yes) return;
       const reason = await promptDialog("请填写取消原因", "如：临时调整孩子的时间安排", { value: "" });
       if (!reason) return;
-      await api.post("/api/orders/" + id + "/cancel", { reason });
-      toastOk("订单已取消");
+      const r = await api.post("/api/orders/" + id + "/cancel", { reason });
+      toastOk(paid ? "已提交取消申请，等待教员确认（超时自动退款）" : "订单已取消");
       ROUTER.render();
+      return r;
     },
     sos: async (el) => {
       const yes = await confirmDialog(
@@ -1389,11 +1392,21 @@ function orderDetailHtml(o) {
   const t = o.teacher || {};
   const paid = o.amount + (o.urgentFee || 0);
   const feeReady = o.serviceFee != null;
+  // 取消申请状态：等待教员处理 / 已被驳回（家长要知道钱和课现在什么状态）
+  const cancelBanner = o.cancelRequested
+    ? '<div class="hint mt12" style="border-color:#f0c987;background:#fff9ec;color:#8a5a00;border-radius:12px">' +
+      "已提交取消申请（" + fmtDate(o.cancelRequestedAt, "time") + "），等待教员确认：同意即按规则退款，驳回则订单继续；2 小时内未处理平台自动退款。</div>"
+    : o.cancelRejectedAt && o.status !== "refunded" && o.status !== "cancelled"
+      ? '<div class="hint mt12" style="border-color:#f7c9c9;background:var(--danger-soft);color:var(--danger);border-radius:12px">' +
+        "教员已于 " + fmtDate(o.cancelRejectedAt, "time") + " 驳回取消申请，理由：" + esc(o.cancelRejectReason || "未填写") +
+        "。如仍有异议可联系客服申请仲裁。</div>"
+      : "";
   return '<div class="card"><div class="row between">' +
     "<div><div style=\"font-size:19px;font-weight:800\">" + esc(o.statusText) + "</div>" +
     '<div class="tiny faint mt8">' + esc(orderStatusHint(o)) + "</div></div>" +
     statusBadge(o.status, o.statusText) + "</div>" +
     (o.freeCancelDeadline ? '<div class="tiny faint mt8">免费取消截止：' + fmtDate(o.freeCancelDeadline, "time") + "</div>" : "") +
+    cancelBanner +
     '<div class="divider"></div>' + orderTimeline(o) + "</div>" +
 
     '<div class="card"><div class="card-title"><h3>教员信息</h3>' +

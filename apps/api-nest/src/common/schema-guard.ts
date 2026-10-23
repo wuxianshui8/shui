@@ -28,6 +28,24 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "VARCHAR(64) DEFAULT NULL",
     why: "教员端「用户名 + 密码」登录（可空；唯一性由接口与种子保证）",
   },
+  {
+    table: "orders",
+    column: "cancel_requested_at",
+    ddl: "VARCHAR(255) DEFAULT NULL",
+    why: "家长取消申请时间（教员端「退款 / 驳回」需要知道有申请在等他处理）",
+  },
+  {
+    table: "orders",
+    column: "cancel_rejected_at",
+    ddl: "VARCHAR(255) DEFAULT NULL",
+    why: "教员驳回取消的时间（家长端据此提示「教员已驳回」）",
+  },
+  {
+    table: "orders",
+    column: "cancel_reject_reason",
+    ddl: "TEXT NULL",
+    why: "教员驳回理由（回给家长看）",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {
