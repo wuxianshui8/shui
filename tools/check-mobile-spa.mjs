@@ -52,11 +52,14 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
   if (existsSync(mp + "/app.json")) {
     const appJson = JSON.parse(readFileSync(mp + "/app.json", "utf8"));
     assert(Array.isArray(appJson.pages) && appJson.pages.length >= 6, "小程序 app.json 注册 " + (appJson.pages || []).length + " 个页面");
-    const need = ["pages/login/index", "pages/parent/index", "pages/parent/publish/index", "pages/teacher/index",
+    const need = ["pages/login/index", "pages/parent/index", "pages/parent/publish/index",
+      "pages/parent/teachers/index", "pages/parent/teacher/index", "pages/parent/order/index", "pages/teacher/index",
       "pages/teacher/wallet/index", "pages/teacher/apply/index", "pages/sales/index", "pages/sales/rewards/index",
       "pages/agent/index", "pages/agent/complaints/index", "pages/messages/index"];
     const lack = need.filter((p) => !(appJson.pages || []).includes(p));
-    assert(lack.length === 0, "小程序页面与 H5 一致（含发需求页与入驻认证页）" + (lack.length ? "，缺 " + lack.join(",") : ""));
+    assert(lack.length === 0, "小程序页面与 H5 一致（含发需求页 / 附近教员 / 教员详情 / 订单详情 / 入驻认证）" + (lack.length ? "，缺 " + lack.join(",") : ""));
+    assert(existsSync(mp + "/pages/parent/teacher/index.wxml") && existsSync(mp + "/pages/parent/order/index.wxml"),
+      "「立即预约」与「订单详情」在小程序侧也有产物（wxml）");
     assert(existsSync(mp + "/pages/parent/publish/index.wxml"), "小程序页面产物为 wxml/wxss（真实小程序工程）");
     assert(existsSync(mp + "/pages/teacher/apply/index.wxml"), "小程序入驻认证页也有产物（wxml）");
     const teacherWxml = readFileSync(mp + "/pages/teacher/index.wxml", "utf8");
@@ -67,7 +70,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
+for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -139,6 +142,11 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("资质材料"), "H5 产物有「资质材料」版块");
   assert(bundle.includes("backgroundImage"), "上传后的证件图用背景图渲染（框内 background-size: cover 自适应）");
   assert(bundle.includes("/auth/login-account") && bundle.includes("手机号 / 用户名"), "移动端登录页支持「手机号 / 用户名 + 口令」登录");
+  // 家长端「立即预约 + 订单详情」：三个新页面的骨架与接口契约要真的被打包进去
+  assert(bundle.includes("/orders/from-service") && bundle.includes("立即预约"), "H5 产物含家长端「立即预约」（POST /orders/from-service）");
+  assert(bundle.includes("可预约服务") && bundle.includes("提交预约并去支付"), "预约表单含服务选择与提交按钮");
+  assert(bundle.includes("申请取消订单") && bundle.includes("确认完成上课"), "订单详情页含「申请取消 / 确认完成」操作");
+  assert(bundle.includes("待教员确认") || bundle.includes("等待教员确认"), "订单详情显示「取消申请等教员确认」状态");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {

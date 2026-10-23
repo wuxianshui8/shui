@@ -5,6 +5,7 @@
 > 这里记的是「需求书没要求、但生产环境必需」的工程件。
 >
 > 状态口径：✅ 已具备 / 🟡 部分具备（有替代方案，但不达生产标准） / ❌ 未做。
+> 最后核对：2026-10-23，HEAD `c004a20` + P61（家长端移动页面补齐、文档纠偏）。
 > 每项都写明**补齐条件**，避免"知道要做什么但不知道从哪下手"。
 
 ## A. 外部集成（需求书允许模拟，上线必须接真实通道）
@@ -13,9 +14,9 @@
 | --- | --- | --- | --- |
 | A1 | 短信验证码 | 🟡 **代码已就绪，待密钥**：腾讯云短信通道已实现（`src/integrations/sms/`：TC3-HMAC-SHA256 签名、SendSms 请求体、错误码分支、`SMS_PROVIDER=mock/tencent` 工厂、缺配置/占位串启动即拒绝），单测 101 项覆盖签名与错误分支；`SMS_PROVIDER=tencent` + 5 项密钥即可真实下发 | 你提供：`SecretId`/`SecretKey`/`SdkAppId`/已备案签名/模板 ID（模板变量 ${1}=验证码、${2}=分钟） |
 | A2 | 支付通道 | 🟡 **通道层已实现，待商户号 + 流程接线**：`src/integrations/pay/` 含 `PayProvider` 端口、mock、微信支付 v3（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款），单测用本地生成的 RSA 密钥对与自加密验证签名/验签/解密链路（**无需商户号**）；启动即校验 `PAY_PROVIDER` 配置 | 你提供：`AppID`/`MchID`/证书序列号/商户私钥/APIv3 密钥/平台证书公钥/公网 HTTPS 回调地址；我方接线：`orders.pay` 拆预支付与回调、`/api/pay/wechat/notify`、幂等入账、超时关单、对账（见 `docs/INTEGRATIONS.md §6`） |
-| A3 | 地图与围栏 | 🟡 距离=Haversine、片区=多边形围栏均为真实算法；片区数据为**矩形近似**，无地图 SDK、无逆地理编码 | 接高德/腾讯地图：地址→经纬度逆解析、片区多边形改为真实行政边界；前端地图选点 |
-| A4 | 文件存储 | ❌ 证书/头像走 **URL 字段**，无上传、无对象存储、无内容安全扫描 | 接 OSS/COS + 直传签名；证书图片做图片鉴黄/病毒扫描；DB 只存 key |
-| A5 | 微信小程序上架 | 🟡 已产出 `mp-weixin` 工程（10 页）可直接导入开发者工具并构建 | 未做：小程序**审核发布**、`openid/unionid` 登录打通、手机号快速验证、订阅消息模板 |
+| A3 | 地图与围栏 | 🟡 **围栏已换真实行政区边界**：`tools/build-admin-areas.mjs` 从阿里云 DataV `areas_v3` 生成 3237 个行政区（省 34 / 市 363 / 区县 2840，47 万点，gzip 1.9MB 随包），片区可直接「按地名设置」（勾选行政区 → 多环围栏）；距离为 Haversine，点在多边形为真实判定；`Regions.vue` 带在线瓦片底图（失败自动回落离线省界） | 仍缺：**地址 → 经纬度逆地理编码**（现有「手填地址」按片区默认坐标落库，精度到片区不到门牌）、地图 SDK 选点/拖拽纠偏、在线瓦片换自有或天地图并带审图号 |
+| A4 | 文件存储 | 🟡 **上传能力已具备**：`POST /api/upload`（base64、仅 PNG/JPG/WEBP、≤2MB，落盘 `data/uploads`，返回 `/uploads/xxx`）+ 家长头像（`PUT /api/parent/avatar`）+ 教员身份证正反面/证书（`/api/teacher/apply`），前端上传后框内自适应显示 | 仍缺：对象存储（OSS/COS）直传签名与 CDN、图片鉴黄/病毒扫描、DB 只存 key、多实例共享卷或桶 |
+| A5 | 微信小程序上架 | 🟡 **工程与登录链路已就绪**：`mp-weixin` 产出 **14 页**（家长 5 + 教员 3 + 业务员 2 + 代理 2 + 登录 + 消息 + …）可直接导入开发者工具；`POST /api/auth/wechat` 走 `jscode2session`（`WECHAT_APPID/SECRET` 未配时 mock），首次登录自动注册家长 | 未做：小程序**审核发布**、手机号快速验证组件、订阅消息模板、真实 appid 与前端 `manifest` 对齐（另见 `docs/INTEGRATIONS.md`） |
 | A6 | 消息推送 | 🟡 站内消息（`messages` 表 + 移动端消息中心，可标已读） | 接 APNs/FCM/微信模板消息：用户设备 token 管理、推送到达率监控 |
 | A7 | 电子合同 | 🟡 `agreements` 表与接口存在 | 接 e签宝/法大大：发起签署、回调存证、PDF 归档 |
 | A8 | 电子发票 | 🟡 开票申请→财务受理→回写票面地址（全流程可跑） | 接税务/电子发票平台：真实开票、红冲、票面 PDF |
@@ -46,10 +47,10 @@
 
 | # | 项 | 现状 | 补齐条件 |
 | --- | --- | --- | --- |
-| D1 | 单元测试 | ✅ **82 个用例**（`node:test`，零第三方依赖）：`common/{codes,errors,geo,paging,password,reply,token}`、`config`、`rule-engine` —— 含分账守恒 784 组组合、代理→业务员超额截断、令牌篡改/过期/换密钥、口令散列与盐、电子围栏内外点、分页上下限、生产环境缺 `AUTH_SECRET` 拒绝启动 | 服务层（orders/wallet/demands）仍依赖 DB 夹具，需先把纯计算抽成函数或引入事务夹具；当前缺口已记录在 `MIGRATION P32` |
-| D2 | 覆盖率门槛 | ✅ 已接入且**默认即门禁**：`tools/gate-unit.mjs` 用 Node 原生 `--experimental-test-coverage`（未引入 c8，根目录保持零依赖），断言「失败用例=0 + 用例数≥60（防空检查）+ 每个目标模块行覆盖 ≥90% / 分支 ≥60% + 目标必须真的出现在报告里」；实测 9 个模块行覆盖 **98.51%~100%（合计 99.65%）**，已纳入 `npm run ci` 静态第 2 步与 CI `static` job | 需要更高门槛时用 `COVERAGE_MIN_LINES` / `COVERAGE_MIN_BRANCH` 调；分支覆盖率天然受防御性 `catch` 影响，规则层的 `catch` 分支暂无夹具 |
+| D1 | 单元测试 | ✅ **172 个用例 / 23 个模块**（`node:test`，零第三方依赖）：`common/*`、`config`、`rule-engine`、`integrations/{sms,pay,ocr,wechat}` —— 含分账守恒、令牌篡改、口令散列、围栏内外点、微信通道（jscode2session/userinfo/授权 URL/白名单）、OCR 解析与腾讯云签名 | 服务层（orders/wallet/demands）仍依赖 DB 夹具，需先抽纯函数或引入事务夹具（见 `MIGRATION P32`） |
+| D2 | 覆盖率门槛 | ✅ 已接入且**默认即门禁**：`tools/gate-unit.mjs`（Node 原生 `--experimental-test-coverage`）断言「失败用例=0 + 用例数≥60 + 每个目标模块行覆盖 ≥90% / 分支 ≥60% + 目标必须出现在报告里」；实测 **23 个模块行覆盖 99.4%（wechat/ocr/pay 等关键模块 100%）**，纳入 `npm run ci` 第 2 步与 CI `static` job | 需要更高门槛时用 `COVERAGE_MIN_LINES` / `COVERAGE_MIN_BRANCH` 调 |
 | D3 | 依赖漏洞扫描 | 🟡 **已接入 npm audit**（`npm run audit:check`，纳入 `npm run ci` 静态第 3 步）：预算制 `deploy/audit-budget.json`（block / budget / expires），实测 api-nest high 2（multer 链，无上传端点→不可达）、web-admin 0、web-mobile high 27（uni-app 构建链，只阻断 critical）；负向验证 4 类全红。**未做**：镜像 SBOM/漏洞扫描（trivy/grype 与 Docker Hub 均不可达） | 镜像源可达后加 `syft` + `trivy image` 扫描并纳入发布流程；web-mobile 待 uni-app 大版本升级后再收紧到阻断 high |
-| D4 | 契约测试 / 前端 E2E | 🟡 后端 484 项集成断言 + 82 项单元断言 + 前端产物契约 38/41 + 浏览器多尺寸校验 16 项 | 补 Playwright 级 UI 流程回归（登录→下单→支付→打卡→结算） |
+| D4 | 契约测试 / 前端 E2E | 🟡 后端：e2e **224 项**（参考实现）+ Nest 侧 §1–§20 173 项、security 53、rules 50、races 27、privacy 38、permissions 17、concurrency 23、巡检 12；前端产物契约：后台 **58** + 移动 **109**；另有 `ci:full` 30 步一键跑 | 补 Playwright 级 UI 流程回归（登录→找教员→立即预约→支付→打卡→结算） |
 | D5 | 压测常态化 | 🟡 有基线（宿主机 + 容器两套），但非 CI 门禁 | 定期跑 `bench-nest` 并对比基线，超阈值告警 |
 | D6 | 混沌/故障演练 | 🟡 **已有脚本并实测**：`npm run chaos:drill`（`tools/chaos-drill.mjs`）分别停 MySQL / Redis，断言「不崩溃（容器 RestartCount 不变）+ 快失败（不挂死）+ 明确报异常（health 503）+ 恢复后可用（health 200 且能登录）」，本机容器栈 **21 项全绿**；实测语义差异成立：**MySQL 挂 → 依赖读接口必须失败（400/503，不返回假成功）**、**Redis 挂 → 业务读仍 200（缓存不阻断主流程）** | 生产前在**预发环境**按同一脚本再跑一次（含真实流量与监控告警联动）；担保台账不平、定时任务重入两类演练尚未脚本化 |
 

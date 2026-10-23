@@ -144,6 +144,20 @@ function goPublish() {
   uni.navigateTo({ url: "/pages/parent/publish/index" });
 }
 
+/** 附近教员：游客也能浏览，点进去可以「立即预约」（预约时才要求登录） */
+function goTeachers() {
+  uni.navigateTo({ url: "/pages/parent/teachers/index" });
+}
+
+/** 订单详情：游客没有订单，先登录 */
+function goOrder(o) {
+  if (guest.value) {
+    goLogin("/pages/parent/order/index?id=" + o.id);
+    return;
+  }
+  uni.navigateTo({ url: "/pages/parent/order/index?id=" + o.id });
+}
+
 /** 消息 / 订单是「我的」数据：游客先登录，登录后回到该页 */
 function goMessages() {
   if (guest.value) {
@@ -175,6 +189,7 @@ function goLoginNow() {
       </view>
       <view class="muted" v-if="home" style="margin-top: 16rpx">当前片区：{{ home.region ? home.region.name : "未定位" }}（未登录也能看到，登录后按您的地址推荐）</view>
       <view class="btn" style="margin-top: 20rpx" @click="goPublish">发布家教需求</view>
+      <view class="btn ghost" style="margin-top: 12rpx" @click="goTeachers">找附近教员 · 立即预约</view>
       <view class="muted" v-if="guest" style="margin-top: 16rpx">
         不用登录就能填表；点「发布需求」时再登录，登录后自动发布。
       </view>
@@ -201,7 +216,7 @@ function goLoginNow() {
 
     <view class="card" v-if="!guest">
       <view class="card-title">我的订单（{{ orders.length }}）</view>
-      <view v-for="o in orders" :key="o.id" class="row">
+      <view v-for="o in orders" :key="o.id" class="row" @tap="goOrder(o)">
         <view style="flex: 1">
           <view style="font-size: 26rpx">{{ o.subject }} · {{ o.stage }}</view>
           <view class="muted">{{ o.orderNo }}</view>
