@@ -338,8 +338,8 @@ node tools/switch-domain.mjs --force --keep-ip --skip-certbot
 
 任一步失败都会把 Nginx 配置回滚到 `/etc/nginx/jiajiao.conf.bak`（`set -o pipefail` 保证 certbot 的失败不会被管道吞掉）。
 
-**线上配置对照**：`deploy/nginx/jiajiao.conf.deployed` 是服务器上**真实生效**的站点配置快照（含 IP 兜底段与限速块），
-供 diff / 审计；它由脚本生成，不参与部署——要改线上配置，改脚本再跑。
+**线上配置对照**：`deploy/server-state/` 是服务器上**真实生效**的配置快照（nginx / ssh / fail2ban / sysctl / docker / systemd / 备份脚本 / compose），
+由 `npm run sync:server-state` 回写、`npm run check:server-state` 比对。详见 `docs/RUNBOOK.md §4`。
 
 **演练记录（2026-10-23，仍在拦截状态下实跑）**：
 

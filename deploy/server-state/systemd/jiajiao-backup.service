@@ -1,0 +1,17 @@
+[Unit]
+Description=家教平台数据库 + 上传目录备份
+Documentation=file:/opt/jiajiao/RUNBOOK.md
+# 失败时触发通知单元（webhook + journal）
+OnFailure=jiajiao-backup-notify.service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/jiajiao/bin/backup-db.sh
+# 备份不该被 systemd 的默认超时打断（库大时 dump 可能要几分钟）
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -115,9 +115,8 @@ ssh kd211 "sudo -n systemctl reload nginx"                                      
 ssh kd211 "sleep 2; curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.kd211.com' http://127.0.0.1/api/health"  # ⑤ 验证
 ```
 
-> **线上配置长什么样**：`deploy/nginx/jiajiao.conf.deployed` 是服务器上真实生效的配置快照（含 IP 兜底段与认证限速块）。
-> 它由 `tools/switch-domain.mjs` + `deploy/harden-server.sh` 生成——**要改线上配置就改脚本再跑**，别直接 ssh 上去改（改了下次跑脚本就没了，且仓库里看不到）。
-> 想 diff 现状：`scp kd211:/etc/nginx/sites-available/jiajiao.conf /tmp/a.conf` 后与快照比对。
+> **线上配置长什么样**：`deploy/server-state/` 是服务器上真实生效的全套配置快照（nginx / ssh / fail2ban / sysctl / docker / systemd / 备份脚本 / compose）。
+> `npm run check:server-state` 可随时比对「仓库 vs 服务器」；不一致时会列出是哪几个文件。见 §4。
 
 ### 3.4 灌/重置演示数据
 
@@ -183,7 +182,34 @@ ssh kd211 "gunzip -c /var/backups/jiajiao/jiajiao-<时间戳>.sql.gz | sudo -n d
 
 ## 4. 变更流程与红线
 
-**流程**：先看状态 → 改（本地仓库用编辑器改代码；服务器配置用脚本写文件）→ 语法校验 → 生效 → 双层验证（本机 + 公网）→ 沉淀成 `deploy/*.sh` 并提交 → 告知回滚办法。
+### 4.1 三类改动分别怎么走（现行约定，2026-10-23 起）
+
+| 类别 | 例子 | 在哪改 | 生效方式 |
+| --- | --- | --- | --- |
+| **① 运行时资料/数据** | 公告、协议文案、规则配置、片区、用户、订单 | 后台界面或 API（优先）；必须动 SQL 时先备份 | 立即生效（无需重启） |
+| **② 服务器配置** | nginx、systemd、fail2ban、sshd drop-in、sysctl、docker daemon、`.env` | **可以直接在服务器上改** | `nginx -t` / `sshd -t` 校验 → reload → 验证 → **回写仓库**（见 4.2） |
+| **③ 应用代码** | `apps/`、`server/`、`web/` | 只能在本地仓库改（服务器上没有源码，代码在镜像里） | 本地构建镜像 → `docker save` → 上传 → `compose up -d --no-build` |
+
+> ③ 为什么不能直接改服务器：宿主机没有源码，改了也不生效（代码在镜像层 `/app/apps/api-nest/dist/main.js`），重启容器也没用。
+
+### 4.2 直接在服务器上改配置后，必须回写仓库
+
+```powershell
+$env:DEPLOY_HOST = "kd211"; $env:DEPLOY_SUDO = "1"
+npm run sync:server-state      # 把服务器现状抓回 deploy/server-state/ + 更新 MANIFEST
+git diff deploy/server-state   # 看到"我改了什么"
+git add -A; git commit -m "..."   # 提交（这是服务器改动进仓库的唯一入口）
+npm run check:server-state     # 复核：仓库与服务器是否一致（不一致时列出文件）
+```
+
+抓取范围：nginx 站点与全局加固、sshd drop-in、fail2ban、sysctl、docker daemon、3 个 systemd 备份单元、2 个备份脚本、`docker-compose.prod.yml`。
+**不抓 `.env`**（含 `AUTH_SECRET` / `DB_PASSWORD` / webhook），脚本里还有一道「疑似密钥就中止」的检查。
+
+### 4.3 每次改动的固定动作
+
+先看状态 → 改 → 语法校验（`nginx -t` / `sshd -t` / `bash -n`）→ 生效（reload / restart）→ 双层验证（服务器本机 curl + 本机公网 curl，必要时 `npm run smoke:online`）→ 回写仓库并提交 → 告知回滚办法。
+
+备份约定：改 Nginx 前 `cp` 到 `/etc/nginx/jiajiao.conf.bak`；改 sshd 前备份 `/root/sshd-backup-<时间戳>/`。
 
 **红线**
 

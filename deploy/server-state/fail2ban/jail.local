@@ -1,0 +1,14 @@
+[DEFAULT]
+backend  = auto
+bantime  = 2h
+findtime = 10m
+maxretry = 5
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled  = true
+mode     = aggressive
+port     = 22
+logpath  = /var/log/auth.log
+maxretry = 3
+bantime  = 4h
