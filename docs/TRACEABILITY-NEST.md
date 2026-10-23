@@ -18,6 +18,7 @@
 | --- | --- | --- |
 | 4.1.1 手机号验证码登录、自动注册为家长、失败锁定、登录态查询 | `POST /api/auth/send-code`、`POST /api/auth/login`、`POST /api/auth/login-password`、`POST /api/auth/wechat`、`GET /api/auth/wechat/authorize-url`（公众号授权链接，白名单校验）、`GET /api/auth/me` | e2e §1、e2e §21（微信幂等）、sec、priv、mobile |
 | 4.1.1 多上课地址管理（增删改、设默认） | `GET /api/addresses`、`POST /api/addresses`、`PUT /api/addresses/:id`、`DELETE /api/addresses/:id`、`POST /api/addresses/:id/default` | e2e §2、sec（越权校验） |
+| 4.1.1 家长头像（上传图片、框内自适应显示、恢复默认） | `POST /api/upload`、`PUT /api/parent/avatar`、`GET /api/parent/profile` | e2e §21（上传→设置→回读→外链拒绝→复位）、mobile |
 | 4.1.2 自动定位片区 + 首页聚合（片区/横幅/公告/附近教员/优惠券/信用分） | `GET /api/parent/home`、`GET /api/public/home`（游客版同构首页）、`POST /api/public/promo/:token/scan` | e2e §2、e2e §21（游客浏览）、`rules`（围栏判定）、mobile |
 | 4.1.4 附近教员广场（电子围栏 + 六维筛选 + 派单权重排序）、教员详情、直接预约下单 | `GET /api/parent/teachers`、`GET /api/parent/teachers/:id`、`GET /api/public/teachers`、`GET /api/public/teachers/:id`（游客版，收藏恒 false）、`POST /api/orders/from-service` | e2e §2、e2e §21、`rules`（优先级逐位验算）、mobile |
 | 4.1.2 运营位：Banner / 公告 / 优惠券 | `GET /api/public/banners`、`GET /api/public/announcements`、`GET /api/public/coupons` | e2e §15 |
@@ -147,7 +148,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 70 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 77 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

@@ -240,7 +240,18 @@ h1, h2, h3, h4, p { margin: 0; }
 .avatar.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 12px; }
 .avatar.lg { width: 56px; height: 56px; border-radius: 18px; font-size: 19px; }
 .avatar.xl { width: 68px; height: 68px; border-radius: 22px; font-size: 22px; }
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* 图片自适应头像框：等比铺满、居中裁切（不变形、不留白边），任意长宽比的图都好看 */
+.avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; display: block; }
+
+/* 可点击更换的头像：右上角相机角标 */
+.avatar-wrap { position: relative; flex: 0 0 auto; cursor: pointer; border-radius: 22px; }
+.avatar-wrap:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.avatar-wrap .avatar-pick {
+  position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; line-height: 1;
+  background: #fff; border: 1.5px solid var(--line); box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+}
+.avatar-wrap:active .avatar-pick { transform: scale(.94); }
 
 /* ---------------- 列表项 ---------------- */
 .list-item {

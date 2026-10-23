@@ -1674,6 +1674,71 @@ function qItem(icon, label, value, go) {
     '<span class="faint" aria-hidden="true">›</span></button>';
 }
 
+/* ---------------- 头像上传（客户端等比压缩 → /api/upload → /api/parent/avatar） ---------------- */
+const AVATAR_MAX = 512;
+
+/**
+ * 选一张本地图片，等比缩到 ≤512px 返回 dataURL。
+ * 为什么不直接传原图：手机原图 4–8MB 会撞上 2MB 上限；而且头像框最大 68px，
+ * 传原图纯属浪费带宽。这里**不裁切**，只等比缩放，进入头像框后由 `object-fit: cover` 自适应显示。
+ */
+function pickImageFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp";
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return resolve(null);
+      if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+        toastErr("只支持 PNG / JPG / WEBP 图片");
+        return resolve(null);
+      }
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => resolve(null);
+        img.onload = () => {
+          const scale = Math.min(1, AVATAR_MAX / Math.max(img.width || 1, img.height || 1));
+          const w = Math.max(1, Math.round((img.width || 1) * scale));
+          const h = Math.max(1, Math.round((img.height || 1) * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve({ filename: file.name, dataUrl: canvas.toDataURL("image/jpeg", 0.9) });
+        };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }, { once: true });
+    input.click();
+  });
+}
+
+/** 换头像：上传 → 落库 → 同步本地登录用户 → 重渲染当前页 */
+async function changeAvatar() {
+  const picked = await pickImageFile();
+  if (!picked) return;
+  toast("上传中…");
+  const up = await api.post("/api/upload", { filename: picked.filename, dataUrl: picked.dataUrl });
+  const r = await api.put("/api/parent/avatar", { avatar: up.url });
+  session.user = { ...(session.user || {}), avatar: r.user && r.user.avatar };
+  toastOk(r.hasAvatar ? "头像已更新" : "已恢复默认头像");
+  ROUTER.render();
+}
+
+/** 可点击更换的头像框（右上角相机角标提示） */
+function avatarPickHtml(u, cls) {
+  return '<div class="avatar-wrap" data-act="avatar" role="button" tabindex="0" aria-label="更换头像" title="点击更换头像">' +
+    avatar(u.nickname, u.avatar, cls) +
+    '<span class="avatar-pick" aria-hidden="true">📷</span></div>';
+}
+
 async function meView() {
   chrome({ title: "我的", tab: "/me" });
   setBody(loadingHtml());
@@ -1682,10 +1747,11 @@ async function meView() {
   const stats = p.stats || {};
   const c = p.credit || {};
   setBody(
-    '<div class="card"><div class="row" style="gap:14px">' + avatar(u.nickname, u.avatar, "xl") +
+    '<div class="card"><div class="row" style="gap:14px">' + avatarPickHtml(u, "xl") +
     '<div class="grow"><div class="row" style="gap:6px;flex-wrap:wrap"><b style="font-size:17px">' + esc(u.nickname || "家长") + "</b>" +
     '<span class="level-badge lv' + (CREDIT_LV[c.creditLevel] || 1) + '">' + esc(c.creditLevelName || c.creditLevel || "未评级") + "</span></div>" +
-    '<div class="tiny faint mt8">' + esc(u.phone || "-") + " · " + (u.realName ? "已实名" : "未实名认证") + "</div>" +
+    '<div class="tiny faint mt8">' + esc(u.phone || "-") + " · " + (u.realName ? "已实名" : "未实名认证") + " · " +
+    (u.avatar ? "点击头像可更换" : "点击头像上传图片") + "</div>" +
     '<div class="tiny faint mt8">信用分 ' + ((p.credit && p.credit.creditScore) ?? 0) + " · 评价权重 " +
     Number((p.credit && p.credit.reviewWeight) || 1).toFixed(1) + "×</div></div>" +
     '<button class="btn btn-xs btn-ghost" data-go="/profile">编辑资料</button></div>' +
@@ -1708,6 +1774,7 @@ async function meView() {
     '<button class="btn btn-outline btn-block" data-act="logout" style="margin-bottom:24px">退出登录</button>'
   );
   setActions({
+    avatar: changeAvatar,
     logout: async () => {
       const yes = await confirmDialog("退出登录", "退出后需重新验证手机号登录。确认退出？", "退出登录", true);
       if (!yes) return;
@@ -1975,9 +2042,9 @@ async function profileView() {
   setBody(
     '<div class="card"><div class="card-title"><h3>账号资料</h3>' +
     '<span class="more">' + (u.realName ? "已实名" : "未实名") + "</span></div>" +
-    '<div class="row" style="gap:12px">' + avatar(u.nickname, u.avatar, "lg") +
+    '<div class="row" style="gap:12px">' + avatarPickHtml(u, "lg") +
     '<div class="grow"><div class="bold">' + esc(u.nickname || "家长") + "</div>" +
-    '<div class="tiny faint mt8">' + esc(u.phone || "-") + "</div>" +
+    '<div class="tiny faint mt8">' + esc(u.phone || "-") + " · " + (u.avatar ? "点击头像可更换" : "点击头像上传图片") + "</div>" +
     '<div class="tiny faint mt8">' + (u.realName ? "实名：" + esc(u.realName) : "实名后可提升信用与纠纷处理效率") + "</div></div></div></div>" +
     '<div class="card"><div class="card-title"><h3>实名认证</h3></div>' +
     '<form data-form="realname"><div class="field"><label for="rn-name">真实姓名</label>' +
@@ -2030,7 +2097,7 @@ async function profileView() {
       btn.disabled = false;
     }
   });
-  setActions({});
+  setActions({ avatar: changeAvatar });
 }
 
 /* ---------------- 路由：收藏 / 优惠券 / 客服 / 设置 / 协议 ---------------- */

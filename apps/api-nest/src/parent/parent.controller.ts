@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req } from "@nestjs/common";
+import { Controller, Get, Param, Put, Body, Query, Req } from "@nestjs/common";
 import { ParentService } from "./parent.service";
 import { OrdersService } from "../order/orders.service";
 import { Roles } from "../common/access";
@@ -39,6 +39,12 @@ export class ParentController {
   @Get("profile")
   async profile(@Req() req: any) {
     return ok(await this.svc.profile(req.user.uid));
+  }
+
+  /** 设置/清除家长头像（先 POST /api/upload 拿 /uploads/xxx，再提交这里；avatar=null 恢复默认） */
+  @Put("avatar")
+  async setAvatar(@Body() body: { avatar?: string | null }, @Req() req: any) {
+    return ok(await this.svc.setAvatar(Number(req.user.uid), body?.avatar ?? null));
   }
 
   /** 家长订单列表（按状态分组筛选） */

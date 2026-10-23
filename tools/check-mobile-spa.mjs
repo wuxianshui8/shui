@@ -132,6 +132,7 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("微信一键登录"), "H5 产物包含「微信一键登录」按钮（登录页已加）");
   assert(bundle.includes("/public/home"), "H5 产物使用公开首页接口（游客无需登录即可看发布需求页）");
   assert(bundle.includes("pendingDemand"), "H5 产物带「登录后自动继续发布」的草稿逻辑");
+  assert(bundle.includes("/parent/avatar") && bundle.includes("my-avatar"), "H5 产物带家长头像上传（chooseImage → /parent/avatar）");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {
@@ -186,6 +187,26 @@ assert(wx2.body.data.user.nickname === wx1.body.data.user.nickname, "同一 code
 const wxAuth = await api("GET", "/auth/wechat/authorize-url?redirect=https://example.com/m/cb&state=s1");
 assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
   "未配置 appid 时公众号授权链接返回 400 WECHAT_NOT_CONFIGURED（前端据此回落演示通道）");
+
+// 家长头像：先上传图片，再把 /uploads/xxx 设为头像（只接受本站地址，任意长宽比的图在框内 aspectFill/cover 自适应）
+{
+  const pngDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const up = await api("POST", "/upload", { token: parent.body.data.token, body: { filename: "avatar.png", dataUrl: pngDataUrl } });
+  assert(up.status === 200 && /^\/uploads\/.+\.png$/.test(up.body.data.url), "家长头像：图片可上传到 /uploads（" + (up.body.data?.url || up.status) + "）");
+  const setAv = await api("PUT", "/parent/avatar", { token: parent.body.data.token, body: { avatar: up.body.data.url } });
+  assert(setAv.status === 200 && setAv.body.data.hasAvatar === true && setAv.body.data.user.avatar === up.body.data.url,
+    "家长头像：设置成功后 /parent/avatar 回显新头像");
+  const prof = await api("GET", "/parent/profile", { token: parent.body.data.token });
+  assert(prof.body.data.user.avatar === up.body.data.url, "家长头像：个人资料接口回读到新头像");
+  const meAv = await api("GET", "/auth/me", { token: parent.body.data.token });
+  assert(meAv.body.data.user.avatar === up.body.data.url, "家长头像：/auth/me 也带新头像（重进 App 生效）");
+  const badAv = await api("PUT", "/parent/avatar", { token: parent.body.data.token, body: { avatar: "https://evil.example.com/a.png" } });
+  assert(badAv.status === 400, "家长头像：外链地址被拒（只接受本站 /uploads/）", badAv.body && badAv.body.message);
+  const resetAv = await api("PUT", "/parent/avatar", { token: parent.body.data.token, body: { avatar: null } });
+  assert(resetAv.status === 200 && resetAv.body.data.hasAvatar === false && resetAv.body.data.user.avatar === null,
+    "家长头像：传 null 可恢复默认首字母头像");
+}
 
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");

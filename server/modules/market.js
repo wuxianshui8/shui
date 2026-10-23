@@ -588,4 +588,22 @@ export function register(router) {
       restricted: !!pp.restricted,
     });
   }, { roles: ["parent"] });
+
+  // 家长头像：先 POST /api/upload 落盘拿 /uploads/xxx，再提交到这里；avatar=null 恢复首字母头像
+  router.put("/api/parent/avatar", (ctx) => {
+    const raw = ctx.body.avatar == null ? "" : String(ctx.body.avatar).trim();
+    let next = null;
+    if (raw) {
+      if (!/^\/uploads\/[A-Za-z0-9._-]{1,120}$/.test(raw)) {
+        throw Err.bad("头像地址不合法：请先上传图片，只接受本站 /uploads/ 下的地址");
+      }
+      next = raw;
+    }
+    run("UPDATE users SET avatar = ? WHERE id = ?", next, ctx.user.id);
+    const u = get("SELECT * FROM users WHERE id = ?", ctx.user.id);
+    ok(ctx.res, {
+      user: { id: u.id, nickname: u.nickname, avatar: u.avatar, role: u.role, phone: maskPhone(u.phone) },
+      hasAvatar: !!u.avatar,
+    });
+  }, { roles: ["parent"] });
 }

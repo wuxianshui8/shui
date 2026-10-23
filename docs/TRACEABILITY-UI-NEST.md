@@ -14,7 +14,7 @@
 | UI 说明书条目 | 页面（pages.json 路径） | 源文件 | 关键实现 |
 | --- | --- | --- | --- |
 | 设计概述·九宫格卡片 / 36rpx 主字号 / `#1f6feb` 主色 | `pages/login/index` … 全部页面共用 | `App.vue`（`:root` 变量 + `.wrap/.card/.kpi/.row/.tag`） | 与后台共用一套设计 token 语义 |
-| 第 2 章 家长端界面（首页/广场/订单） | `pages/parent/index` | `pages/parent/index.vue` | **游客可先浏览**：未登录也能看到片区/附近在线教员/加急费与「发布家教需求」入口（走游客版首页接口 `public/home`），订单与消息区块提示「登录后可查看」；登录后同一页面换成个人首页（订单支付/确认完成/评价） |
+| 第 2 章 家长端界面（首页/广场/订单） | `pages/parent/index` | `pages/parent/index.vue` | **游客可先浏览**：未登录也能看到片区/附近在线教员/加急费与「发布家教需求」入口（走游客版首页接口 `public/home`），订单与消息区块提示「登录后可查看」；登录后同一页面换成个人首页（订单支付/确认完成/评价）；**顶部家长头像可点选图片上传（`uni.chooseImage` → 上传接口 → `PUT /parent/avatar`），用 `background-size: cover` 让任意长宽比的图在头像框内自适应铺满（`<image :src>` 在本版 H5 不落 DOM，故用背景图）** |
 | 第 2 章 发布需求表单 | `pages/parent/publish/index` | `pages/parent/publish/index.vue` | 学段/科目/地址/预算/坐标取真实定位；**加急费可自填**（区间取平台 `urgent.fee`~`urgent.max_fee`，开开关才出现输入框）；**游客填完点「发布需求」才跳登录**，草稿落 `pendingDemand`，登录回来后自动提交 |
 | 登录与角色分流 | `pages/login/index` | `pages/login/index.vue` | **微信一键登录主按钮**（小程序 `uni.login` 取 code / H5 走演示 code → `POST /api/auth/wechat`，首次自动注册家长）+ 口令登录 → 按 `role` 分流；支持 `?next=` 回跳到刚才的页面；**首登强制改密表单**（`mustChangePassword`） |
 | 第 3 章 教员端界面（接单/收入/等级） | `pages/teacher/index` | `pages/teacher/index.vue` | 课时看板、等级权益、附近需求抢单、「上门打卡（真实定位）/ 结束授课」 |

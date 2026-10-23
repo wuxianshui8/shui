@@ -908,6 +908,22 @@ async function loginPassword(phone) {
     "发布需求 / 立即预约等动作走 requireLogin（点动作才弹登录）");
   assert(/state\.pending = typeof pending === "function"/.test(parentJs), "登录成功后自动接着执行原动作（不丢表单）");
 
+  // 家长头像：可上传图片并设为头像（登录态），外链地址被拒，null 可恢复默认
+  {
+    const pngDataUrl =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const up = await api("POST", "/api/upload", { token: wx1.body.data.token, body: { filename: "avatar.png", dataUrl: pngDataUrl } });
+    assert(up.status === 200 && /^\/uploads\/.+\.png$/.test(up.body.data.url), "家长头像：图片可上传（" + (up.body.data?.url || up.status) + "）");
+    const setAv = await api("PUT", "/api/parent/avatar", { token: wx1.body.data.token, body: { avatar: up.body.data.url } });
+    assert(setAv.status === 200 && setAv.body.data.hasAvatar === true, "家长头像：设为头像成功");
+    const prof = await api("GET", "/api/parent/profile", { token: wx1.body.data.token });
+    assert(prof.body.data.user.avatar === up.body.data.url, "家长头像：个人资料回读到新头像");
+    const badAv = await api("PUT", "/api/parent/avatar", { token: wx1.body.data.token, body: { avatar: "https://evil.example.com/a.png" } });
+    assert(badAv.status === 400, "家长头像：外链地址被拒（只接受本站 /uploads/）");
+    const resetAv = await api("PUT", "/api/parent/avatar", { token: wx1.body.data.token, body: { avatar: null } });
+    assert(resetAv.status === 200 && resetAv.body.data.hasAvatar === false, "家长头像：传 null 恢复默认首字母头像");
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

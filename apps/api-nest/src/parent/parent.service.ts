@@ -4,7 +4,7 @@ import { DataSource } from "typeorm";
 import { haversineKm, maskPhone, resolveRegion } from "../common/geo";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { RuleEngineService } from "../rules/rule-engine.service";
-import { notFound } from "../common/errors";
+import { notFound, bad } from "../common/errors";
 
 @Injectable()
 export class ParentService {
@@ -228,6 +228,28 @@ export class ParentService {
       urgentFee: urgentCfg.fee,
       urgentMaxFee: Math.max(Number(urgentCfg.fee) || 0, Number(urgentCfg.max_fee) || (Number(urgentCfg.fee) || 0) * 10),
       urgentEnabled: urgentCfg.enabled !== false,
+    };
+  }
+
+  /**
+   * 家长头像（需求 4.1.1 个人资料）：先 `POST /api/upload` 落盘拿到 `/uploads/xxx.png`，再提交到这里。
+   * 只接受本站 `/uploads/` 下的相对地址（不接受外链），传 `null`/空串表示恢复默认首字母头像。
+   */
+  async setAvatar(parentId: number, avatar: string | null) {
+    const raw = avatar == null ? "" : String(avatar).trim();
+    let next: string | null = null;
+    if (raw) {
+      if (!/^\/uploads\/[A-Za-z0-9._-]{1,120}$/.test(raw)) {
+        throw bad("头像地址不合法：请先上传图片，只接受本站 /uploads/ 下的地址");
+      }
+      next = raw;
+    }
+    await this.ds.query("UPDATE `users` SET `avatar` = ? WHERE `id` = ?", [next, parentId]);
+    const u = (await this.ds.query("SELECT * FROM `users` WHERE `id` = ? LIMIT 1", [parentId]))[0];
+    return {
+      user: { id: Number(u.id), nickname: u.nickname, avatar: u.avatar, role: u.role, phone: mask(u.phone) },
+      // 前端据此判断是否回到「首字母头像」
+      hasAvatar: !!u.avatar,
     };
   }
 
