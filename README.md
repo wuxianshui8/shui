@@ -189,6 +189,9 @@ npm run git:push
 > 全新检出已验证（`git clone` 后仅 `npm install` + `ci-full --static`）：补齐 `ci.yml` 后静态门禁全绿
 > （clone 验证时 12 步；加入单元测试与依赖审计后 **14/14 步**已在本机复跑通过），说明仓库自包含、无需仓库外文件即可通过 Actions 的 static job。
 
+> **交付说明见 [`docs/DELIVERY.md`](docs/DELIVERY.md)**（交付物清单、线上入口、验收证据、未完成项、上线前三件事）；
+> 日常运维照 [`docs/RUNBOOK.md`](docs/RUNBOOK.md) 走；上线缺口看 [`docs/GO-LIVE-CHECKLIST.md`](docs/GO-LIVE-CHECKLIST.md)。
+>
 > 迁移全过程、逐阶段门禁与偏离记录见 `docs/MIGRATION.md`；
 > 新后端接口清单见 [`docs/API-NEST.md`](docs/API-NEST.md)；需求逐条追溯见 [`docs/TRACEABILITY-NEST.md`](docs/TRACEABILITY-NEST.md)；
 > 性能基线见 [`docs/PERF.md`](docs/PERF.md)。
