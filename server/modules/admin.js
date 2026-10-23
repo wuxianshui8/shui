@@ -556,6 +556,61 @@ export function register(router) {
     ok(ctx.res, { id: r.id, initialPassword: DEMO_PASSWORD });
   });
 
+  // 删除代理账号（软删除：打标记 + 匿名化）。钱没结清或有未完结订单时拒绝；
+  // 完全空白才物理删除，其余保留订单分成/归属绑定/下属/保证金台账。
+  router.del("/api/admin/agents/:id", (ctx) => {
+    adminOnly(ctx);
+    const ap = get("SELECT * FROM agent_profiles WHERE user_id = ?", ctx.params.id);
+    if (!ap) throw Err.notFound("代理不存在");
+    const uid = Number(ap.user_id);
+
+    const active = get(
+      "SELECT COUNT(*) AS c FROM orders WHERE agent_id = ? AND status IN ('awaiting_payment','pending_class','in_class','awaiting_parent_confirm','refunding')",
+      uid
+    ).c;
+    if (active) throw Err.biz("HAS_ACTIVE_ORDER", "该代理名下有 " + active + " 笔订单未完结，请先完结或关闭订单再删除");
+    const w = get("SELECT balance, frozen FROM wallets WHERE user_id = ?", uid);
+    const deposit = Number(ap.deposit || 0);
+    const money = [];
+    if (deposit !== 0) money.push("保证金余额 " + (deposit / 100).toFixed(2) + " 元");
+    if (w && Number(w.balance) !== 0) money.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元");
+    if (w && Number(w.frozen) !== 0) money.push("冻结待结算 " + (Number(w.frozen) / 100).toFixed(2) + " 元");
+    if (money.length) {
+      throw Err.biz("AGENT_MONEY_LEFT", "该代理还有资金未结清（" + money.join("；") + "），请先退还保证金 / 提现 / 等结算完成再删除");
+    }
+
+    const history = [];
+    const add = (n, label) => { if (n) history.push(label.replace("{n}", String(n))); };
+    add(get("SELECT COUNT(*) AS c FROM orders WHERE agent_id = ?", uid).c, "{n} 笔历史订单分成");
+    add(get("SELECT COUNT(*) AS c FROM bindings WHERE agent_id = ?", uid).c, "{n} 条家长/业务员归属绑定");
+    add(get("SELECT COUNT(*) AS c FROM sales_profiles WHERE agent_id = ?", uid).c, "{n} 名下属业务员");
+    add(get("SELECT COUNT(*) AS c FROM agent_deposits WHERE agent_id = ?", uid).c, "{n} 条保证金台账");
+    const soft = history.length > 0;
+    const u = get("SELECT nickname, phone FROM users WHERE id = ?", uid) || {};
+
+    tx(() => {
+      if (!soft) {
+        run("DELETE FROM bindings WHERE agent_id = ?", uid);
+        run("DELETE FROM agent_deposits WHERE agent_id = ?", uid);
+        run("DELETE FROM wallets WHERE user_id = ?", uid);
+        run("DELETE FROM agent_profiles WHERE user_id = ?", uid);
+        run("DELETE FROM users WHERE id = ? AND role = 'agent'", uid);
+        audit(ctx, "admin.agent.delete", "users:" + uid, { mode: "hard", nickname: u.nickname ?? null, phone: maskPhone(u.phone ?? "") });
+        return;
+      }
+      // 参考实现没有 token_version（每次请求回查 status），禁用即失效
+      run(
+        "UPDATE users SET status = 'disabled', deleted_at = ?, phone = NULL, wx_openid = NULL, nickname = ?, " +
+          "avatar = NULL, real_name = NULL, id_card = NULL, password_hash = NULL, device_fp = NULL, reg_ip = NULL " +
+          "WHERE id = ?",
+        nowIso(), "已删除代理#" + uid, uid
+      );
+      run("UPDATE agent_profiles SET status = 'disabled' WHERE user_id = ?", uid);
+      audit(ctx, "admin.agent.delete", "users:" + uid, { mode: "soft", kept: history, nickname: u.nickname ?? null, phone: maskPhone(u.phone ?? "") });
+    });
+    ok(ctx.res, { deleted: true, mode: soft ? "soft" : "hard", userId: uid, kept: history });
+  });
+
   // 代理详情（含保证金台账与考核完成度）
   router.get("/api/admin/agents/:id", (ctx) => {
     adminOnly(ctx);
@@ -624,38 +679,6 @@ export function register(router) {
     ok(ctx.res, { status: next });
   });
 
-  // 删除代理账号：有业务数据（订单分成/绑定/下属业务员/保证金或钱包余额）时拒绝，提示改用禁用
-  router.del("/api/admin/agents/:id", (ctx) => {
-    adminOnly(ctx);
-    const ap = get("SELECT * FROM agent_profiles WHERE user_id = ?", ctx.params.id);
-    if (!ap) throw Err.notFound("代理不存在");
-    const uid = Number(ap.user_id);
-    const blockers = [];
-    const orders = get("SELECT COUNT(*) AS c FROM orders WHERE agent_id = ?", uid).c;
-    if (orders) blockers.push("名下有 " + orders + " 笔订单分成");
-    const binds = get("SELECT COUNT(*) AS c FROM bindings WHERE agent_id = ?", uid).c;
-    if (binds) blockers.push("已绑定 " + binds + " 个家长/业务员");
-    const sales = get("SELECT COUNT(*) AS c FROM sales_profiles WHERE agent_id = ?", uid).c;
-    if (sales) blockers.push("下属有 " + sales + " 名业务员");
-    if (Number(ap.deposit || 0) !== 0) blockers.push("保证金余额 " + (Number(ap.deposit) / 100).toFixed(2) + " 元未退");
-    const w = get("SELECT balance, frozen FROM wallets WHERE user_id = ?", uid);
-    if (w && (Number(w.balance) !== 0 || Number(w.frozen) !== 0)) {
-      blockers.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元未提现");
-    }
-    if (blockers.length) {
-      throw Err.biz("AGENT_HAS_DATA", "该代理还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
-    }
-    const u = get("SELECT nickname, phone FROM users WHERE id = ?", uid) || {};
-    tx(() => {
-      run("DELETE FROM bindings WHERE agent_id = ?", uid);
-      run("DELETE FROM agent_deposits WHERE agent_id = ?", uid);
-      run("DELETE FROM wallets WHERE user_id = ?", uid);
-      run("DELETE FROM agent_profiles WHERE user_id = ?", uid);
-      run("DELETE FROM users WHERE id = ? AND role = 'agent'", uid);
-      audit(ctx, "admin.agent.delete", "users:" + uid, { nickname: u.nickname ?? null, phone: maskPhone(u.phone ?? "") });
-    });
-    ok(ctx.res, { deleted: true, userId: uid });
-  });
 
   // 保证金台账：缴纳 / 退还（不可退超过余额）
   router.post("/api/admin/agents/:id/deposit", (ctx) => {

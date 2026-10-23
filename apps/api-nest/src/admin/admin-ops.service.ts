@@ -625,47 +625,72 @@ export class AdminOpsService {
   }
 
   /**
-   * 删除代理账号（需求 4.5.2 账号管理）。
+   * 删除代理账号（需求 4.5.2 / 5.3）——与删用户同一套口径：**软删除（打标记 + 匿名化）**。
    *
-   * 只允许删「没有留下任何业务痕迹」的账号：一旦有订单分成、归属绑定、下属业务员、
-   * 保证金余额或钱包余额，硬删会让历史订单/分账/对账失去对手方——这种账号应该**禁用**
-   * 而不是删除。这里把能拦住的原因逐条报出来（中文），避免运营以为「点不动」。
+   * 规则：
+   *   - 钱没结清（保证金余额 / 钱包余额 / 冻结待结算）→ 拒绝，先退还保证金、提现或等结算；
+   *   - 有未完结订单 → 拒绝（删了会有人吃亏）；
+   *   - 完全空白（无订单分成/绑定/下属/台账）→ 物理删除；
+   *   - 其余 → 打 `deleted_at` 标记 + 匿名化（手机号/昵称/实名/身份证/口令等清空），
+   *     订单分成、归属绑定、下属业务员、保证金台账全部保留用于对账与合规追溯。
    */
   async deleteAgent(ctx: any, id: number) {
     const ap = await this.one("SELECT * FROM `agent_profiles` WHERE `user_id` = ?", [id]);
     if (!ap) throw notFound("代理不存在");
     const uid = Number(ap.user_id);
 
-    const blockers: string[] = [];
-    const orders = await this.cnt("SELECT COUNT(*) AS c FROM `orders` WHERE `agent_id` = ?", [uid]);
-    if (orders) blockers.push("名下有 " + orders + " 笔订单分成");
-    const binds = await this.cnt("SELECT COUNT(*) AS c FROM `bindings` WHERE `agent_id` = ?", [uid]);
-    if (binds) blockers.push("已绑定 " + binds + " 个家长/业务员");
-    const sales = await this.cnt("SELECT COUNT(*) AS c FROM `sales_profiles` WHERE `agent_id` = ?", [uid]);
-    if (sales) blockers.push("下属有 " + sales + " 名业务员");
+    const active = await this.cnt(
+      "SELECT COUNT(*) AS c FROM `orders` WHERE `agent_id` = ? AND `status` IN ('awaiting_payment','pending_class','in_class','awaiting_parent_confirm','refunding')",
+      [uid],
+    );
+    if (active) throw biz("HAS_ACTIVE_ORDER", "该代理名下有 " + active + " 笔订单未完结，请先完结或关闭订单再删除");
+    const w: any = await this.one("SELECT `balance`,`frozen` FROM `wallets` WHERE `user_id` = ?", [uid]);
     const deposit = Number(ap.deposit || 0);
-    if (deposit !== 0) blockers.push("保证金余额 " + (deposit / 100).toFixed(2) + " 元未退");
-    const wallet: any = await this.one("SELECT `balance`,`frozen` FROM `wallets` WHERE `user_id` = ?", [uid]);
-    if (wallet && (Number(wallet.balance) !== 0 || Number(wallet.frozen) !== 0)) {
-      blockers.push("钱包余额 " + (Number(wallet.balance) / 100).toFixed(2) + " 元未提现");
-    }
-    if (blockers.length) {
-      throw biz("AGENT_HAS_DATA", "该代理还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
+    const money: string[] = [];
+    if (deposit !== 0) money.push("保证金余额 " + (deposit / 100).toFixed(2) + " 元");
+    if (w && Number(w.balance) !== 0) money.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元");
+    if (w && Number(w.frozen) !== 0) money.push("冻结待结算 " + (Number(w.frozen) / 100).toFixed(2) + " 元");
+    if (money.length) {
+      throw biz("AGENT_MONEY_LEFT", "该代理还有资金未结清（" + money.join("；") + "），请先退还保证金 / 提现 / 等结算完成再删除");
     }
 
+    const history: string[] = [];
+    const add = (n: number, label: string) => { if (n) history.push(label.replace("{n}", String(n))); };
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `orders` WHERE `agent_id` = ?", [uid]), "{n} 笔历史订单分成");
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `bindings` WHERE `agent_id` = ?", [uid]), "{n} 条家长/业务员归属绑定");
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `sales_profiles` WHERE `agent_id` = ?", [uid]), "{n} 名下属业务员");
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `agent_deposits` WHERE `agent_id` = ?", [uid]), "{n} 条保证金台账");
+    const soft = history.length > 0;
     const u: any = await this.one("SELECT `nickname`,`phone` FROM `users` WHERE `id` = ?", [uid]);
+
+    if (!soft) {
+      await this.ds.transaction(async (m) => {
+        await m.query("DELETE FROM `bindings` WHERE `agent_id` = ?", [uid]);
+        await m.query("DELETE FROM `agent_deposits` WHERE `agent_id` = ?", [uid]);
+        await m.query("DELETE FROM `wallets` WHERE `user_id` = ?", [uid]);
+        await m.query("DELETE FROM `agent_profiles` WHERE `user_id` = ?", [uid]);
+        await m.query("DELETE FROM `users` WHERE `id` = ? AND `role` = 'agent'", [uid]);
+        await audit(m, ctx, "admin.agent.delete", "users:" + uid, {
+          mode: "hard", nickname: u?.nickname ?? null, phone: maskPhone(u?.phone ?? ""),
+        });
+      });
+      return { deleted: true, mode: "hard", userId: uid, kept: [] };
+    }
+
     await this.ds.transaction(async (m) => {
-      await m.query("DELETE FROM `bindings` WHERE `agent_id` = ?", [uid]);
-      await m.query("DELETE FROM `agent_deposits` WHERE `agent_id` = ?", [uid]);
-      await m.query("DELETE FROM `wallets` WHERE `user_id` = ?", [uid]);
-      await m.query("DELETE FROM `agent_profiles` WHERE `user_id` = ?", [uid]);
-      await m.query("DELETE FROM `users` WHERE `id` = ? AND `role` = 'agent'", [uid]);
+      await m.query(
+        "UPDATE `users` SET `status` = 'disabled', `deleted_at` = ?, `phone` = NULL, `wx_openid` = NULL, " +
+          "`nickname` = ?, `avatar` = NULL, `real_name` = NULL, `id_card` = NULL, `password_hash` = NULL, " +
+          "`device_fp` = NULL, `reg_ip` = NULL, `token_version` = COALESCE(`token_version`,0) + 1 WHERE `id` = ?",
+        [nowIso(), "已删除代理#" + uid, uid],
+      );
+      // 代理资料保留分成比例与台账字段，只把状态置停用（保证金/分成要能继续对账）
+      await m.query("UPDATE `agent_profiles` SET `status` = 'disabled' WHERE `user_id` = ?", [uid]);
       await audit(m, ctx, "admin.agent.delete", "users:" + uid, {
-        nickname: u?.nickname ?? null,
-        phone: maskPhone(u?.phone ?? ""),
+        mode: "soft", kept: history, nickname: u?.nickname ?? null, phone: maskPhone(u?.phone ?? ""),
       });
     });
-    return { deleted: true, userId: uid };
+    return { deleted: true, mode: "soft", userId: uid, kept: history };
   }
 
   /** 保证金缴纳 / 退还（不可退超过余额） */

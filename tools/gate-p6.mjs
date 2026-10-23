@@ -20,6 +20,28 @@ function stopAll() { for (const p of children) { try { process.kill(-p.pid); } c
 (async () => {
   try {
     if (!existsSync(MYSQL + "/bin/mysqld.exe")) { console.log("缺少本地 MySQL，请先运行 tools/setup-services.ps1"); process.exit(1); }
+    // 防呆：3307/4300 若已被「别人的」进程占用（最常见是 compose 容器在跑），本次「DROP DATABASE + 种子」
+    // 会作用在别人的库上——必须先停容器。但如果占用者是本仓库自己的 mysqld（例如 verify-nest 留下的），
+    // 那是同一套数据，继续跑是安全的（用 @@datadir 区分）。
+    const ownDataDir = TOOLS.slice(2) + "/mysql-data"; // D:/shui/tools/mysql-data
+    if (await portOpen(3307)) {
+      let dataDir = "";
+      try {
+        dataDir = String(mysqlCli(["-N", "-e", "SELECT @@datadir;"])).trim();
+      } catch { /* 连不上就当作不安全 */ }
+      const mine = dataDir.replace(/\\\\/g, "/").toLowerCase().includes(ownDataDir.toLowerCase());
+      if (!mine) {
+        console.error("[门禁] 3307 上的 MySQL 不是本仓库的实例（datadir=" + (dataDir || "未知") + "）。" +
+          "很可能是 compose 容器在跑：请先 docker compose -f deploy/docker-compose.yml stop 再跑门禁，" +
+          "否则本次「DROP DATABASE + 种子」会作用在容器库上，把演示数据清掉。");
+        process.exit(2);
+      }
+    }
+    if (await portOpen(PORT)) {
+      console.error("[门禁] 端口 " + PORT + " 已被占用（很可能是容器里的 app 在跑）。请先 " +
+        "docker compose -f deploy/docker-compose.yml stop 再跑门禁。");
+      process.exit(2);
+    }
     start(MYSQL + "/bin/mysqld.exe", ["--basedir=" + MYSQL, "--datadir=" + TOOLS + "/mysql-data", "--port=3307", "--bind-address=127.0.0.1", "--mysqlx=OFF"], MYSQL);
     start(TOOLS + "/redis/redis-server.exe", ["--port", "6380", "--bind", "127.0.0.1"], TOOLS + "/redis");
     const okMy = await waitPort(3307);

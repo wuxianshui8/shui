@@ -148,13 +148,30 @@ const agentNewId = agentCreate.body.data?.id;
 const agentList = await api("GET", "/admin/agents", { token });
 assert((agentList.body.data || []).some((a) => Number(a.user_id) === Number(agentNewId)),
   "代理管理页：新增的代理出现在代理列表（" + (agentList.body.data || []).length + " 个）");
-const agentHasData = await api("DELETE", "/admin/agents/2", { token });
-assert(agentHasData.status >= 400 && (agentHasData.body?.code === "AGENT_HAS_DATA" || /业务数据/.test(agentHasData.text)),
-  "代理管理页：有业务数据的代理拒绝删除并提示改用禁用（" + agentHasData.status + "）");
+// 钱没结清的代理（seed 里保证金 50000）拒绝删除
+const agentHasMoney = await api("DELETE", "/admin/agents/2", { token });
+assert(agentHasMoney.status >= 400 && (agentHasMoney.body?.code === "AGENT_MONEY_LEFT" || /未结清/.test(agentHasMoney.text)),
+  "代理管理页：保证金未结清的代理拒绝删除（" + agentHasMoney.status + "）");
+// 造一个有「历史痕迹」但没钱没订单的代理：新建代理 → 让一个家长在该片区发需求 → 形成归属绑定
+const zbRegion = (await api("GET", "/admin/regions", { token })).body.data.find((r) => r.name === "张北县片区验收");
+const historyAgent = await api("POST", "/admin/agents", {
+  token,
+  body: { nickname: "张北代理·钱经理", phone: "13900007803", regionId: zbRegion.id, level: "A", deposit: 0 },
+});
+const hisParentCode = await api("POST", "/auth/send-code", { body: { phone: "13900007813" } });
+const hisParent = await api("POST", "/auth/login", { body: { phone: "13900007813", code: hisParentCode.body.data.devCode } });
+await api("POST", "/demands", {
+  token: hisParent.body.data.token,
+  body: { stage: "初中", subject: "数学", address: "张北县兴和路 7 号", lat: 41.287, lng: 114.764, budget: 12000, remark: "代理软删除用例" },
+});
+const softAgentDel = await api("DELETE", "/admin/agents/" + historyAgent.body.data.id, { token });
+assert(softAgentDel.status === 200 && softAgentDel.body.data?.mode === "soft",
+  "代理管理页：有历史数据的代理被软删除（保留 " + ((softAgentDel.body.data?.kept || []).join("、") || "-") + "）");
 const agentDel = await api("DELETE", "/admin/agents/" + agentNewId, { token });
 const agentAfter = (await api("GET", "/admin/agents", { token })).body.data || [];
-assert(agentDel.status === 200 && !agentAfter.some((a) => Number(a.user_id) === Number(agentNewId)),
-  "代理管理页：删除无业务数据的代理成功（剩余 " + agentAfter.length + " 个）");
+assert(agentDel.status === 200 && agentDel.body.data?.mode === "hard" &&
+  !agentAfter.some((a) => Number(a.user_id) === Number(agentNewId)),
+  "代理管理页：无业务数据的代理被物理删除（剩余 " + agentAfter.length + " 个）");
 
 /* 用户管理：删除账号（软删除 = 打标记 + 匿名化；空白账号物理删；业务员也可以删） */
 // ① 造一个「有业务痕迹」的账号（发一条需求），删它应该走软删除

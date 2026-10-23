@@ -88,12 +88,20 @@ async function submitCreate() {
   }
 }
 
-/* ---------------- 删除代理 ---------------- */
+/**
+ * 删除代理（软删除：打标记 + 匿名化）。
+ *
+ * - 钱没结清（保证金/钱包余额/冻结）或有未完结订单时后端拒绝，先结清再删
+ * - 有历史数据 → 打删除标记 + 清掉手机号/昵称/实名/口令，订单分成、归属绑定、下属业务员、
+ *   保证金台账全部保留（对账与合规追溯要用），等于「注销」的管理员版
+ * - 完全空白 → 物理删干净
+ */
 async function remove(row) {
   try {
     await ElMessageBox.confirm(
       "确定删除代理「" + row.nickname + "」？<br />" +
-        "删除会移除账号与其代理资料；<b>有订单分成、归属绑定、下属业务员或资金余额时无法删除</b>，请改用「禁用」。",
+        "有历史数据的代理会被<b>打删除标记并匿名化</b>（手机号、昵称、实名、口令清除，订单分成与保证金台账保留）；" +
+        "完全空白的会被彻底删除；<b>保证金/钱包余额未结清或有未完结订单时无法删除</b>。",
       "删除代理",
       { type: "warning", dangerouslyUseHTMLString: true, confirmButtonText: "确认删除", cancelButtonText: "取消" },
     );
@@ -101,11 +109,20 @@ async function remove(row) {
     return;
   }
   try {
-    await api.del("/admin/agents/" + row.user_id);
-    ElMessage.success("已删除代理：" + row.nickname);
+    const r = await api.del("/admin/agents/" + row.user_id);
+    if (r?.mode === "soft") {
+      ElMessageBox.alert(
+        "代理已删除并匿名化。<br />保留的业务台账：" + (r.kept || []).join("；") +
+          "。<br />历史订单分成、保证金台账仍可对账，但账号已无法登录。",
+        "已软删除",
+        { dangerouslyUseHTMLString: true, type: "success", confirmButtonText: "知道了" },
+      );
+    } else {
+      ElMessage.success("已删除代理：" + row.nickname);
+    }
     await load();
   } catch (e) {
-    // 后端会说明是哪些业务数据挡住了删除
+    // 后端会说明是哪些资金/订单挡住了删除
     ElMessageBox.alert(e.message || String(e), "无法删除", { type: "warning", confirmButtonText: "知道了" });
   }
 }

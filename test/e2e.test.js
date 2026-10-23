@@ -190,21 +190,28 @@ async function loginPassword(phone) {
   assert(zbRow?.regionName === "张北县片区验收",
     "需求按行政区围栏归属到该片区（片区=" + (zbRow?.regionName || "空") + "）");
 
-  // 代理账号增删（P51）：有业务数据的只能禁用，空白账号可删
+  // 代理账号增删（P51/P54）：钱没结清→拒绝；空白账号→物理删；有历史痕迹→软删除+匿名化
+  const stamp = String(Date.now()).slice(-8);
+  const agentPhoneA = "139" + stamp;
+  const agentPhoneB = "138" + stamp;
   const agentNew = await api("POST", "/api/admin/agents", {
     token: adminToken,
-    body: { nickname: "闸门代理·孙经理", phone: "13900007802", regionId: 1, level: "A", commissionRate: 0.25, mgmtRate: 0.01 },
+    body: { nickname: "闸门代理·孙经理", phone: agentPhoneA, regionId: 1, level: "A", commissionRate: 0.25, mgmtRate: 0.01, deposit: 50000 },
   });
   assert(agentNew.status === 200 && agentNew.body.data?.id > 0 && !!agentNew.body.data?.initialPassword,
     "后台新增代理账号返回一次性初始口令");
-  const agentBusy = await api("DELETE", "/api/admin/agents/2", { token: adminToken });
-  assert(agentBusy.status >= 400 && (agentBusy.body?.code === "AGENT_HAS_DATA" || /业务数据/.test(agentBusy.text)),
-    "有业务数据的代理拒绝删除（提示改用禁用）");
-  const agentGone = await api("DELETE", "/api/admin/agents/" + agentNew.body.data.id, { token: adminToken });
+  const agentMoney = await api("DELETE", "/api/admin/agents/" + agentNew.body.data.id, { token: adminToken });
+  assert(agentMoney.status >= 400 && (agentMoney.body?.code === "AGENT_MONEY_LEFT" || /未结清/.test(agentMoney.text)),
+    "保证金未结清的代理拒绝删除（提示先退还/结算）");
+  const agentBlank = await api("POST", "/api/admin/agents", {
+    token: adminToken,
+    body: { nickname: "空白代理·李经理", phone: agentPhoneB, regionId: 1, level: "A", deposit: 0 },
+  });
+  const agentGone = await api("DELETE", "/api/admin/agents/" + agentBlank.body.data.id, { token: adminToken });
   const agentList2 = (await api("GET", "/api/admin/agents", { token: adminToken })).body.data || [];
-  assert(agentGone.status === 200 && !agentList2.some((a) => Number(a.user_id) === Number(agentNew.body.data.id)),
-    "删除无业务数据的代理成功（剩余 " + agentList2.length + " 个）");
-
+  assert(agentGone.status === 200 && agentGone.body.data?.mode === "hard" &&
+    !agentList2.some((a) => Number(a.user_id) === Number(agentBlank.body.data.id)),
+    "无业务数据的代理被物理删除（剩余 " + agentList2.length + " 个）");
   // 普通用户删除（P52）：家长/教员空白账号可删，有业务数据或角色不匹配时拒绝
   const uCode = await api("POST", "/api/auth/send-code", { body: { phone: "13900008803" } });
   const uLogin = await api("POST", "/api/auth/login", { body: { phone: "13900008803", code: uCode.body.data.devCode } });
