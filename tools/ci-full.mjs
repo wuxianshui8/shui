@@ -28,7 +28,7 @@ const STEPS = [
   { name: "静态：工作流 lint", cmd: ["node", "tools/check-workflow-lint.mjs"] },
   { name: "静态：工作流证据", cmd: ["node", "tools/check-workflow-proof.mjs"] },
   { name: "P1 verify-nest（15）", cmd: ["node", "tools/verify-nest.mjs"] },
-  { name: "e2e 全套（171）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SECTION: "20" } },
+  { name: "e2e 全套（173）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SECTION: "20" } },
   { name: "security（53）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "test/security.test.js" } },
   { name: "rules（50）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "test/rules.test.js" } },
 ];
@@ -38,7 +38,7 @@ const FULL = [
   { name: "races（27）", cmd: ["node", "tools/gate-races.mjs"] },
   { name: "privacy（38）", cmd: ["node", "tools/gate-privacy.mjs"] },
   { name: "permissions（17）", cmd: ["node", "tools/gate-permissions.mjs"] },
-  { name: "admin SPA（54）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
+  { name: "admin SPA（57）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
   { name: "mobile SPA（47）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
   { name: "支付回调与幂等（32）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-pay-flow.mjs" } },
   { name: "镜像运行契约（33）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },

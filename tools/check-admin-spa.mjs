@@ -156,23 +156,49 @@ const agentAfter = (await api("GET", "/admin/agents", { token })).body.data || [
 assert(agentDel.status === 200 && !agentAfter.some((a) => Number(a.user_id) === Number(agentNewId)),
   "代理管理页：删除无业务数据的代理成功（剩余 " + agentAfter.length + " 个）");
 
-/* 用户管理：删除家长/教员（有业务数据拒绝，空白账号可删） */
+/* 用户管理：删除账号（软删除 = 打标记 + 匿名化；空白账号物理删；业务员也可以删） */
+// ① 造一个「有业务痕迹」的账号（发一条需求），删它应该走软删除
+const hisPhone = "13900007812";
+const hisCode = await api("POST", "/auth/send-code", { body: { phone: hisPhone } });
+const hisLogin = await api("POST", "/auth/login", { body: { phone: hisPhone, code: hisCode.body.data.devCode } });
+const hisToken = hisLogin.body.data?.token;
+const hisId = hisLogin.body.data?.user?.id;
+const hisDemand = await api("POST", "/demands", {
+  token: hisToken,
+  body: {
+    stage: "初中", subject: "数学", address: "西湖区文三路 9 号（删除用例）", lat: 30.2741, lng: 120.1551, budget: 12000,
+    remark: "软删除用例",
+  },
+});
+const softDel = await api("DELETE", "/admin/users/" + hisId, { token });
+assert(hisDemand.status === 200 && softDel.status === 200 && softDel.body.data?.mode === "soft",
+  "用户管理页：有历史数据的账号被软删除（打标记 + 匿名化，保留 " + ((softDel.body.data?.kept || []).join("、") || "-") + "）");
+const softGone = await api("GET", "/admin/users?page=1&pageSize=50&keyword=" + hisPhone, { token });
+const softStill = await api("GET", "/admin/users?page=1&pageSize=300&includeDeleted=1", { token });
+const stillIds = (softStill.body.data?.list || []).map((u) => Number(u.id));
+assert((softGone.body.data?.list || []).length === 0 && stillIds.includes(Number(hisId)),
+  "用户管理页：软删除的账号默认不列出（includeDeleted=1 仍可查，订单/需求台账保留）");
+// ② 业务员也能删
+const salesList = await api("GET", "/admin/users?page=1&pageSize=50&role=sales", { token });
+const salesUser = (salesList.body.data?.list || [])[0];
+const salesDel = await api("DELETE", "/admin/users/" + (salesUser?.id ?? 0), { token });
+assert(!!salesUser && salesDel.status === 200,
+  "用户管理页：业务员账号也可以删除（" + (salesUser?.nickname || "-") + " / " + (salesDel.body?.data?.mode || salesDel.status) + "）");
+// ③ 代理 / 管理员不允许从用户管理删
+const agentViaUser = await api("DELETE", "/admin/users/2", { token });
+assert(agentViaUser.status >= 400 && (agentViaUser.body?.code === "USE_DEDICATED_PAGE" || /代理管理/.test(agentViaUser.text)),
+  "用户管理页：代理账号不走这里删除（引导到代理管理）");
+const adminSelf = await api("DELETE", "/admin/users/1", { token });
+assert(adminSelf.status >= 400, "用户管理页：管理员账号不可删除（" + adminSelf.status + "）");
+// ④ 完全空白的账号物理删除
 const newPhone = "13900007811";
 const newCode = await api("POST", "/auth/send-code", { body: { phone: newPhone } });
 const newLogin = await api("POST", "/auth/login", { body: { phone: newPhone, code: newCode.body.data.devCode } });
 const newUserId = newLogin.body.data?.user?.id;
-const parentList = await api("GET", "/admin/users?page=1&pageSize=50&role=parent", { token });
-const busyParent = (parentList.body.data?.list || []).find((u) => String(u.phone || "").includes("0301"));
-const busyDel = await api("DELETE", "/admin/users/" + (busyParent?.id ?? 0), { token });
-assert(busyDel.status >= 400 && (busyDel.body?.code === "USER_HAS_DATA" || /业务数据/.test(busyDel.text)),
-  "用户管理页：有业务数据的家长拒绝删除并提示改用禁用（" + busyDel.status + "）");
-const agentViaUser = await api("DELETE", "/admin/users/2", { token });
-assert(agentViaUser.status >= 400 && (agentViaUser.body?.code === "USE_DEDICATED_PAGE" || /代理管理/.test(agentViaUser.text)),
-  "用户管理页：代理账号不走这里删除（引导到代理管理）");
 const blankDel = await api("DELETE", "/admin/users/" + newUserId, { token });
 const afterDel = await api("GET", "/admin/users?page=1&pageSize=50&keyword=" + encodeURIComponent("13900007811"), { token });
-assert(blankDel.status === 200 && (afterDel.body.data?.list || []).length === 0,
-  "用户管理页：删除无业务数据的新家长账号成功");
+assert(blankDel.status === 200 && blankDel.body.data?.mode === "hard" && (afterDel.body.data?.list || []).length === 0,
+  "用户管理页：无业务数据的新账号被物理删除");
 
 /* 关键写操作（与页面按钮一致） */
 const banner = (await api("GET", "/admin/banners", { token })).body.data[0];
@@ -200,7 +226,7 @@ assert(deny.status === 403, "后台接口对非管理员返回 403（" + deny.st
 const demands = await api("GET", "/admin/demands?page=1&pageSize=10", { token });
 assert(demands.status === 200 && Array.isArray(demands.body.data.list),
   "需求池页：/admin/demands 返回分页列表（" + (demands.body.data?.total ?? 0) + " 条）");
-const demandRow = (demands.body.data?.list || [])[0];
+const demandRow = (demands.body.data?.list || []).find((d) => String(d.parentPhone || "").includes("*")) || (demands.body.data?.list || [])[0];
 assert(!!demandRow && "statusText" in demandRow && "applications" in demandRow && String(demandRow.parentPhone || "").includes("*"),
   "需求池页：含状态文案/报名数，且家长手机号脱敏（" + demandRow?.parentPhone + "）");
 

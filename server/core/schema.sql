@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   reg_ip        TEXT,                                 -- 注册 IP（反作弊频次限制）
   region_id     INTEGER,                              -- 归属片区
   last_login_at TEXT,
+  deleted_at    TEXT,                                 -- 软删除标记（非空=已删除并匿名化，业务台账保留）
   created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role, status);

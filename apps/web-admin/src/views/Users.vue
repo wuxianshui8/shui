@@ -41,14 +41,20 @@ async function toggle(row) {
 }
 
 /**
- * 删除家长/教员账号：只删「没有业务痕迹」的账号。
- * 有需求/报名/订单/评价/提现/资金流水/归属绑定时后端会拒绝并逐条说明，此时应改用「禁用」。
+ * 删除账号（软删除：打标记 + 匿名化）。
+ *
+ * - 家长 / 教员 / 业务员都可删；管理员不可，代理请走「代理管理」（有保证金与分成台账）
+ * - 有未完结订单或冻结待结算金额时拒绝（这两种情况删了会有人吃亏）
+ * - 有历史数据 → 打 `deleted_at` 标记 + 清掉手机号/昵称/头像/实名/身份证/证件图/口令，
+ *   订单、资金流水、评价、提现台账原样保留（对账与合规要用），等于「注销」的管理员版
+ * - 完全空白 → 物理删干净，不留垃圾行
  */
 async function remove(row) {
   try {
     await ElMessageBox.confirm(
       "确定删除「" + row.nickname + "」（" + (ROLE[row.role] || row.role) + "）？<br />" +
-        "会一并清掉其个人资料、地址、收藏、消息；<b>有需求/报名/订单/评价/提现/资金流水时无法删除</b>，请改用「禁用」。",
+        "有历史订单/需求的账号会被<b>打删除标记并匿名化</b>（手机号、昵称、证件等清除，订单与资金台账保留）；" +
+        "完全空白的账号会被彻底删除；<b>有未完结订单或冻结金额时无法删除</b>。",
       "删除账号",
       { type: "warning", dangerouslyUseHTMLString: true, confirmButtonText: "确认删除", cancelButtonText: "取消" },
     );
@@ -56,8 +62,17 @@ async function remove(row) {
     return;
   }
   try {
-    await api.del("/admin/users/" + row.id);
-    ElMessage.success("已删除账号：" + row.nickname);
+    const r = await api.del("/admin/users/" + row.id);
+    if (r?.mode === "soft") {
+      ElMessageBox.alert(
+        "账号已删除并匿名化。<br />保留的业务台账：" + (r.kept || []).join("；") +
+          "。<br />历史订单、资金流水与评价仍可对账，但已无法登录。",
+        "已软删除",
+        { dangerouslyUseHTMLString: true, type: "success", confirmButtonText: "知道了" },
+      );
+    } else {
+      ElMessage.success("已删除账号：" + row.nickname);
+    }
     load();
   } catch (e) {
     ElMessageBox.alert(e.message || String(e), "无法删除", { type: "warning", confirmButtonText: "知道了" });
@@ -113,7 +128,7 @@ async function remove(row) {
             {{ row.status === "active" ? "禁用" : "启用" }}
           </el-button>
           <el-button
-            v-if="row.role === 'parent' || row.role === 'teacher'"
+            v-if="['parent', 'teacher', 'sales'].includes(row.role)"
             size="small"
             text
             type="danger"

@@ -217,6 +217,14 @@ async function loginPassword(phone) {
   assert(blankUserDel.status === 200 && (uLeft.list || []).length === 0,
     "删除无业务数据的新家长账号成功");
 
+  // 软删除（P53）：有历史数据的账号被「打标记 + 匿名化」，台账保留且默认不再列出
+  const hisUser = (await api("GET", "/api/admin/users?page=1&pageSize=50&keyword=13900008801", { token: adminToken })).body.data?.list?.[0];
+  const softDel = hisUser ? await api("DELETE", "/api/admin/users/" + hisUser.id, { token: adminToken }) : { status: 0, body: {} };
+  assert(!!hisUser && softDel.status === 200 && softDel.body.data?.mode === "soft",
+    "有历史数据的账号被软删除（" + ((softDel.body?.data?.kept || []).join("、") || "-") + "）");
+  const softListed = (await api("GET", "/api/admin/users?page=1&pageSize=300", { token: adminToken })).body.data?.list || [];
+  assert(!softListed.some((u) => Number(u.id) === Number(hisUser?.id)), "软删除的账号不再出现在用户列表");
+
   // 并发抢单：同一教员 20 次并发，只允许 1 次成功
   const grabs = await Promise.all(
     Array.from({ length: 20 }, () => api("POST", "/api/demands/" + demandId + "/apply", { token: teacherToken }))

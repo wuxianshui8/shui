@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `created_at`      VARCHAR(255) NOT NULL,
   `token_version`   INT NOT NULL DEFAULT 0,           -- 改密/注销时自增，令旧令牌立即失效
   `must_change_password` TINYINT NOT NULL DEFAULT 0,  -- 后台开通的账号首次登录必须改密
+  `deleted_at`      VARCHAR(255) DEFAULT NULL,        -- 软删除标记：非空=已删除（已匿名化，订单/资金台账保留）
   KEY `idx_users_role` (`role`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

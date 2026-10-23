@@ -65,5 +65,7 @@ export function migrate() {
   ensureColumn("teacher_profiles", "id_card_verified", "INTEGER NOT NULL DEFAULT 0");
   // 按行政区设置片区（老库自动补列）
   ensureColumn("regions", "admin_codes", "TEXT");
+  // 用户软删除标记（删除 = 打标记 + 匿名化，业务台账保留）
+  ensureColumn("users", "deleted_at", "TEXT");
 }
 export { DATA_DIR, DB_FILE, ROOT };

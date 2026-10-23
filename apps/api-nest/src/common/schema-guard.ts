@@ -16,6 +16,12 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "TEXT NULL",
     why: "按行政区设置片区（存 adcode 数组）",
   },
+  {
+    table: "users",
+    column: "deleted_at",
+    ddl: "VARCHAR(255) DEFAULT NULL",
+    why: "用户软删除标记（删除=打标记+匿名化，业务台账保留）",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {
