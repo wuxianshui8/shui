@@ -236,3 +236,34 @@ npm run ci:full          # 全量 28 步门禁（静态 15 + verify/e2e/security
 `deploy/` 与 `.github/` 的**内容**已被上述前六项覆盖（`workflow:check` 由官方 actionlint 主导，`deploy:schema` 由官方 compose-spec Schema 主导，`image:runtime` 把运行阶段在生产模式下真起服跑一遍）；
 **GitHub Actions 已真实执行并通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)：static 13s、integration 206s，共 484 项断言全绿。
 **容器运行时也已实测**：本机 `docker compose up -d --build` → 三服务 healthy、`run --rm seed` 成功、四入口 200、四角色登录、容器库巡检 12/12（见第 6 节限制 1）。唯一外部依赖是**镜像源**：本机直连 Docker Hub 超时，需在 `~/.docker/daemon.json` 配 `registry-mirrors`。
+
+## 8. 云服务器测试环境（已实测上线）
+
+与本地 compose 的区别只在外露面：服务器上**不构建镜像**（镜像由本机 `docker save` 导出后上传，省掉三次 `npm install`），MySQL/Redis 不映射宿主端口，应用只监听 `127.0.0.1:4300`，由宿主机 Nginx 反代 + Let's Encrypt 对外。
+
+| 文件 / 脚本 | 作用 |
+| --- | --- |
+| `deploy/docker-compose.prod.yml` | 生产形态：`image: jiajiao-app:latest`、`restart: always`、`DB_PASSWORD` 强口令、`TRUST_PROXY=1`、seed 走同一镜像 |
+| `deploy/nginx-jiajiao.conf.example` | 80/443 站点示例：反代 + `X-Forwarded-For` + 8m 上传体 + health 免日志 |
+| `tools/deploy-remote.mjs` | 一键部署：`tar` 打包 → `scp` 传镜像与部署件 → 检查/安装 Docker（走发行版仓库，不用 `get.docker.com`）→ 配 `registry-mirrors` → `docker load` → `compose up -d --no-build` → 健康检查与四入口自测；另有 `--seed` 与 `--status` |
+
+部署命令（PowerShell，本机）：
+
+```powershell
+$env:DEPLOY_HOST = "kd211"        # ~/.ssh/config 里的别名（或直接写 IP）
+$env:DEPLOY_SUDO = "1"            # 用非 root 账号 + 免密 sudo 时开
+$env:IMAGE_TAR   = "$env:PI_SCRATCH_DIR\jiajiao-app.tar"
+docker save -o $env:IMAGE_TAR jiajiao-app:latest
+node tools/deploy-remote.mjs       # 部署/更新
+node tools/deploy-remote.mjs --seed    # 灌演示数据
+node tools/deploy-remote.mjs --status  # 只看容器与健康
+```
+
+实测环境（2026-10-23）：腾讯云 Ubuntu 22.04 / 2 vCPU / 3.6G / 50G，`docker.io 29.1.3` + `docker-compose-v2 2.40.3`（Ubuntu 仓库直装），`registry-mirrors` 用 `mirror.ccs.tencentyun.com` + `docker.m.daocloud.io`（该机 **Docker Hub 与 GitHub 均不可达**，所以不要在服务器上 `git clone` 或 `get.docker.com`）。
+
+**实测结果**：三容器 healthy；`www.kd211.com` 经 Nginx 反代，`/api/health`、`/admin-vue/`、`/m/`、`/parent.html` 全部 200；家长账号 `13900000301` 真实登录拿到 token；后台登录后总览读到真实数据（12 用户 / 3 单 / GMV ¥200）；证书 Let's Encrypt 签发（`www.kd211.com`，有效期至 2027-01-21，`certbot.timer` 自动续期）。
+
+⚠️ 当前两点限制：
+
+1. **安全组只放行了 80，443 未放行** —— 因而已**暂时**让 80 直接反代（不加 80→443 跳转），等 443 放行后把 `80` 段里的 `location /` 换成 `return 301 https://$host$request_uri;` 即可（站点配置里有注释标记）。
+2. **apex `kd211.com` 还没有 A 记录**（只有 `www`）—— 需要补一条 A 记录指向服务器 IP，否则 `https://kd211.com` 打不开、证书也只签了 `www`。
