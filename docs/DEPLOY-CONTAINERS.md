@@ -265,6 +265,15 @@ node tools/deploy-remote.mjs --status  # 只看容器与健康
 
 **HTTPS（2026-10-23 安全组放行 443 后切完）**：Let's Encrypt 证书 `www.kd211.com`（有效期至 2027-01-21），`certbot.timer` 自动续期且 `certbot renew --dry-run` 通过；站点加 `Strict-Transport-Security: max-age=15552000`（**不带 `includeSubDomains`**，避免影响其它子域）+ `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`；80 段保留 `/.well-known/acme-challenge/` 直出，保证续期不被跳转吃掉。
 
+**部署后回归**：`npm run smoke:online`（`tools/smoke-online.mjs`）跑真实业务链路——健康检查 → 游客浏览 → 家长/教员/管理员三种登录 → 下单 → 担保支付 → 支付幂等 → 家长申请取消（不退款）→ 教员待处理列表 → 同意退款 → 后台可查 → 非本单教员退款 403。指定环境：
+
+```powershell
+$env:SMOKE_BASE = "https://www.kd211.com"; npm run smoke:online
+```
+
+2026-10-23 实测：线上 **17/17 通过**（建单 `JJ202610233RAKXVFF` → 支付 `pending_class` → 申请取消仍未退款 → 教员同意后退款 ¥200 → 后台可查）。
+⚠️ 该脚本会在目标环境**真实建单并退款**，只对测试/预发跑。
+
 ⚠️ 仍缺一项：
 
 1. **apex `kd211.com` 还没有 A 记录**（只有 `www`）—— 需要补一条 A 记录指向服务器 IP，否则 `https://kd211.com` 打不开，证书也需重新扩到 apex。
