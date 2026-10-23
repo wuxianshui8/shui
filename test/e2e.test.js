@@ -883,6 +883,11 @@ async function loginPassword(phone) {
   assert(wx2.body.data.user.id === wx1.body.data.user.id, "同一微信 code 二次登录仍是同一账号（幂等）");
   const wxBad = await api("POST", "/api/auth/wechat", { body: {} });
   assert(wxBad.status !== 500, "微信登录缺少 code 时报明确错误而不是 500");
+  assert(/^微信用户\d{4}$/.test(wx1.body.data.user.nickname || ""), "微信登录昵称稳定可复现（" + wx1.body.data.user.nickname + "）");
+  assert(wx2.body.data.user.nickname === wx1.body.data.user.nickname, "同一 code 二次登录昵称不变");
+  const wxAuth = await api("GET", "/api/auth/wechat/authorize-url?redirect=https://example.com/m/cb&state=s1");
+  assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
+    "未配置 appid 时公众号授权链接返回 400 WECHAT_NOT_CONFIGURED");
   const wxPublish = await api("POST", "/api/demands", {
     token: wx1.body.data.token,
     body: { stage: "小学", subject: "语文", address: "西湖区文三路 128 号 学军小区 3 幢 502", lat: 30.2741, lng: 120.1551, budget: 15000 },

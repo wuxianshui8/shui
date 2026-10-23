@@ -10,7 +10,7 @@ function clientIp(req: any): string {
   }
   return (req.socket?.remoteAddress || "").toString();
 }
-import { Body, Controller, Get, Post, Req, HttpCode } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, Req, HttpCode } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { Public } from "../public.decorator";
 import { ok } from "../common/reply";
@@ -33,6 +33,13 @@ export class AuthController {
     const ip = clientIp(req);
     const fp = (req.headers["x-device-fp"] || "").toString().slice(0, 128) || undefined;
     return ok(await this.auth.loginByCode(String(body.phone || "").trim(), String(body.code || "").trim(), ip, body.inviteToken, fp));
+  }
+
+  /** 公众号网页授权链接：H5 端「微信一键登录」需要跳转到微信授权页时向服务端要（未配置返回 400 WECHAT_NOT_CONFIGURED） */
+  @Public()
+  @Get("wechat/authorize-url")
+  async wechatAuthorizeUrl(@Query("redirect") redirect: string, @Query("state") state: string) {
+    return ok(await this.auth.wechatAuthorizeUrl(redirect, state));
   }
 
   /** 微信一键登录（需求 4.1.1）：首次登录自动注册家长，返回与短信登录一致的 token/user */

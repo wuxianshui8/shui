@@ -10,7 +10,7 @@ import { audit } from "../common/audit";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { maskPhone, resolveRegion } from "../common/geo";
 import { getSmsSender } from "../integrations/sms/sms.service";
-import { getWechatProvider } from "../integrations/wechat/wechat.service";
+import { getWechatProvider, wechatAuthorizeUrl, assertRedirectAllowed } from "../integrations/wechat/wechat.service";
 
 // 进程内验证码 / 登录失败计数：带 TTL 与容量上限，避免被随机手机号灌爆内存
 // （多实例部署时应迁移到 Redis，见 docs/SECURITY.md「已知偏离」）
@@ -143,9 +143,12 @@ export class AuthService {
       // 与验证码注册同一套反作弊阈值：微信登录也不能绕过设备/IP 频次限制
       await this.assertRegisterAllowed(ip, deviceFp);
       const region = await resolveRegion(this.ds, 30.2741, 120.1551);
+      // 昵称/头像优先用微信给的资料（公众号渠道），mock 渠道给的是稳定昵称，都没有才随机兜底
+      const nickname = session.profile?.nickname || "微信用户" + randomInt(1000, 9999);
+      const avatar = session.profile?.avatarUrl || null;
       const r = await this.ds.query(
-        "INSERT INTO `users` (`wx_openid`,`nickname`,`role`,`status`,`region_id`,`reg_ip`,`device_fp`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
-        [session.openid, "微信用户" + randomInt(1000, 9999), "parent", "active", region?.id ?? null, ip || null, deviceFp || null, nowIso()],
+        "INSERT INTO `users` (`wx_openid`,`nickname`,`avatar`,`role`,`status`,`region_id`,`reg_ip`,`device_fp`,`created_at`) VALUES (?,?,?,?,?,?,?,?,?)",
+        [session.openid, nickname, avatar, "parent", "active", region?.id ?? null, ip || null, deviceFp || null, nowIso()],
       );
       const uid = r.insertId;
       await this.ds.query("INSERT IGNORE INTO `parent_profiles` (`user_id`,`credit_score`,`credit_level`) VALUES (?,100,'L0')", [uid]);
@@ -160,6 +163,31 @@ export class AuthService {
       user: this.publicUser(user),
       // 便于前端/门禁区分真实微信通道与 mock（不泄露 appid/secret）
       wechatChannel: session.channel,
+    };
+  }
+
+  /**
+   * 公众号网页授权链接（H5「微信一键登录」用）：`snsapi_userinfo` 才拿得到昵称/头像。
+   * 未配置 appid 或未开 `WECHAT_OAUTH=1` 时返回「未配置」，前端据此回落到演示 code 通道；
+   * redirect_uri 必须命中 `WECHAT_OAUTH_REDIRECT_ALLOWLIST`，避免变成开放重定向。
+   */
+  async wechatAuthorizeUrl(redirectUri: string, state = "") {
+    const appid = String(process.env.WECHAT_APPID || "").trim();
+    if (!appid || process.env.WECHAT_OAUTH !== "1") {
+      throw biz("WECHAT_NOT_CONFIGURED", "未开通公众号网页授权（需配置 WECHAT_APPID/WECHAT_SECRET 且设 WECHAT_OAUTH=1）");
+    }
+    let redirect = String(redirectUri || "").trim();
+    if (!redirect) throw bad("缺少 redirect 参数");
+    try {
+      redirect = assertRedirectAllowed(redirect, String(process.env.WECHAT_OAUTH_REDIRECT_ALLOWLIST || ""));
+    } catch (e: any) {
+      throw biz(e?.code || "WECHAT_REDIRECT_NOT_ALLOWED", e?.message || "redirect 不受信任");
+    }
+    return {
+      url: wechatAuthorizeUrl(appid, redirect, state),
+      scope: "snsapi_userinfo",
+      // 回跳后前端用 code 调 POST /api/auth/wechat 完成登录
+      state: String(state || ""),
     };
   }
 

@@ -45,6 +45,7 @@ const TARGETS = [
   "dist/integrations/ocr/ocr.mock.js",
   "dist/integrations/ocr/ocr.tencent.js",
   "dist/integrations/ocr/ocr.service.js",
+  "dist/integrations/wechat/wechat.service.js",
   "dist/upload/uploads.service.js",
   "dist/rules/rule-engine.service.js",
 ];

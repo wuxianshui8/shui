@@ -166,6 +166,11 @@ const wxPublish = await api("POST", "/demands", {
   body: { stage: "初中", subject: "数学", address: "西湖区文三路 128 号", lat: 30.262, lng: 120.133, budget: 16000, remark: "移动端游客→登录→发布" },
 });
 assert(wxPublish.status === 200, "微信登录后可直接发布需求（游客填表→登录→自动发布闭环）");
+assert(/^微信用户\d{4}$/.test(wx1.body.data.user.nickname || ""), "微信登录昵称稳定可复现（" + wx1.body.data.user.nickname + "）");
+assert(wx2.body.data.user.nickname === wx1.body.data.user.nickname, "同一 code 二次登录昵称不变");
+const wxAuth = await api("GET", "/auth/wechat/authorize-url?redirect=https://example.com/m/cb&state=s1");
+assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
+  "未配置 appid 时公众号授权链接返回 400 WECHAT_NOT_CONFIGURED（前端据此回落演示通道）");
 
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");

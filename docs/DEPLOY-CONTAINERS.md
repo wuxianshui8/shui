@@ -147,7 +147,7 @@ npm run verify:docker        # 起服务 + 灌种子 + 逐套件验收（每个�
 | 套件 | 结果 | 套件 | 结果 |
 | --- | --- | --- | --- |
 | security | 53/53 | admin SPA | 58/58 |
-| races | 27/27 | mobile SPA | 65/65 |
+| races | 27/27 | mobile SPA | 68/68 |
 | privacy | 38/38 | 镜像运行契约 | 33/33 |
 | permissions | 17/17 | MySQL 巡检 | 12/12（异常 0） |
 | concurrency | 23/23 | | |
@@ -229,7 +229,7 @@ npm run image:check      # 运行阶段 COPY 结果覆盖 main.ts 需要的 6 �
 npm run image:runtime    # Dockerfile 运行阶段 + 生产模式真起服（NODE_ENV=production）+ HEALTHCHECK 原始命令 → 33 项
 npm run workflow:check   # 官方 actionlint + shellcheck（已装于 tools/bin/；未装则退回离线规则）
 npm run workflow:proof   # 每条 run 命令 ↔ 本机已通过的门禁（23 需证据 + 6 Runner 专属）
-npm run test:unit        # 单元测试 + 覆盖率门禁（82 用例 / 9 个纯函数模块，零第三方依赖）
+npm run test:unit        # 单元测试 + 覆盖率门禁（172 用例 / 23 个纯函数模块，零第三方依赖）
 npm run ci:full          # 全量 28 步门禁（静态 15 + verify/e2e/security/rules/并发/资金/隐私/权限/两套前端/支付回调/镜像运行契约/迁移巡检）
 ```
 

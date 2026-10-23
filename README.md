@@ -111,7 +111,7 @@ npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生�
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
 npm run web:admin:check     # PC 后台（Vue3+Element Plus，19 页，含区域管理地图）→ 58/58
-npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，11 页；含游客浏览与微信一键登录）→ 65/65
+npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，11 页；含游客浏览与微信一键登录）→ 68/68
 ```
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：
@@ -134,7 +134,7 @@ npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（
 npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 19 页 + 移动 11 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
-npm run test:unit      # 单元测试 + 覆盖率门禁（152 用例、22 个模块，行覆盖率 ≥ 90% 否则失败·约 5 秒）
+npm run test:unit      # 单元测试 + 覆盖率门禁（172 用例、23 个模块，行覆盖率 ≥ 90% 否则失败·约 7 秒）
 npm run audit:check    # 生产依赖漏洞预算校验（deploy/audit-budget.json：block/budget/expires·约 8 秒）
 npm run pay:recon      # 渠道对账（--self-test 自检；--bill <csv> 与库内 payments 逐笔比对）
 npm run chaos:drill    # 混沌演练：停 MySQL/Redis 验证「不崩溃 + 快失败 + 能恢复」（约 60s，会短暂停容器）
@@ -159,7 +159,7 @@ npm run ci:full        # 全部 30 步门禁（约 5 分钟 = 静态 16 步 + �
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-e2e 173 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 58 + 65；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20；电子围栏几何 72
+e2e 173 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 58 + 68；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20；电子围栏几何 72
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
 - workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 30 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）

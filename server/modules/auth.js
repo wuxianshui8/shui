@@ -214,7 +214,19 @@ export function register(router) {
     ok(ctx.res, { token: signToken(user.id, user.role), user: publicUser(user) });
   }, { auth: false });
 
-  // 微信一键登录（演示：按 openid 自动创建）
+  // 微信登录：演示实现把 code 直接当 openid（真实实现在 Nest 侧走 jscode2session / oauth2）
+  // 昵称由 openid 稳定推导，保证「同一 code 二次登录昵称不变」（Nest 侧 mock 同规则）
+  const wxNickname = (openid) => {
+    let h = 0;
+    for (const ch of String(openid)) h = (h * 31 + ch.codePointAt(0)) % 9000;
+    return "微信用户" + (h + 1000);
+  };
+
+  // 公众号网页授权链接：参考实现没有 appid/secret，统一回「未开通」，与 Nest 侧同一错误码
+  router.get("/api/auth/wechat/authorize-url", () => {
+    throw Err.biz("WECHAT_NOT_CONFIGURED", "参考实现未接入微信通道，公众号授权请用正式实现（NestJS）");
+  }, { auth: false });
+
   router.post("/api/auth/wechat", (ctx) => {
     const openid = String(ctx.body.code || "demo-openid");
     let user = get("SELECT * FROM users WHERE wx_openid = ?", openid);
@@ -224,7 +236,7 @@ export function register(router) {
       const r = run(
         "INSERT INTO users (wx_openid, nickname, role, status, region_id, device_fp, reg_ip, created_at) VALUES (?,?,?,?,?,?,?,?)",
         openid,
-        "微信用户" + Math.floor(Math.random() * 9000 + 1000),
+        wxNickname(openid),
         "parent",
         "active",
         region?.id ?? null,
