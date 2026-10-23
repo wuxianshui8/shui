@@ -1,8 +1,8 @@
 {
   "pages": [
-    { "path": "pages/login/index", "style": { "navigationBarTitleText": "登录" } },
-    { "path": "pages/parent/index", "style": { "navigationBarTitleText": "家长端" } },
+    { "path": "pages/parent/index", "style": { "navigationBarTitleText": "家长端（可先浏览）" } },
     { "path": "pages/parent/publish/index", "style": { "navigationBarTitleText": "发布需求" } },
+    { "path": "pages/login/index", "style": { "navigationBarTitleText": "登录" } },
     { "path": "pages/teacher/index", "style": { "navigationBarTitleText": "教员端" } },
     { "path": "pages/teacher/wallet/index", "style": { "navigationBarTitleText": "我的钱包" } },
     { "path": "pages/teacher/apply/index", "style": { "navigationBarTitleText": "入驻认证" } },

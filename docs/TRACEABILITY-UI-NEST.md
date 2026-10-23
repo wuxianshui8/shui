@@ -14,9 +14,9 @@
 | UI 说明书条目 | 页面（pages.json 路径） | 源文件 | 关键实现 |
 | --- | --- | --- | --- |
 | 设计概述·九宫格卡片 / 36rpx 主字号 / `#1f6feb` 主色 | `pages/login/index` … 全部页面共用 | `App.vue`（`:root` 变量 + `.wrap/.card/.kpi/.row/.tag`） | 与后台共用一套设计 token 语义 |
-| 第 2 章 家长端界面（首页/广场/订单） | `pages/parent/index` | `pages/parent/index.vue` | 片区与附近教员、订单「支付 / 确认完成 / 评价」闭环 |
-| 第 2 章 发布需求表单 | `pages/parent/publish/index` | `pages/parent/publish/index.vue` | 学段/科目/地址/预算/坐标取真实定位；**加急费可自填**（区间取平台 `urgent.fee`~`urgent.max_fee`，开开关才出现输入框） |
-| 登录与角色分流 | `pages/login/index` | `pages/login/index.vue` | 口令登录 → 按 `role` 分流；**首登强制改密表单**（`mustChangePassword`） |
+| 第 2 章 家长端界面（首页/广场/订单） | `pages/parent/index` | `pages/parent/index.vue` | **游客可先浏览**：未登录也能看到片区/附近在线教员/加急费与「发布家教需求」入口（走游客版首页接口 `public/home`），订单与消息区块提示「登录后可查看」；登录后同一页面换成个人首页（订单支付/确认完成/评价） |
+| 第 2 章 发布需求表单 | `pages/parent/publish/index` | `pages/parent/publish/index.vue` | 学段/科目/地址/预算/坐标取真实定位；**加急费可自填**（区间取平台 `urgent.fee`~`urgent.max_fee`，开开关才出现输入框）；**游客填完点「发布需求」才跳登录**，草稿落 `pendingDemand`，登录回来后自动提交 |
+| 登录与角色分流 | `pages/login/index` | `pages/login/index.vue` | **微信一键登录主按钮**（小程序 `uni.login` 取 code / H5 走演示 code → `POST /api/auth/wechat`，首次自动注册家长）+ 口令登录 → 按 `role` 分流；支持 `?next=` 回跳到刚才的页面；**首登强制改密表单**（`mustChangePassword`） |
 | 第 3 章 教员端界面（接单/收入/等级） | `pages/teacher/index` | `pages/teacher/index.vue` | 课时看板、等级权益、附近需求抢单、「上门打卡（真实定位）/ 结束授课」 |
 | 第 3 章 收入与提现 | `pages/teacher/wallet/index` | `pages/teacher/wallet/index.vue` | 余额/冻结/累计收支、提现申请（最低额与手续费规则驱动、幂等键）、提现记录与流水 |
 | 第 3 章 入驻认证（资质材料） | `pages/teacher/apply/index` | `pages/teacher/apply/index.vue` | 身份类型、真实姓名/身份证号、**身份证正反面上传（缩略图 + 点击预览）**、学历/教师资格/技能证上传、擅长科目/学段、课时单价、服务半径、时间表；上传人像面即调 `/api/teacher/ocr-idcard` 回显「识别到：姓名 · 脱敏号码」与是否一致；提交走 `/api/teacher/apply`（姓名/号码与证件不一致会被服务端拒） |

@@ -855,6 +855,49 @@ async function loginPassword(phone) {
   const crossPay = await api("POST", "/api/orders/" + crossOrderId + "/pay", { token: parentToken, idem: "pay-cross-" + crossOrderId });
   assert(crossPay.body.data.agentShare > 0, "跨区订单已计提片区分成 ¥" + (crossPay.body.data.agentShare / 100).toFixed(2));
 
+  /* ---------- 21. 游客浏览 + 微信一键登录（P55） ---------- */
+  section("21. 游客浏览与微信一键登录");
+  // 不发 token：家长端首页对游客开放（发布需求页直接可见）
+  const guestHome = await api("GET", "/api/public/home");
+  assert(guestHome.status === 200 && guestHome.body.data.guest === true, "游客首页无需登录即可访问");
+  assert(guestHome.body.data.defaultAddress === null && guestHome.body.data.couponCount === 0, "游客首页不含「我的」数据");
+  assert(guestHome.body.data.urgentFee > 0, "游客首页下发加急费（发布表单需要）");
+  const guestList = await api("GET", "/api/public/teachers?radiusKm=20&pageSize=5");
+  assert(guestList.status === 200 && Array.isArray(guestList.body.data.list), "游客可浏览教员广场");
+  const guestListT = guestList.body.data.list || [];
+  assert(guestListT.every((t) => t.favorited === false), "游客列表收藏状态恒 false");
+  assert(guestListT.every((t) => !t.phone || /\*{4}/.test(t.phone)), "游客看到的教员手机号仍脱敏");
+  if (guestListT.length) {
+    const guestDetail = await api("GET", "/api/public/teachers/" + guestListT[0].id);
+    assert(guestDetail.status === 200 && Array.isArray(guestDetail.body.data.services), "游客可看教员详情（立即预约入口）");
+  } else {
+    assert(false, "游客可看教员详情（立即预约入口）", "列表为空，无法验证详情");
+  }
+
+  const wxCode = "e2e-wx-" + Date.now();
+  const wx1 = await api("POST", "/api/auth/wechat", { body: { code: wxCode } });
+  assert(wx1.status === 200 && wx1.body.data.token && wx1.body.data.user.role === "parent", "微信一键登录自动注册家长");
+  const wxMe = await api("GET", "/api/auth/me", { token: wx1.body.data.token });
+  assert(wxMe.status === 200 && wxMe.body.data.user.id === wx1.body.data.user.id, "微信登录 token 可用（/api/auth/me）");
+  const wx2 = await api("POST", "/api/auth/wechat", { body: { code: wxCode } });
+  assert(wx2.body.data.user.id === wx1.body.data.user.id, "同一微信 code 二次登录仍是同一账号（幂等）");
+  const wxBad = await api("POST", "/api/auth/wechat", { body: {} });
+  assert(wxBad.status !== 500, "微信登录缺少 code 时报明确错误而不是 500");
+  const wxPublish = await api("POST", "/api/demands", {
+    token: wx1.body.data.token,
+    body: { stage: "小学", subject: "语文", address: "西湖区文三路 128 号 学军小区 3 幢 502", lat: 30.2741, lng: 120.1551, budget: 15000 },
+  });
+  assert(wxPublish.status === 200, "微信登录后可直接发布需求（游客点发布→登录→继续发布）");
+
+  // 前端契约（静态）：家长端「进来就是发布需求页，动作时才弹登录」
+  const parentJs = await (await fetch(BASE + "/assets/js/parent.js")).text();
+  assert(/guard\(homeView, \{ guest: true \}\)/.test(parentJs), "家长端首页对游客开放（不再一启动就弹登录）");
+  assert(parentJs.includes("/api/public/home"), "游客首页走公开接口 /api/public/home");
+  assert(parentJs.includes('data-lg="wechat"') && parentJs.includes("微信一键登录"), "登录层含「微信一键登录」按钮");
+  assert(/function requireLogin\(/.test(parentJs) && /if \(isGuest\(\)\) \{/.test(parentJs),
+    "发布需求 / 立即预约等动作走 requireLogin（点动作才弹登录）");
+  assert(/state\.pending = typeof pending === "function"/.test(parentJs), "登录成功后自动接着执行原动作（不丢表单）");
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

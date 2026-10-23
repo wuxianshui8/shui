@@ -195,6 +195,42 @@ export class ParentService {
     };
   }
 
+  /**
+   * 游客首页（需求 4.1：未登录也能看到「发布家教需求」页）。
+   * 与 home 同源同字段，但去掉一切与「我」相关的数据（地址/优惠券/订单/未读/信用），
+   * 这样前端同一份渲染逻辑既能给游客看，也能登录后无缝换回个人数据。
+   */
+  async guestHome(lat: number, lng: number) {
+    const [region, banners, notices, near, platforms, urgent] = await Promise.all([
+      resolveRegion(this.ds, lat, lng),
+      this.ds.query("SELECT * FROM `banners` WHERE `status` = 'on' ORDER BY `sort` LIMIT 5"),
+      this.ds.query(
+        "SELECT * FROM `announcements` WHERE `status` = 'on' AND (`audience` = 'all' OR `audience` = 'parent') ORDER BY `pinned` DESC, `created_at` DESC LIMIT 3",
+      ),
+      this.teachers(0, { lat, lng, pageSize: 6, online: "1" }),
+      this.rules.get("platforms"),
+      this.rules.get("urgent"),
+    ]);
+    const platformCfg = platforms as any;
+    const urgentCfg = urgent as any;
+    return {
+      guest: true,
+      region: region ? { id: Number(region.id), name: region.name } : null,
+      location: { lat, lng },
+      banners,
+      notices,
+      teachers: near.list,
+      defaultAddress: null,
+      couponCount: 0,
+      stats: { onlineTeachers: near.total, ongoingOrders: 0, unread: 0 },
+      credit: null,
+      compliance: platformCfg.compliance_notice,
+      urgentFee: urgentCfg.fee,
+      urgentMaxFee: Math.max(Number(urgentCfg.fee) || 0, Number(urgentCfg.max_fee) || (Number(urgentCfg.fee) || 0) * 10),
+      urgentEnabled: urgentCfg.enabled !== false,
+    };
+  }
+
   async profile(parentId: number) {
     const u = (await this.ds.query("SELECT * FROM `users` WHERE `id` = ? LIMIT 1", [parentId]))[0];
     const credit = await this.creditInfo(parentId);

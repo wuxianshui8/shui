@@ -30,7 +30,13 @@ const TABS = [
 ];
 
 /* ---------------- 状态 ---------------- */
-const state = { unread: 0, dict: null, rules: null, city: "杭州", bar: null, actions: {}, orderCache: new Map(), review: null, teacher: null };
+const state = {
+  unread: 0, dict: null, rules: null, city: "杭州", bar: null, actions: {}, orderCache: new Map(), review: null, teacher: null,
+  // 游客态：没有 token 也照常渲染（发布需求页直接可见），只有需要身份的动作才弹登录层
+  guest: false,
+  // 登录后要接着跑的动作（例如游客点了「发布需求」→ 登录 → 自动继续发布）
+  pending: null,
+};
 let ROUTER = null;
 
 /* ---------------- DOM 助手 ---------------- */
@@ -209,9 +215,12 @@ async function runAction(el) {
 /* ---------------- 登录层 ---------------- */
 function loginHtml() {
   return '' +
+    '<div class="login-head"><button class="back-btn" type="button" data-lg="close" aria-label="先随便看看">‹</button></div>' +
     '<div class="brandmark" aria-hidden="true">👨‍👩‍👦</div>' +
     "<h2>家长端登录</h2>" +
-    '<p class="lead">地图找教员 · 发布家教需求 · 平台担保支付 · 课后评价<br>演示账号 <b>13900000301</b>，点击「获取验证码」自动填入</p>' +
+    '<p class="lead">地图找教员 · 发布家教需求 · 平台担保支付 · 课后评价<br>登录后即可发布需求、预约教员、查看订单<br>演示账号 <b>13900000301</b>，点击「获取验证码」自动填入</p>' +
+    '<button class="btn btn-wechat btn-block" type="button" data-lg="wechat">💬 微信一键登录</button>' +
+    '<div class="or-line"><span>或使用手机号验证码</span></div>' +
     '<div class="card mt16" style="margin-bottom:0">' +
     '<div class="field"><label for="lg-phone">手机号</label>' +
     '<input class="input" id="lg-phone" type="tel" inputmode="numeric" maxlength="11" value="13900000301" autocomplete="tel"></div>' +
@@ -221,10 +230,9 @@ function loginHtml() {
     '<label class="login-check mt8"><input type="checkbox" id="lg-agree" checked>' +
     "<span>我已阅读并同意《用户协议》《隐私政策》《退款规则》，同意平台按公示规则撮合与结算</span></label>" +
     '<button class="btn btn-primary btn-block mt16" type="button" data-lg="login">登录 / 注册</button>' +
-    '<button class="btn btn-outline btn-block mt8" type="button" data-lg="wechat">💬 微信一键登录（演示）</button>' +
     '<button class="btn btn-sm btn-ghost btn-block mt8" type="button" data-lg="pwd" style="box-shadow:none">使用演示密码登录（a123456）</button>' +
     "</div>" +
-    '<p class="tiny faint mt16 center">登录即代表同意平台仅提供信息撮合服务，教员资质由平台人工核验</p>';
+    '<p class="tiny faint mt16 center">登录即代表同意平台仅提供信息撮合服务，教员资质由平台人工核验；不登录也能先看需求表单</p>';
 }
 
 function showLogin() {
@@ -254,6 +262,32 @@ function ensureParentRole() {
   return true;
 }
 
+/* ---------------- 游客态 / 动作前登录 ---------------- */
+/** 没有 token 就是游客：页面照常渲染，只有需要身份的动作才弹登录层 */
+const isGuest = () => !session.token;
+
+/** 游客可浏览的数据源前缀：登录前后同一个视图，只换接口前缀 */
+const apiBase = () => (isGuest() ? "/api/public" : "/api/parent");
+
+/**
+ * 动作守卫：游客先弹登录层，并把「登录成功后要接着做的事」记下来。
+ * 这样「点发布需求 → 弹登录 → 微信一键登录 → 自动发布」是一条连贯的线，而不是丢掉表单重填。
+ */
+function requireLogin(pending) {
+  if (!isGuest()) return true;
+  state.pending = typeof pending === "function" ? pending : null;
+  showLogin();
+  return false;
+}
+
+/** 关闭登录层，回到刚才看到的页面（登录不是墙，只是动作前的一道门） */
+function closeLogin() {
+  const layer = document.querySelector(".login-layer");
+  if (layer) layer.remove();
+  state.pending = null;
+  if (ROUTER) ROUTER.render();
+}
+
 function bindLogin(root) {
   const phoneEl = $("#lg-phone", root);
   const codeEl = $("#lg-code", root);
@@ -281,6 +315,11 @@ function bindLogin(root) {
       } finally {
         busy(false);
       }
+      return;
+    }
+
+    if (kind === "close") {
+      closeLogin();
       return;
     }
 
@@ -314,9 +353,20 @@ function bindLogin(root) {
 async function startApp() {
   const layer = document.querySelector(".login-layer");
   if (layer) layer.remove();
+  state.guest = false;
   await refreshUnread();
   if (!session.token) return;
   if (ROUTER) ROUTER.render();
+  // 登录前点的动作（发布需求 / 立即预约）在登录后自动接着做，用户不用把表单重填一遍
+  const pending = state.pending;
+  state.pending = null;
+  if (pending) {
+    try {
+      await pending();
+    } catch (err) {
+      onError(err);
+    }
+  }
 }
 
 /* ---------------- 通用片段 ---------------- */
@@ -539,6 +589,16 @@ function bindDemandForm(root, { mode, addrs, onPublished }) {
     } catch (err) {
       return toastErr(err.message);
     }
+    // 游客点「发布需求」：先把填好的内容留下来，弹登录，登录成功后自动接着发布
+    if (isGuest()) {
+      requireLogin(async () => {
+        const created = await api.post("/api/demands", payload);
+        toastOk("需求已发布，正在推送给附近教员");
+        onPublished(created);
+      });
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = "发布中…";
     try {
@@ -779,9 +839,10 @@ async function homeView({ query }) {
   setBody(loadingHtml());
   const tab = query.tab === "near" ? "near" : "form";
   const geo = await locate();
+  const guest = isGuest();
   const [data, addrs, dict] = await Promise.all([
-    api.get("/api/parent/home", geo || undefined),
-    api.get("/api/addresses").catch(() => []),
+    api.get(guest ? "/api/public/home" : "/api/parent/home", geo || undefined),
+    guest ? Promise.resolve([]) : api.get("/api/addresses").catch(() => []),
     getDict(),
   ]);
   const rules = await getRules().catch(() => null);
@@ -807,7 +868,8 @@ async function homeView({ query }) {
     '<button class="' + (tab === "form" ? "on" : "") + '" data-go="/?tab=form">我要找老师</button>' +
     '<button class="' + (tab === "near" ? "on" : "") + '" data-go="/?tab=near">看附近教员</button></div>';
 
-  const couponStrip = '<div class="coupon-strip" data-go="/coupons" role="link" tabindex="0">' +
+  // 游客还没有券/订单，这两块属「我的」数据，登录后再出现
+  const couponStrip = guest ? "" : '<div class="coupon-strip" data-go="/coupons" role="link" tabindex="0">' +
     '<span class="ci" aria-hidden="true">🎟️</span>' +
     '<span class="ct">优惠券：<span class="cn">' + (data.couponCount || 0) + " 张</span>可用</span>" +
     '<span class="tiny" style="color:#b06f00">去使用 ›</span></div>';
@@ -892,7 +954,7 @@ async function plazaView({ query }) {
     q.lat = geo.lat;
     q.lng = geo.lng;
   }
-  const res = await api.get("/api/parent/teachers", q);
+  const res = await api.get(apiBase() + "/teachers", q);
   const list = res.list || [];
   const base = { subject: cur.subject, level: cur.level, price: cur.priceRange, radius: cur.radiusKm, sort: cur.sort, view: cur.view };
 
@@ -1022,8 +1084,8 @@ async function teacherDetailView({ params }) {
   chrome({ title: "教员详情", plain: true, back: true });
   setBody(loadingHtml());
   const [t, addrs] = await Promise.all([
-    api.get("/api/parent/teachers/" + encodeURIComponent(params.id)),
-    api.get("/api/addresses").catch(() => []),
+    api.get(apiBase() + "/teachers/" + encodeURIComponent(params.id)),
+    isGuest() ? Promise.resolve([]) : api.get("/api/addresses").catch(() => []),
   ]);
   state.teacher = t;
   setBody(teacherDetailHtml(t));
@@ -1034,12 +1096,31 @@ async function teacherDetailView({ params }) {
   );
   setActions({
     fav: async (el) => {
+      // 收藏是「我的数据」：游客点收藏先弹登录，登录后自动完成收藏
+      if (isGuest()) {
+        requireLogin(async () => {
+          await api.post("/api/my/favorites/" + t.id, {});
+          toastOk("已加入收藏");
+        });
+        return;
+      }
       const r = await api.post("/api/my/favorites/" + t.id, {});
       el.textContent = r.favorited ? "♥ 已收藏" : "♡ 收藏";
       el.setAttribute("aria-pressed", r.favorited ? "true" : "false");
       toastOk(r.favorited ? "已加入收藏" : "已取消收藏");
     },
-    book: (el) => openBooking(t, addrs, el.dataset.service ? Number(el.dataset.service) : null),
+    book: async (el) => {
+      const serviceId = el.dataset.service ? Number(el.dataset.service) : null;
+      // 立即预约要下单，必须有家长身份：游客先弹登录，登录后直接把预约弹层递上来
+      if (isGuest()) {
+        requireLogin(async () => {
+          const myAddrs = await api.get("/api/addresses").catch(() => []);
+          openBooking(t, myAddrs, serviceId);
+        });
+        return;
+      }
+      openBooking(t, addrs, serviceId);
+    },
   });
 }
 
@@ -2107,10 +2188,12 @@ async function agreementView({ params }) {
 }
 
 /* ---------------- 路由注册 ---------------- */
-const guard = (fn) => async (ctx) => {
+const guard = (fn, { guest = false } = {}) => async (ctx) => {
   setActions({});
   clearBar();
-  if (!session.token) {
+  // guest: true 的页面（首页发布需求、教员广场、教员详情、协议）游客直接看，
+  // 只有点「发布需求 / 立即预约 / 收藏」这类动作时才由 requireLogin() 弹登录层
+  if (!session.token && !guest) {
     showLogin();
     return;
   }
@@ -2130,9 +2213,9 @@ const guard = (fn) => async (ctx) => {
 };
 
 const ROUTES = {
-  "/": guard(homeView),
-  "/plaza": guard(plazaView),
-  "/teacher/:id": guard(teacherDetailView),
+  "/": guard(homeView, { guest: true }),
+  "/plaza": guard(plazaView, { guest: true }),
+  "/teacher/:id": guard(teacherDetailView, { guest: true }),
   "/demand": guard(demandPage),
   "/demand/:id": guard(demandDetailView),
   "/orders": guard(ordersView),
@@ -2147,7 +2230,7 @@ const ROUTES = {
   "/coupons": guard(couponsView),
   "/help": guard(helpView),
   "/settings": guard(settingsView),
-  "/agreement/:key": guard(agreementView),
+  "/agreement/:key": guard(agreementView, { guest: true }),
 };
 
 /* ---------------- 启动 ---------------- */
@@ -2187,13 +2270,11 @@ function bootGlobal() {
 function boot() {
   bootGlobal();
   ROUTER = createRouter(ROUTES, { container: document.querySelector("[data-route]") });
-  if (!session.token) {
-    showLogin();
-    return;
-  }
-  if (!ensureParentRole()) return;
+  state.guest = !session.token;
+  // 游客也直接进首页：发布需求表单可见可填，登录层只在点「发布需求 / 立即预约 / 订单 / 消息」时弹
+  if (!state.guest && !ensureParentRole()) return;
   ROUTER.render();
-  refreshUnread();
+  if (session.token) refreshUnread();
 }
 
 boot();

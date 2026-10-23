@@ -10,6 +10,7 @@ import { audit } from "../common/audit";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { maskPhone, resolveRegion } from "../common/geo";
 import { getSmsSender } from "../integrations/sms/sms.service";
+import { getWechatProvider } from "../integrations/wechat/wechat.service";
 
 // 进程内验证码 / 登录失败计数：带 TTL 与容量上限，避免被随机手机号灌爆内存
 // （多实例部署时应迁移到 Redis，见 docs/SECURITY.md「已知偏离」）
@@ -127,6 +128,39 @@ export class AuthService {
     if (user.status === "disabled") throw forbidden("账号已被禁用");
     await this.ds.query("UPDATE `users` SET `last_login_at` = ? WHERE `id` = ?", [nowIso(), user.id]);
     return { token: signToken(user.id, user.role, Number(user.token_version || 0)), user: this.publicUser(user) };
+  }
+
+  /**
+   * 微信一键登录（需求 4.1.1）：首次微信登录自动注册为家长。
+   * code → openid 的兑换交给微信通道（未配 appid/secret 时走 mock：同 code 稳定映射同一账号）。
+   */
+  async loginByWechat(code: string, ip: string, inviteToken?: string, deviceFp?: string) {
+    const c = String(code || "").trim();
+    if (!c) throw bad("缺少微信登录 code");
+    const session = await getWechatProvider().exchange(c);
+    let user = (await this.ds.query("SELECT * FROM `users` WHERE `wx_openid` = ? LIMIT 1", [session.openid]))[0];
+    if (!user) {
+      // 与验证码注册同一套反作弊阈值：微信登录也不能绕过设备/IP 频次限制
+      await this.assertRegisterAllowed(ip, deviceFp);
+      const region = await resolveRegion(this.ds, 30.2741, 120.1551);
+      const r = await this.ds.query(
+        "INSERT INTO `users` (`wx_openid`,`nickname`,`role`,`status`,`region_id`,`reg_ip`,`device_fp`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
+        [session.openid, "微信用户" + randomInt(1000, 9999), "parent", "active", region?.id ?? null, ip || null, deviceFp || null, nowIso()],
+      );
+      const uid = r.insertId;
+      await this.ds.query("INSERT IGNORE INTO `parent_profiles` (`user_id`,`credit_score`,`credit_level`) VALUES (?,100,'L0')", [uid]);
+      await this.ds.query("INSERT IGNORE INTO `wallets` (`user_id`,`updated_at`) VALUES (?,?)", [uid, nowIso()]);
+      if (inviteToken) await this.bindByInvite(uid, inviteToken);
+      user = (await this.ds.query("SELECT * FROM `users` WHERE `id` = ? LIMIT 1", [uid]))[0];
+    }
+    if (user.status === "disabled") throw forbidden("账号已被禁用");
+    await this.ds.query("UPDATE `users` SET `last_login_at` = ? WHERE `id` = ?", [nowIso(), user.id]);
+    return {
+      token: signToken(user.id, user.role, Number(user.token_version || 0)),
+      user: this.publicUser(user),
+      // 便于前端/门禁区分真实微信通道与 mock（不泄露 appid/secret）
+      wechatChannel: session.channel,
+    };
   }
 
   private async bindByInvite(uid: number, token: string) {

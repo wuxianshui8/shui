@@ -1,5 +1,7 @@
 <script setup>
-import { onMounted, reactive, ref } from "vue";
+import { onShow } from "@dcloudio/uni-app";
+import { reactive, ref } from "vue";
+import { goLogin, isLogin, request, saveDraft, takeDraft } from "../../../auth.js";
 
 const form = reactive({
   stage: "初中",
@@ -20,27 +22,16 @@ const SUBJECTS = ["数学", "语文", "英语", "物理", "化学"];
 const urgentMinYuan = ref(20);
 const urgentMaxYuan = ref(200);
 
-function req(method, path, body) {
-  return new Promise((resolve) => {
-    uni.request({
-      url: "/api" + path,
-      method,
-      data: body || {},
-      header: { Authorization: "Bearer " + uni.getStorageSync("token"), "Content-Type": "application/json" },
-      success: (res) => resolve(res.data && res.data.code === 0 ? res.data.data : null),
-      fail: () => resolve(null),
-    });
-  });
-}
-
-onMounted(async () => {
-  const home = await req("GET", `/parent/home?lat=${form.lat}&lng=${form.lng}`);
+async function loadFeeRange() {
+  // 游客走公开首页也能拿到真实的加急费区间（不需要登录）
+  const path = isLogin() ? "/parent/home" : "/public/home";
+  const home = await request("GET", `${path}?lat=${form.lat}&lng=${form.lng}`).catch(() => null);
   if (home && home.urgentFee != null) {
     urgentMinYuan.value = Number(home.urgentFee) / 100;
     urgentMaxYuan.value = Number(home.urgentMaxFee || home.urgentFee * 10) / 100;
     form.urgentFeeYuan = urgentMinYuan.value.toFixed(2);
   }
-});
+}
 
 function toggleUrgent(e) {
   form.urgent = e.detail.value;
@@ -48,31 +39,9 @@ function toggleUrgent(e) {
   if (form.urgent && !(Number(form.urgentFeeYuan) > 0)) form.urgentFeeYuan = urgentMinYuan.value.toFixed(2);
 }
 
-async function submit() {
-  let urgentFee = 0;
-  if (form.urgent) {
-    const yuan = Number(form.urgentFeeYuan);
-    if (!(yuan > 0)) return uni.showToast({ title: "请填写加急费（元）", icon: "none" });
-    if (yuan < urgentMinYuan.value) {
-      return uni.showToast({ title: `加急费不能低于 ¥${urgentMinYuan.value.toFixed(2)}`, icon: "none" });
-    }
-    if (yuan > urgentMaxYuan.value) {
-      return uni.showToast({ title: `加急费最高 ¥${urgentMaxYuan.value.toFixed(2)}`, icon: "none" });
-    }
-    urgentFee = Math.round(yuan * 100);
-  }
+/** 真正的提交（游客登录回来后也走这里） */
+function postDemand(body) {
   submitting.value = true;
-  const body = {
-    stage: form.stage,
-    subject: form.subject,
-    address: form.address,
-    lat: Number(form.lat),
-    lng: Number(form.lng),
-    budget: Math.round(Number(form.budget) * 100),
-    urgent: form.urgent,
-    urgentFee,
-    remark: form.remark,
-  };
   uni.request({
     url: "/api/demands",
     method: "POST",
@@ -92,6 +61,47 @@ async function submit() {
       uni.showToast({ title: "网络异常", icon: "none" });
     },
   });
+}
+
+onShow(async () => {
+  await loadFeeRange();
+  // 游客点「发布需求」→ 登录 → 回到本页：把刚才填好的需求自动提交，不用重填
+  const draft = takeDraft();
+  if (draft && isLogin()) postDemand(draft);
+});
+
+async function submit() {
+  let urgentFee = 0;
+  if (form.urgent) {
+    const yuan = Number(form.urgentFeeYuan);
+    if (!(yuan > 0)) return uni.showToast({ title: "请填写加急费（元）", icon: "none" });
+    if (yuan < urgentMinYuan.value) {
+      return uni.showToast({ title: `加急费不能低于 ¥${urgentMinYuan.value.toFixed(2)}`, icon: "none" });
+    }
+    if (yuan > urgentMaxYuan.value) {
+      return uni.showToast({ title: `加急费最高 ¥${urgentMaxYuan.value.toFixed(2)}`, icon: "none" });
+    }
+    urgentFee = Math.round(yuan * 100);
+  }
+  const body = {
+    stage: form.stage,
+    subject: form.subject,
+    address: form.address,
+    lat: Number(form.lat),
+    lng: Number(form.lng),
+    budget: Math.round(Number(form.budget) * 100),
+    urgent: form.urgent,
+    urgentFee,
+    remark: form.remark,
+  };
+  // 未登录：先把填好的内容存起来，去登录；登录成功后回到本页自动提交
+  if (!isLogin()) {
+    saveDraft(body);
+    uni.showToast({ title: "登录后自动发布这条需求", icon: "none" });
+    setTimeout(() => goLogin("/pages/parent/publish/index"), 600);
+    return;
+  }
+  postDemand(body);
 }
 </script>
 
@@ -144,7 +154,9 @@ async function submit() {
       <input v-model="form.remark" class="input" placeholder="如：希望老师有耐心" />
 
       <view class="btn" @click="submit">{{ submitting ? "提交中…" : "发布需求" }}</view>
-      <view class="muted" style="margin-top: 16rpx">发布后按「距离 × 等级权重 × 响应速度」推送给服务半径内的在线教员。</view>
+      <view class="muted" style="margin-top: 16rpx">
+        {{ isLogin() ? "发布后按「距离 × 等级权重 × 响应速度」推送给服务半径内的在线教员。" : "不用登录就能填；点「发布需求」时会弹出登录，登录后自动发布。" }}
+      </view>
     </view>
   </view>
 </template>

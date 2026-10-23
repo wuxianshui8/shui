@@ -35,6 +35,16 @@ export class AuthController {
     return ok(await this.auth.loginByCode(String(body.phone || "").trim(), String(body.code || "").trim(), ip, body.inviteToken, fp));
   }
 
+  /** 微信一键登录（需求 4.1.1）：首次登录自动注册家长，返回与短信登录一致的 token/user */
+  @Public()
+  @HttpCode(200)
+  @Post("wechat")
+  async wechat(@Body() body: { code?: string; inviteToken?: string }, @Req() req: any) {
+    const ip = clientIp(req);
+    const fp = (req.headers["x-device-fp"] || "").toString().slice(0, 128) || undefined;
+    return ok(await this.auth.loginByWechat(String(body?.code || "").trim(), ip, body?.inviteToken, fp));
+  }
+
   @Public()
   @HttpCode(200)
   @Post("login-password")

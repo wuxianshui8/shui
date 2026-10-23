@@ -16,12 +16,13 @@
 
 | 条目 | 实现（NestJS） | 验证 |
 | --- | --- | --- |
-| 4.1.1 手机号验证码登录、自动注册为家长、失败锁定、登录态查询 | `POST /api/auth/send-code`、`POST /api/auth/login`、`POST /api/auth/login-password`、`GET /api/auth/me` | e2e §1、sec、priv |
+| 4.1.1 手机号验证码登录、自动注册为家长、失败锁定、登录态查询 | `POST /api/auth/send-code`、`POST /api/auth/login`、`POST /api/auth/login-password`、`POST /api/auth/wechat`、`GET /api/auth/me` | e2e §1、e2e §21（微信幂等）、sec、priv、mobile |
 | 4.1.1 多上课地址管理（增删改、设默认） | `GET /api/addresses`、`POST /api/addresses`、`PUT /api/addresses/:id`、`DELETE /api/addresses/:id`、`POST /api/addresses/:id/default` | e2e §2、sec（越权校验） |
-| 4.1.2 自动定位片区 + 首页聚合（片区/横幅/公告/附近教员/优惠券/信用分） | `GET /api/parent/home`、`POST /api/public/promo/:token/scan` | e2e §2、`rules`（围栏判定） |
+| 4.1.2 自动定位片区 + 首页聚合（片区/横幅/公告/附近教员/优惠券/信用分） | `GET /api/parent/home`、`GET /api/public/home`（游客版同构首页）、`POST /api/public/promo/:token/scan` | e2e §2、e2e §21（游客浏览）、`rules`（围栏判定）、mobile |
+| 4.1.4 附近教员广场（电子围栏 + 六维筛选 + 派单权重排序）、教员详情、直接预约下单 | `GET /api/parent/teachers`、`GET /api/parent/teachers/:id`、`GET /api/public/teachers`、`GET /api/public/teachers/:id`（游客版，收藏恒 false）、`POST /api/orders/from-service` | e2e §2、e2e §21、`rules`（优先级逐位验算）、mobile |
 | 4.1.2 运营位：Banner / 公告 / 优惠券 | `GET /api/public/banners`、`GET /api/public/announcements`、`GET /api/public/coupons` | e2e §15 |
 | 4.1.3 发布需求（学段/科目/地址/时间/预算/加急）与编辑、暂停、撤销、确认接单 | `POST /api/demands`、`PUT /api/demands/:id`、`POST /api/demands/:id/action`、`GET /api/demands/mine`、`GET /api/demands/:id`、`POST /api/demands/:id/confirm` | e2e §2、e2e §4 |
-| 4.1.4 附近教员广场（电子围栏 + 六维筛选 + 派单权重排序）、教员详情、直接预约下单 | `GET /api/parent/teachers`、`GET /api/parent/teachers/:id`、`POST /api/orders/from-service` | e2e §2、`rules`（优先级逐位验算） |
+
 | 4.1.5 订单分类与详情、取消、确认完成、申请退款 | `GET /api/parent/orders`、`GET /api/orders/:id`、`POST /api/orders/:id/cancel`、`POST /api/orders/:id/confirm`、`POST /api/orders/:id/refund` | e2e §4/§6/§13 |
 | 4.1.5 上课前 1 小时提醒 | 定时任务 `runLessonReminders()`，阈值 `notify.lesson_remind_minutes`；后台手动触发 `POST /api/admin/reminders/run` | e2e §18 |
 | 4.1.6 担保支付（幂等）、消费/退款记录 | `POST /api/orders/:id/pay`、`GET /api/wallet`、`GET /api/wallet/txns` | e2e §4、`races`（幂等重放）、e2e §14 |
@@ -146,7 +147,7 @@
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
 | 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 47 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 58 + mobile 65 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **667** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

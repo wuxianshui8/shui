@@ -43,7 +43,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **150** 个路由，分布在 **18** 个控制器。
+总计 **154** 个路由，分布在 **18** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
@@ -53,13 +53,13 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `order/orders.controller.ts` | 10 |
 | `admin/admin.controller.ts` | 9 |
 | `demand/demands.controller.ts` | 8 |
-| `auth/auth.controller.ts` | 6 |
+| `auth/auth.controller.ts` | 7 |
+| `public/public.controller.ts` | 6 |
 | `common/addresses.controller.ts` | 5 |
 | `wallet/wallet.controller.ts` | 5 |
 | `parent/parent.controller.ts` | 5 |
 | `sales/sales.controller.ts` | 5 |
 | `message/message.controller.ts` | 3 |
-| `public/public.controller.ts` | 3 |
 | `complaint/complaint.controller.ts` | 2 |
 | `health/health.controller.ts` | 2 |
 | `meta/meta.controller.ts` | 2 |
@@ -164,6 +164,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | POST | `/api/auth/login-password` | 公开 | 无需令牌，200 |
 | GET | `/api/auth/me` | 登录用户 |  |
 | POST | `/api/auth/send-code` | 公开 | 无需令牌，200 |
+| POST | `/api/auth/wechat` | 公开 | 无需令牌，200 |
 
 ### `common/addresses.controller.ts`
 
@@ -256,6 +257,9 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | GET | `/api/public/announcements` | 公开 | 无需令牌 |
 | GET | `/api/public/banners` | 公开 | 无需令牌 |
 | GET | `/api/public/coupons` | 公开 | 无需令牌 |
+| GET | `/api/public/home` | 公开 | 无需令牌 |
+| GET | `/api/public/teachers` | 公开 | 无需令牌 |
+| GET | `/api/public/teachers/:id` | 公开 | 无需令牌 |
 
 ### `sales/sales.controller.ts`
 

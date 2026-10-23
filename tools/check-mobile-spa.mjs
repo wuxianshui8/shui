@@ -67,7 +67,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "登录页"], ["/m/pages/parent/index", "家长端"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
+for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -118,6 +118,54 @@ assert(belowMin.status === 400 && /最低提现/.test(belowMin.body?.message || 
 const wallet = await api("GET", "/wallet", { token: teacher.body.data.token });
 assert(wallet.status === 200 && wallet.body.data.wallet && Array.isArray(wallet.body.data.txns),
   "教员钱包页：钱包快照含余额 ¥" + ((wallet.body.data?.wallet?.balance || 0) / 100).toFixed(2) + " 与流水 " + (wallet.body.data?.txns?.length || 0) + " 条");
+
+console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
+// H5 产物里要能看到游客优先的痕迹：「微信一键登录」按钮、公开首页接口、登录后自动发布的草稿键
+// 注意：页面 chunk 是路由懒加载的，不在 index.html 的资源列表里，必须直接扫 dist 目录
+{
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const h5Assets = fileURLToPath(new URL("../apps/web-mobile/dist/build/h5/assets", import.meta.url));
+  const jsFiles = readdirSync(h5Assets).filter((f) => f.endsWith(".js"));
+  const bundle = jsFiles.map((f) => readFileSync(h5Assets + "/" + f, "utf8")).join("\n");
+  assert(jsFiles.length >= 8, "H5 分包产物齐全（" + jsFiles.length + " 个 JS）");
+  assert(bundle.includes("微信一键登录"), "H5 产物包含「微信一键登录」按钮（登录页已加）");
+  assert(bundle.includes("/public/home"), "H5 产物使用公开首页接口（游客无需登录即可看发布需求页）");
+  assert(bundle.includes("pendingDemand"), "H5 产物带「登录后自动继续发布」的草稿逻辑");
+  assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
+}
+// 游客接口：不发 token 也要能拿到首页与教员列表
+const guestHome = await api("GET", "/public/home?lat=30.262&lng=120.133");
+assert(guestHome.status === 200 && guestHome.body.data && guestHome.body.data.guest === true,
+  "游客首页 /public/home 无需登录（片区 " + (guestHome.body.data?.region?.name || "未开通") + "）");
+assert(guestHome.body.data && guestHome.body.data.defaultAddress === null && guestHome.body.data.couponCount === 0,
+  "游客首页不下发「我的」数据（地址/优惠券/订单）");
+assert(guestHome.body.data && guestHome.body.data.urgentFee > 0, "游客首页下发加急费区间（发布表单要用）");
+const guestTeachers = await api("GET", "/public/teachers?radiusKm=20&pageSize=5");
+assert(guestTeachers.status === 200 && Array.isArray(guestTeachers.body.data.list),
+  "游客可浏览教员（" + (guestTeachers.body.data?.list || []).length + " 位，点「立即预约」才登录）");
+assert((guestTeachers.body.data.list || []).every((t) => t.favorited === false), "游客浏览的收藏状态恒 false");
+if ((guestTeachers.body.data.list || []).length) {
+  const gd = await api("GET", "/public/teachers/" + guestTeachers.body.data.list[0].id);
+  assert(gd.status === 200 && Array.isArray(gd.body.data.services), "游客可看教员详情（含可预约服务）");
+}
+const stillGuarded = await api("GET", "/parent/orders");
+assert(stillGuarded.status === 401, "「我的订单」仍需登录（登录层在动作时弹）");
+
+// 微信一键登录：mock 通道同 code 稳定映射同一账号
+const wxCode = "mobile-gate-wx-" + Date.now();
+const wx1 = await api("POST", "/auth/wechat", { body: { code: wxCode } });
+assert(wx1.status === 200 && wx1.body.data.token && wx1.body.data.user.role === "parent",
+  "移动端微信一键登录 → 家长 token（通道 " + (wx1.body.data?.wechatChannel || "?") + "）");
+const wx2 = await api("POST", "/auth/wechat", { body: { code: wxCode } });
+assert(wx2.body.data.user.id === wx1.body.data.user.id, "同一微信 code 二次登录 = 同一账号（幂等）");
+const wxMe = await api("GET", "/auth/me", { token: wx1.body.data.token });
+assert(wxMe.status === 200 && wxMe.body.data.user.id === wx1.body.data.user.id, "微信登录的 token 可用（/auth/me）");
+const wxPublish = await api("POST", "/demands", {
+  token: wx1.body.data.token,
+  body: { stage: "初中", subject: "数学", address: "西湖区文三路 128 号", lat: 30.262, lng: 120.133, budget: 16000, remark: "移动端游客→登录→发布" },
+});
+assert(wxPublish.status === 200, "微信登录后可直接发布需求（游客填表→登录→自动发布闭环）");
 
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");

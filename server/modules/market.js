@@ -38,7 +38,9 @@ function coords(ctx) {
   const lat = Number(ctx.query.lat ?? ctx.body.lat);
   const lng = Number(ctx.query.lng ?? ctx.body.lng);
   if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  const def = get("SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC LIMIT 1", ctx.user.id);
+  const def = ctx.user
+    ? get("SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC LIMIT 1", ctx.user.id)
+    : null;
   if (def) return { lat: def.lat, lng: def.lng };
   return { lat: 30.2741, lng: 120.1551 };
 }
@@ -86,8 +88,9 @@ export function nearbyTeachers(ctx) {
      WHERE tp.audit_status = 'approved' AND u.status = 'active'`
   );
   // 批量取当前家长的收藏，避免逐个教员查询（列表长度无关的固定查询数）
+  // 游客（ctx.user 为空）也走同一条列表逻辑：收藏集合为空即可，其余字段与家长端一致
   const favoriteSet = new Set(
-    all("SELECT teacher_id FROM favorites WHERE user_id = ?", ctx.user.id).map((r) => r.teacher_id)
+    all("SELECT teacher_id FROM favorites WHERE user_id = ?", ctx.user?.id ?? 0).map((r) => r.teacher_id)
   );
   const list = [];
   for (const tp of rows) {
@@ -189,6 +192,51 @@ export function register(router) {
     card.levelTable = rule("teacher_levels");
     ok(ctx.res, card);
   }, { roles: ["parent"] });
+  /* ---------------- 游客浏览（需求 4.1：未登录也能看首页与附近教员） ---------------- */
+  // 家长端首页对游客开放：只去掉「我的」数据（地址/优惠券/订单/未读/信用），
+  // 片区、轮播、公告、附近在线教员、加急费区间都照常下发，登录后同一份前端逻辑无缝切回个人数据。
+  router.get("/api/public/home", (ctx) => {
+    const { lat, lng } = coords(ctx);
+    const region = resolveRegion(lat, lng);
+    const near = nearbyTeachers({ ...ctx, query: { ...ctx.query, lat, lng, pageSize: 6, online: "1" } });
+    ok(ctx.res, {
+      guest: true,
+      region: region ? { id: region.id, name: region.name } : null,
+      location: { lat, lng },
+      banners: all("SELECT * FROM banners WHERE status = 'on' ORDER BY sort LIMIT 5"),
+      notices: all("SELECT * FROM announcements WHERE status = 'on' AND (audience = 'all' OR audience = 'parent') ORDER BY pinned DESC, created_at DESC LIMIT 3"),
+      teachers: near.list,
+      defaultAddress: null,
+      couponCount: 0,
+      stats: { onlineTeachers: near.total, ongoingOrders: 0, unread: 0 },
+      credit: null,
+      compliance: rule("platforms").compliance_notice,
+      urgentFee: rule("urgent").fee,
+      urgentMaxFee: Math.max(Number(rule("urgent").fee) || 0, Number(rule("urgent").max_fee) || (Number(rule("urgent").fee) || 0) * 10),
+      urgentEnabled: rule("urgent").enabled !== false,
+    });
+  }, { auth: false });
+
+  router.get("/api/public/teachers", (ctx) => {
+    ok(ctx.res, nearbyTeachers(ctx));
+  }, { auth: false });
+
+  // 游客也能看教员详情（手机号仍脱敏、收藏状态恒 false），点「立即预约」时才由前端弹登录
+  router.get("/api/public/teachers/:id", (ctx) => {
+    const card = teacherCard(ctx.params.id);
+    if (!card || card.auditStatus !== "approved") throw Err.notFound("教员不存在");
+    const { lat, lng } = coords(ctx);
+    card.distanceKm = Number(haversineKm(lat, lng, card.baseLat ?? 30.2741, card.baseLng ?? 120.1551).toFixed(2));
+    card.services = all("SELECT * FROM teacher_services WHERE teacher_id = ? AND status = 'on'", ctx.params.id);
+    card.reviews = reviewsOfTeacher(ctx.params.id, 20);
+    const dist = {};
+    for (const r of card.reviews) dist[r.score] = (dist[r.score] || 0) + 1;
+    card.scoreDist = dist;
+    card.favorited = !!(ctx.user && get("SELECT id FROM favorites WHERE user_id = ? AND teacher_id = ?", ctx.user.id, ctx.params.id));
+    card.levelTable = rule("teacher_levels");
+    ok(ctx.res, card);
+  }, { auth: false });
+
 
   /* ---------------- 需求 ---------------- */
   router.post("/api/demands", (ctx) => {

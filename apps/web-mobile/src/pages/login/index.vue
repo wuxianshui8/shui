@@ -1,15 +1,23 @@
 <script setup>
+import { onLoad } from "@dcloudio/uni-app";
 import { ref } from "vue";
+import { HOME, saveSession } from "../../auth.js";
 
 const phone = ref("13900000301");
 const password = ref("a123456");
 const loading = ref(false);
+/** 登录成功后的回跳地址（游客点「发布需求 / 立即预约」被带过来的页面） */
+const next = ref("");
 
 /** 首登改密（后台开通的账号 mustChangePassword=true 时进入此流程） */
 const needChange = ref(false);
 const newPassword = ref("");
 const confirmPassword = ref("");
 const pendingUser = ref(null);
+
+onLoad((options) => {
+  next.value = (options && options.next) ? decodeURIComponent(options.next) : "";
+});
 
 function api(method, path, body, token) {
   return new Promise((resolve, reject) => {
@@ -27,11 +35,18 @@ function api(method, path, body, token) {
   });
 }
 
-const HOME = { parent: "/pages/parent/index", teacher: "/pages/teacher/index", sales: "/pages/sales/index", agent: "/pages/agent/index" };
-
 function enter(data) {
-  uni.setStorageSync("token", data.token);
-  uni.setStorageSync("user", data.user);
+  saveSession(data);
+  // 从游客动作过来的：直接退回原来那一页，由该页检测到已登录后继续完成动作
+  if (next.value) {
+    const stack = typeof getCurrentPages === "function" ? getCurrentPages() : [];
+    if (stack.length > 1) {
+      uni.navigateBack({ delta: 1 });
+      return;
+    }
+    uni.redirectTo({ url: next.value });
+    return;
+  }
   const target = HOME[data.user.role];
   if (!target) {
     uni.showToast({ title: "该角色暂无移动端页面", icon: "none" });
@@ -53,6 +68,33 @@ async function login() {
       uni.showToast({ title: "首次登录请修改初始口令", icon: "none" });
       return;
     }
+    enter(data);
+  } catch (e) {
+    uni.showToast({ title: e.message, icon: "none" });
+  } finally {
+    loading.value = false;
+  }
+}
+
+/** 微信一键登录：小程序取 uni.login 的 code，H5/App 用一次性随机 code 走演示通道 */
+async function wechatLogin() {
+  loading.value = true;
+  try {
+    let code = "";
+    // #ifdef MP-WEIXIN
+    code = await new Promise((resolve, reject) => {
+      uni.login({
+        provider: "weixin",
+        success: (r) => resolve(r.code || ""),
+        fail: (e) => reject(new Error((e && e.errMsg) || "微信授权失败")),
+      });
+    });
+    // #endif
+    // #ifndef MP-WEIXIN
+    code = "h5-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+    // #endif
+    const data = await api("POST", "/auth/wechat", { code });
+    uni.showToast({ title: "微信登录成功", icon: "success" });
     enter(data);
   } catch (e) {
     uni.showToast({ title: e.message, icon: "none" });
@@ -91,12 +133,17 @@ async function changePassword() {
       <view class="muted" style="margin-bottom: 24rpx">移动端 · uni-app（家长 / 教员 / 业务员 / 区域代理）</view>
 
       <template v-if="!needChange">
+        <!-- 微信一键登录放在最上面：家长端最常见的入口 -->
+        <view class="btn wechat" @click="wechatLogin">{{ loading ? "登录中…" : "💬 微信一键登录" }}</view>
+        <view class="or"><text class="or-text">或使用手机号口令登录</text></view>
+
         <input v-model="phone" class="input" placeholder="手机号" />
         <input v-model="password" class="input" password placeholder="口令" />
         <view class="btn" @click="login">{{ loading ? "登录中…" : "登录" }}</view>
         <view class="muted" style="margin-top: 20rpx">
           演示：家长 13900000301 / 教员 13900000201 / 业务员 13900000101 / 代理 13900000010，口令均 a123456
         </view>
+        <view class="muted" v-if="next" style="margin-top: 12rpx">登录后将回到刚才的页面继续操作。</view>
       </template>
 
       <template v-else>
@@ -109,3 +156,22 @@ async function changePassword() {
     </view>
   </view>
 </template>
+
+<style>
+.btn.wechat {
+  background: linear-gradient(135deg, #07c160, #06a350);
+  color: #fff;
+  box-shadow: 0 8rpx 20rpx rgba(7, 193, 96, 0.28);
+}
+.or {
+  display: flex;
+  align-items: center;
+  margin: 28rpx 0 20rpx;
+}
+.or-text {
+  flex: 1;
+  text-align: center;
+  font-size: 22rpx;
+  color: #9aa3af;
+}
+</style>

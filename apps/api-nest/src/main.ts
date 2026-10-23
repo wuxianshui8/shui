@@ -63,6 +63,20 @@ async function bootstrap() {
     console.error("[集成] 证件识别配置无效，拒绝启动：" + (e?.message || e));
     process.exit(1);
   }
+  try {
+    // 微信登录通道自检：只配一半 appid/secret 属于配置错误，直接拒绝启动（不静默降级成 mock）
+    const { wechatProviderFromEnv } = await import("./integrations/wechat/wechat.service");
+    const wx = wechatProviderFromEnv();
+    if (wx.name === "mock") {
+      console.warn("[集成] 微信登录=mock（code 直接映射演示 openid；上线必须配置 WECHAT_APPID + WECHAT_SECRET）");
+    } else {
+      console.log("[集成] 微信登录=" + wx.name);
+    }
+  } catch (e: any) {
+    console.error("[集成] 微信登录配置无效，拒绝启动：" + (e?.message || e));
+    process.exit(1);
+  }
+
 
   // bodyParser 关掉默认的，改为自带 rawBody 采集：微信支付回调必须用「与签名逐字节一致」的原文验签
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn", "log"], bodyParser: false });
