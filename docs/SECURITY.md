@@ -127,3 +127,37 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 12. **（已修复）令牌即时吊销**：`users` 表新增 `token_version`，改密/注销自增；令牌携带 `v` 声明，
     网关每次请求比对版本号，改密后旧令牌立即 401（改密响应同时返回新令牌，避免当前会话被踢）。
     `check-privacy-auth` 覆盖「旧令牌失效 / 新令牌可用」4 条断言。
+
+---
+
+## 9. 云服务器主机加固（已实施，2026-10-23）
+
+可重复执行的脚本：`bash deploy/harden-server.sh`（`--check` 只体检不改动）。
+下表是**在测试服务器（Ubuntu 22.04 / 腾讯云）实际应用并验证过**的项。
+
+| # | 措施 | 配置位置 | 为什么做 |
+| --- | --- | --- | --- |
+| 1 | **SSH 仅公钥**（`PasswordAuthentication no`）+ **禁 root 登录**（`PermitRootLogin no`）+ `MaxAuthTries 3` / `LoginGraceTime 20` + 关 X11/Agent/TCP 转发 + `AllowUsers ubuntu` | `/etc/ssh/sshd_config.d/99-hardening.conf`（改前备份到 `/root/sshd-backup-*`，`sshd -t` 通过才 reload） | 该机 24 小时内实测收到 **1000+ 次** SSH 爆破尝试，且原配置 `PasswordAuthentication yes` + `PermitRootLogin yes` |
+| 2 | **fail2ban**（sshd jail，`mode = aggressive`，3 次失败封 4 小时） | `/etc/fail2ban/jail.local` | 密码认证关掉后攻击者在 pubkey 阶段被打断，默认过滤器抓不到，aggressive 模式把这些尝试也计入并封 IP |
+| 3 | **ufw 防火墙**：默认拒绝入站，仅放 22/80/443；先把 `DEFAULT_FORWARD_POLICY` 改成 `ACCEPT` | `/etc/default/ufw` + `ufw` | 开防火墙前必须调 FORWARD，否则会打断 Docker 的容器网络 |
+| 4 | **自动安全更新**（仅 security 通道，不自动重启） | `/etc/apt/apt.conf.d/{20auto-upgrades,51unattended-upgrades-hardening}` | 内核/OpenSSL 这类漏洞不能靠人工记得升级 |
+| 5 | **内核网络参数**：`tcp_syncookies`、拒绝 ICMP 重定向与源路由、`log_martians`、`fs.protected_{hardlinks,symlinks}`、`kernel.sysrq=0`（**不动 `rp_filter`**，避免影响 Docker 转发） | `/etc/sysctl.d/99-hardening.conf` | 削掉常见的主机层攻击面 |
+| 6 | **Docker 守护**：`live-restore`（重启守护进程不杀容器）+ `no-new-privileges`（新容器禁提权）+ 日志轮转 20m×3 | `/etc/docker/daemon.json` | 避免守护重启造成业务中断；限制日志撑爆磁盘 |
+| 7 | **Nginx**：`server_tokens off`（不暴露版本）+ 认证接口按来源 IP 限速 `30r/m`、突发 10，超限 429 | `/etc/nginx/conf.d/00-hardening.conf` + 站点 conf 的 `location ~ ^/api/auth/(login|login-password|login-account|send-code|wechat)` | 挡撞库与短信轰炸；应用内已有登录锁定，这层在边缘再收一道 |
+
+**实测验证（2026-10-23）**
+
+- 密钥登录正常（`ssh kd211` → `KEY_OK`），密码方式被拒：`Permission denied (publickey)`，root 登录被拒
+- 防火墙启用后容器仍 healthy、业务冒烟 **17/17** 通过、四入口 200；外网 3306/6379/4300 **均 closed**
+- 认证限速实测：连续 20 次登录请求 → 前 5 次正常（burst），第 6 次起 **429**
+- 响应头 `Server: nginx`（版本号已隐藏）
+- 容器内身份 `uid=1000(node)`（非 root），三容器 `privileged=false`；`ubuntu` 用户**不在 docker 组**（只能经 sudo 用 docker）
+- 脚本幂等：重复执行两次，容器 uptime 不中断、站点仍 200
+
+**仍需你做/注意的**
+
+1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
+2. 我给你的运维公钥在 `ubuntu` 的 `authorized_keys` 里；不再需要时删掉那一行即可（删前先确认自己有别的入口，并留一个 VNC 退路）。
+3. **备份**：`npm run db:backup` 已可用，但服务器上还没排进定时任务（B3 缺口），建议挂 `cron`/`systemd timer`。
+4. 生产前把演示口令 `a123456` 全部换掉（后台建号走一次性强口令，首登强制改密）。
+5. 若将来多实例/加 CDN，`TRUST_PROXY` 与 `X-Forwarded-For` 可信链要一起复核（见 §8 第 11 条）。
