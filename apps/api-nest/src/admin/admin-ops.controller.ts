@@ -139,6 +139,12 @@ export class AdminOpsController {
     return ok(await this.svc.toggleAgent(req, Number(id)));
   }
 
+  /** 删除代理账号（有订单/绑定/下属/保证金余额时会被拒，提示改用「禁用」） */
+  @Delete("agents/:id")
+  async deleteAgent(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.svc.deleteAgent(req, Number(id)));
+  }
+
   @Post("agents/:id/deposit")
   @HttpCode(200)
   async agentDeposit(@Param("id") id: string, @Body() body: any, @Req() req: any) {

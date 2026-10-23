@@ -527,6 +527,50 @@ export class AdminOpsService {
     return { status: next };
   }
 
+  /**
+   * 删除代理账号（需求 4.5.2 账号管理）。
+   *
+   * 只允许删「没有留下任何业务痕迹」的账号：一旦有订单分成、归属绑定、下属业务员、
+   * 保证金余额或钱包余额，硬删会让历史订单/分账/对账失去对手方——这种账号应该**禁用**
+   * 而不是删除。这里把能拦住的原因逐条报出来（中文），避免运营以为「点不动」。
+   */
+  async deleteAgent(ctx: any, id: number) {
+    const ap = await this.one("SELECT * FROM `agent_profiles` WHERE `user_id` = ?", [id]);
+    if (!ap) throw notFound("代理不存在");
+    const uid = Number(ap.user_id);
+
+    const blockers: string[] = [];
+    const orders = await this.cnt("SELECT COUNT(*) AS c FROM `orders` WHERE `agent_id` = ?", [uid]);
+    if (orders) blockers.push("名下有 " + orders + " 笔订单分成");
+    const binds = await this.cnt("SELECT COUNT(*) AS c FROM `bindings` WHERE `agent_id` = ?", [uid]);
+    if (binds) blockers.push("已绑定 " + binds + " 个家长/业务员");
+    const sales = await this.cnt("SELECT COUNT(*) AS c FROM `sales_profiles` WHERE `agent_id` = ?", [uid]);
+    if (sales) blockers.push("下属有 " + sales + " 名业务员");
+    const deposit = Number(ap.deposit || 0);
+    if (deposit !== 0) blockers.push("保证金余额 " + (deposit / 100).toFixed(2) + " 元未退");
+    const wallet: any = await this.one("SELECT `balance`,`frozen` FROM `wallets` WHERE `user_id` = ?", [uid]);
+    if (wallet && (Number(wallet.balance) !== 0 || Number(wallet.frozen) !== 0)) {
+      blockers.push("钱包余额 " + (Number(wallet.balance) / 100).toFixed(2) + " 元未提现");
+    }
+    if (blockers.length) {
+      throw biz("AGENT_HAS_DATA", "该代理还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
+    }
+
+    const u: any = await this.one("SELECT `nickname`,`phone` FROM `users` WHERE `id` = ?", [uid]);
+    await this.ds.transaction(async (m) => {
+      await m.query("DELETE FROM `bindings` WHERE `agent_id` = ?", [uid]);
+      await m.query("DELETE FROM `agent_deposits` WHERE `agent_id` = ?", [uid]);
+      await m.query("DELETE FROM `wallets` WHERE `user_id` = ?", [uid]);
+      await m.query("DELETE FROM `agent_profiles` WHERE `user_id` = ?", [uid]);
+      await m.query("DELETE FROM `users` WHERE `id` = ? AND `role` = 'agent'", [uid]);
+      await audit(m, ctx, "admin.agent.delete", "users:" + uid, {
+        nickname: u?.nickname ?? null,
+        phone: maskPhone(u?.phone ?? ""),
+      });
+    });
+    return { deleted: true, userId: uid };
+  }
+
   /** 保证金缴纳 / 退还（不可退超过余额） */
   async agentDeposit(ctx: any, id: number, b: any) {
     const ap = await this.one("SELECT * FROM `agent_profiles` WHERE `user_id` = ?", [id]);

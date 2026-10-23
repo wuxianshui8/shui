@@ -42,7 +42,7 @@ UI 说明书「第 4 章补充：平台管理员界面（两张）」只画了**
 | 发票受理 | `/invoices` | `Invoices.vue` | 需求 4.1.6 / 4.5.6 |
 | 用户管理 | `/users` | `Users.vue` | 需求 4.5.2 |
 | 教员审核 | `/teachers` | `Teachers.vue` | 需求 4.5.2（审核/驳回/调级） |
-| 代理管理 | `/agents` | `Agents.vue` | 需求 4.5.2（签约/保证金台账/启停） |
+| 代理管理 | `/agents` | `Agents.vue` | 需求 4.5.2（签约/**新增代理**/**删除代理**/保证金台账/启停）：顶部「新增代理」弹窗（姓名/手机号/片区/等级/分成/首笔保证金，服务端回一次性初始口令）；操作列「删除」带二次确认，账号有订单分成/归属绑定/下属业务员/资金余额时后端拒绝并逐条说明，应改用「禁用」 |
 | 管理员账号 | `/admins` | `Admins.vue` | 需求 4.5.9（一次性口令 + 首登改密 + 启停护栏） |
 | 权限矩阵 | `/permissions` | `Permissions.vue` | 需求 4.5.9（4 权限点 × 5 角色，admin 列锁定） |
 | 区域管理 | `/regions` | `Regions.vue` + `apps/web-admin/src/components/GeoFenceMap.vue` | 需求 4.5.5（片区/电子围栏）：**两种设置方式**——「按地图设置」在中国地图上直接画多边形/圆（顶点可拖动微调）；「按行政区设置」输入地名 → 勾选候选行政区 → 围栏即所选边界的并集（多环），地图蓝色高亮预览。底图两层自动降级：在线瓦片（默认高德，`VITE_TILE_URL` 可替换）不可达时回落离线省级底图（`apps/web-admin/src/assets/china.geo.json`，34 个省级区划，随包分发）。几何换算抽在 `apps/web-admin/src/geo-fence.js`（Web Mercator + 瓦片坐标，纯函数，被 `tools/check-geo-fence.mjs` 直接 import 断言） |

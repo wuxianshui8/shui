@@ -190,6 +190,21 @@ async function loginPassword(phone) {
   assert(zbRow?.regionName === "张北县片区验收",
     "需求按行政区围栏归属到该片区（片区=" + (zbRow?.regionName || "空") + "）");
 
+  // 代理账号增删（P51）：有业务数据的只能禁用，空白账号可删
+  const agentNew = await api("POST", "/api/admin/agents", {
+    token: adminToken,
+    body: { nickname: "闸门代理·孙经理", phone: "13900007802", regionId: 1, level: "A", commissionRate: 0.25, mgmtRate: 0.01 },
+  });
+  assert(agentNew.status === 200 && agentNew.body.data?.id > 0 && !!agentNew.body.data?.initialPassword,
+    "后台新增代理账号返回一次性初始口令");
+  const agentBusy = await api("DELETE", "/api/admin/agents/2", { token: adminToken });
+  assert(agentBusy.status >= 400 && (agentBusy.body?.code === "AGENT_HAS_DATA" || /业务数据/.test(agentBusy.text)),
+    "有业务数据的代理拒绝删除（提示改用禁用）");
+  const agentGone = await api("DELETE", "/api/admin/agents/" + agentNew.body.data.id, { token: adminToken });
+  const agentList2 = (await api("GET", "/api/admin/agents", { token: adminToken })).body.data || [];
+  assert(agentGone.status === 200 && !agentList2.some((a) => Number(a.user_id) === Number(agentNew.body.data.id)),
+    "删除无业务数据的代理成功（剩余 " + agentList2.length + " 个）");
+
   // 并发抢单：同一教员 20 次并发，只允许 1 次成功
   const grabs = await Promise.all(
     Array.from({ length: 20 }, () => api("POST", "/api/demands/" + demandId + "/apply", { token: teacherToken }))

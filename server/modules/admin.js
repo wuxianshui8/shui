@@ -544,6 +544,39 @@ export function register(router) {
     ok(ctx.res, { status: next });
   });
 
+  // 删除代理账号：有业务数据（订单分成/绑定/下属业务员/保证金或钱包余额）时拒绝，提示改用禁用
+  router.del("/api/admin/agents/:id", (ctx) => {
+    adminOnly(ctx);
+    const ap = get("SELECT * FROM agent_profiles WHERE user_id = ?", ctx.params.id);
+    if (!ap) throw Err.notFound("代理不存在");
+    const uid = Number(ap.user_id);
+    const blockers = [];
+    const orders = get("SELECT COUNT(*) AS c FROM orders WHERE agent_id = ?", uid).c;
+    if (orders) blockers.push("名下有 " + orders + " 笔订单分成");
+    const binds = get("SELECT COUNT(*) AS c FROM bindings WHERE agent_id = ?", uid).c;
+    if (binds) blockers.push("已绑定 " + binds + " 个家长/业务员");
+    const sales = get("SELECT COUNT(*) AS c FROM sales_profiles WHERE agent_id = ?", uid).c;
+    if (sales) blockers.push("下属有 " + sales + " 名业务员");
+    if (Number(ap.deposit || 0) !== 0) blockers.push("保证金余额 " + (Number(ap.deposit) / 100).toFixed(2) + " 元未退");
+    const w = get("SELECT balance, frozen FROM wallets WHERE user_id = ?", uid);
+    if (w && (Number(w.balance) !== 0 || Number(w.frozen) !== 0)) {
+      blockers.push("钱包余额 " + (Number(w.balance) / 100).toFixed(2) + " 元未提现");
+    }
+    if (blockers.length) {
+      throw Err.biz("AGENT_HAS_DATA", "该代理还有业务数据（" + blockers.join("；") + "），请改用「禁用」而不是删除");
+    }
+    const u = get("SELECT nickname, phone FROM users WHERE id = ?", uid) || {};
+    tx(() => {
+      run("DELETE FROM bindings WHERE agent_id = ?", uid);
+      run("DELETE FROM agent_deposits WHERE agent_id = ?", uid);
+      run("DELETE FROM wallets WHERE user_id = ?", uid);
+      run("DELETE FROM agent_profiles WHERE user_id = ?", uid);
+      run("DELETE FROM users WHERE id = ? AND role = 'agent'", uid);
+      audit(ctx, "admin.agent.delete", "users:" + uid, { nickname: u.nickname ?? null, phone: maskPhone(u.phone ?? "") });
+    });
+    ok(ctx.res, { deleted: true, userId: uid });
+  });
+
   // 保证金台账：缴纳 / 退还（不可退超过余额）
   router.post("/api/admin/agents/:id/deposit", (ctx) => {
     adminOnly(ctx);

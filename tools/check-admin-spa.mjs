@@ -137,6 +137,25 @@ const multiRings = typeof byAdminPoly === "string" ? JSON.parse(byAdminPoly) : A
 assert(multiRings.length >= 1 && Array.isArray(multiRings[0]) && Array.isArray(multiRings[0][0]),
   "区域管理页：围栏存成多环多边形（" + multiRings.length + " 环 / " + multiRings.flat().length + " 点）");
 
+/* 代理管理：新增 → 列表可见 → 有业务数据的拒绝删除 → 新账号可删除 */
+const agentCreate = await api("POST", "/admin/agents", {
+  token,
+  body: { nickname: "验收代理·孙经理", phone: "13900007801", regionId: 1, level: "A", commissionRate: 0.25, mgmtRate: 0.01, deposit: 0 },
+});
+assert(agentCreate.status === 200 && agentCreate.body.data?.id > 0 && !!agentCreate.body.data?.initialPassword,
+  "代理管理页：新增代理返回一次性初始口令（ID " + (agentCreate.body.data?.id || "-") + "）");
+const agentNewId = agentCreate.body.data?.id;
+const agentList = await api("GET", "/admin/agents", { token });
+assert((agentList.body.data || []).some((a) => Number(a.user_id) === Number(agentNewId)),
+  "代理管理页：新增的代理出现在代理列表（" + (agentList.body.data || []).length + " 个）");
+const agentHasData = await api("DELETE", "/admin/agents/2", { token });
+assert(agentHasData.status >= 400 && (agentHasData.body?.code === "AGENT_HAS_DATA" || /业务数据/.test(agentHasData.text)),
+  "代理管理页：有业务数据的代理拒绝删除并提示改用禁用（" + agentHasData.status + "）");
+const agentDel = await api("DELETE", "/admin/agents/" + agentNewId, { token });
+const agentAfter = (await api("GET", "/admin/agents", { token })).body.data || [];
+assert(agentDel.status === 200 && !agentAfter.some((a) => Number(a.user_id) === Number(agentNewId)),
+  "代理管理页：删除无业务数据的代理成功（剩余 " + agentAfter.length + " 个）");
+
 /* 关键写操作（与页面按钮一致） */
 const banner = (await api("GET", "/admin/banners", { token })).body.data[0];
 const bnToggle = await api("POST", "/admin/banners/" + banner.id + "/toggle", { token });
