@@ -3,7 +3,7 @@
 对应第二份文档《UI 界面设计说明书 V1.0》。参考实现（`web/*.html` + 原生 ESM）的 UI 追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md) 第二部分；
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
-- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：19**
+- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：20**
 - **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：14**（家长 5 页含「附近教员 / 教员详情·立即预约 / 订单详情」，另教员 3 页含入驻认证、业务员 2 页、代理 2 页、登录与消息各 1 页）
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
@@ -54,6 +54,7 @@ UI 说明书「第 4 章补充：平台管理员界面（两张）」只画了**
 | 学段 / 科目（运营工具类目） | `/catalog` | `Catalog.vue` | 需求 4.1（发单必填字段的选项维护）：字典落 `rule_configs.catalog`，保存即时生效，前端读 `/api/meta/dictionary` |
 | 风控与仲裁 | `/risks` | `Risks.vue` | 需求 4.5.7 |
 | 操作日志 | `/logs` | `Logs.vue` | 需求 4.5.9 |
+| 登录账号自助改密 | `/password` | `Password.vue` | 需求 4.5.1（账号安全）：顶栏「修改口令」入口；旧口令校验 + 口令强度（≥8 位且含字母与数字、不得与原口令相同、两次输入一致）；调 `POST /auth/change-password`，后端 `token_version` 自增使旧令牌立即失效并把新令牌写回本地；**首登强制**：后台开通的账号 `mustChangePassword=true` 时登录后直接进本页，任何接口返回 `MUST_CHANGE_PASSWORD` 也会被统一送到这里（此前缺页面会卡在 403） |
 | 登录页（无侧栏） | `/login` | `Login.vue` | 需求 2.x 后台鉴权 |
 
 布局与交互：`App.vue` 提供侧栏 + 顶栏 + `<router-view>`，`api.js` 统一 Bearer 令牌与 `code=0` 判定、401 自动回登录，

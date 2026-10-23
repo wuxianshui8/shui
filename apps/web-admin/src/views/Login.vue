@@ -17,6 +17,12 @@ async function submit() {
       return;
     }
     auth.save(data.token, data.user);
+    // 后台开通的账号首登必须改初始口令，否则后续接口一律 403 —— 这里直接送进改密页
+    if (data.user.mustChangePassword) {
+      ElMessage.warning("首次登录请先修改平台下发的初始口令");
+      router.push("/password?force=1");
+      return;
+    }
     ElMessage.success("登录成功");
     router.push("/overview");
   } catch (e) {

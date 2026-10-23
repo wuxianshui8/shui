@@ -38,7 +38,7 @@ const FULL = [
   { name: "races（27）", cmd: ["node", "tools/gate-races.mjs"] },
   { name: "privacy（38）", cmd: ["node", "tools/gate-privacy.mjs"] },
   { name: "permissions（17）", cmd: ["node", "tools/gate-permissions.mjs"] },
-  { name: "admin SPA（58）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
+  { name: "admin SPA（65）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
   { name: "mobile SPA（109）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
   { name: "支付回调与幂等（32）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-pay-flow.mjs" } },
   { name: "镜像运行契约（33）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },

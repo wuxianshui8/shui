@@ -28,7 +28,8 @@ async function api(method, path, { token, body } = {}) {
   const { readdirSync } = await import("node:fs");
   const distAssets = readdirSync(new URL("../apps/web-admin/dist/assets", import.meta.url));
   const views = ["Login", "Overview", "Orders", "Demands", "Refunds", "Finance", "Withdrawals", "Invoices",
-    "Users", "Teachers", "Agents", "Admins", "Permissions", "Regions", "Rules", "Ops", "Risks", "Logs"];
+    "Users", "Teachers", "Agents", "Admins", "Permissions", "Regions", "Rules", "Ops", "Risks", "Logs",
+    "Catalog", "Password"];
   const missing = views.filter((v) => !distAssets.some((f) => f.startsWith(v + "-")));
   assert(missing.length === 0, "构建产物含 " + views.length + " 个页面分包" + (missing.length ? "，缺失 " + missing.join(",") : ""));
   // 区域管理页的地图底图必须打进产物（离线，不请求在线瓦片）
@@ -39,6 +40,24 @@ async function api(method, path, { token, body } = {}) {
     "区域管理页分包内置中国地图底图（" + Math.round(chunkSrc.length / 1024) + " KB 分包，含省级边界）");
   assert(/\{z\}.*\{x\}.*\{y\}/.test(chunkSrc) && chunkSrc.includes("autonavi"),
     "区域管理页支持在线瓦片底图（{z}/{x}/{y} 模板，默认高德，可用 VITE_TILE_URL 替换）");
+  // 管理员「修改口令」功能：产物里必须有改密页与顶栏入口，且调用的是 /auth/change-password
+  const pwChunk = distAssets.filter((f) => f.startsWith("Password-") && f.endsWith(".js"));
+  assert(pwChunk.length === 1, "构建产物含「修改口令」页分包（Password-" + pwChunk.length + "）");
+  const pwSrc = pwChunk.map((f) => readFileSync(new URL("../apps/web-admin/dist/assets/" + f, import.meta.url), "utf8")).join("\n");
+  assert(pwSrc.includes("/auth/change-password") && pwSrc.includes("oldPassword") && pwSrc.includes("newPassword"),
+    "改密页调用 POST /auth/change-password（带 oldPassword / newPassword）");
+  assert(pwSrc.includes("至少 8 位") && pwSrc.includes("[A-Za-z]") && pwSrc.includes("[0-9]"),
+    "改密页前端校验口令强度（≥8 位且含字母与数字）");
+  assert(pwSrc.includes("mustChangePassword"), "改密成功后把新令牌写回本地并清掉 mustChangePassword 标记");
+  const appSrc = readFileSync(new URL("../apps/web-admin/src/App.vue", import.meta.url), "utf8");
+  assert(appSrc.includes("top-password") && appSrc.includes("/password"),
+    "顶栏有「修改口令」入口（data-test=top-password）");
+  const loginSrc = readFileSync(new URL("../apps/web-admin/src/views/Login.vue", import.meta.url), "utf8");
+  assert(loginSrc.includes("mustChangePassword") && loginSrc.includes("/password?force=1"),
+    "首登 mustChangePassword=true 时直接送进改密页（不再卡在 403）");
+  const apiSrc = readFileSync(new URL("../apps/web-admin/src/api.js", import.meta.url), "utf8");
+  assert(apiSrc.includes("MUST_CHANGE_PASSWORD") && apiSrc.includes("#/password?force=1"),
+    "任何接口返回 MUST_CHANGE_PASSWORD 时前端统一跳改密页");
 }
 console.log("PC 管理后台验收（Vue3 + Vite + Element Plus）");
 console.log("目标服务：" + BASE + "\n");

@@ -44,7 +44,14 @@ async function request(method, path, body, extraHeaders = {}) {
   }
   if (!res.ok || (json && json.code !== 0)) {
     const msg = (json && json.message) || "请求失败（HTTP " + res.status + "）";
-    throw new Error(msg);
+    // 首登未改口令：后端用专用 code，前端统一跳改密页（否则用户会卡在 403 上无路可走）
+    if (json && json.code === "MUST_CHANGE_PASSWORD" && !location.hash.includes("/password")) {
+      location.hash = "#/password?force=1";
+    }
+    const err = new Error(msg);
+    err.code = json && json.code;
+    err.status = res.status;
+    throw err;
   }
   return json.data;
 }

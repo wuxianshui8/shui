@@ -9,3 +9,7 @@ export const conflict = (msg = "操作冲突，请刷新后重试") =>
   new HttpException({ code: "CONFLICT", message: msg }, HttpStatus.CONFLICT);
 /** 429：用于登录失败锁定等限流语义 */
 export const tooMany = (code: string, msg: string) => new HttpException({ code, message: msg }, HttpStatus.TOO_MANY_REQUESTS);
+
+/** 403 + 指定错误码：让前端能区分「普通无权限」与「必须先去改口令」 */
+export const forbiddenWithCode = (code: string, msg: string) =>
+  new HttpException({ code, message: msg }, HttpStatus.FORBIDDEN);

@@ -64,6 +64,7 @@ function logout() {
         <div class="title">{{ title }}</div>
         <div class="who">
           <span>{{ who.nickname || "管理员" }}（{{ who.role || "admin" }}）</span>
+          <el-button size="small" text @click="router.push('/password')" data-test="top-password">修改口令</el-button>
           <el-button size="small" text @click="logout">退出登录</el-button>
         </div>
       </header>

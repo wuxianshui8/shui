@@ -22,6 +22,7 @@ const routes = [
   { path: "/catalog", component: () => import("./views/Catalog.vue"), meta: { title: "学段 / 科目" } },
   { path: "/risks", component: () => import("./views/Risks.vue"), meta: { title: "风控与仲裁" } },
   { path: "/logs", component: () => import("./views/Logs.vue"), meta: { title: "操作日志" } },
+  { path: "/password", component: () => import("./views/Password.vue"), meta: { title: "修改口令" } },
 ];
 
 const router = createRouter({ history: createWebHashHistory(), routes });

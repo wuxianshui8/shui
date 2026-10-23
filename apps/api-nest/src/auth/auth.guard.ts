@@ -3,7 +3,7 @@ import { Reflector } from "@nestjs/core";
 import { DataSource } from "typeorm";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { verifyToken } from "../common/token";
-import { forbidden, unauthorized } from "../common/errors";
+import { forbidden, forbiddenWithCode, unauthorized } from "../common/errors";
 import { IS_PUBLIC } from "../public.decorator";
 import { PERM_KEY, ROLES_KEY } from "../common/access";
 
@@ -48,7 +48,7 @@ export class AuthGuard implements CanActivate {
     if (Number(rows[0].must_change_password || 0) === 1) {
       const path = String(req.originalUrl || req.url || "").split("?")[0];
       if (!PASSWORD_CHANGE_ALLOWLIST.includes(path)) {
-        throw forbidden("首次登录请先修改初始口令");
+        throw forbiddenWithCode("MUST_CHANGE_PASSWORD", "首次登录请先修改初始口令");
       }
     }
 
