@@ -62,6 +62,8 @@ const ADDITIVE_RULE_KEYS = [
   ["urgent", "max_fee", DEFAULT_RULES.urgent.value.max_fee],
   // 加急费到达上限时的放大系数（P44：加价越高越靠前）
   ["dispatch", "urgent_boost_max", DEFAULT_RULES.dispatch.value.urgent_boost_max],
+  // 家长取消申请超时自动同意的分钟数（P60：教员不处理也不能把钱一直押着）
+  ["settlement", "cancel_auto_approve_minutes", DEFAULT_RULES.settlement.value.cancel_auto_approve_minutes],
 ];
 for (const [ruleKey, field, def] of ADDITIVE_RULE_KEYS) {
   await conn.execute(
