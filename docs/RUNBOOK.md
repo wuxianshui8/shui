@@ -60,6 +60,14 @@ ssh kd211 "df -h /; free -h"
 
 # 证书到期时间
 ssh kd211 "sudo -n openssl x509 -in /etc/letsencrypt/live/www.kd211.com/fullchain.pem -noout -enddate"
+
+# 每日备份：最近一次结果 + 定时器下次触发
+ssh kd211 "sudo -n cat /var/backups/jiajiao/LAST_STATUS"
+ssh kd211 "sudo -n ls -lt /var/backups/jiajiao | head -3"
+ssh kd211 "sudo -n systemctl list-timers jiajiao-backup.timer --no-pager"
+
+# 备份失败的历史（journal error 级）
+ssh kd211 "sudo -n journalctl -u jiajiao-backup -p err --since '-7 days' --no-pager | tail -20"
 ```
 
 业务级冒烟（**会真实建单并退款**，只对测试环境跑）：
@@ -124,16 +132,48 @@ ssh kd211 "sudo -n docker logs --tail 20 jiajiao-app-1 | grep 'SMS_MOCK_LOG_CODE
 
 `.env` 里 `SMS_MOCK_LOG_CODE=1` 时日志形如 `验证码=751202 手机号=139****0301 有效期=300s`；接口**永不**回显 `devCode`。生产务必改回 `0`。
 
-### 3.6 备份数据库
+### 3.6 备份（已装定时任务）
+
+**每日 03:20 自动跑**（`jiajiao-backup.timer`，错峰 ±10 分钟，关机错过会在开机后补跑）：
+
+| 产出 | 保留 |
+| --- | --- |
+| `/var/backups/jiajiao/jiajiao-<时间戳>.sql.gz`（DB，37 表） | 14 份 |
+| `/var/backups/jiajiao/uploads-<时间戳>.tar.gz`（头像/证件图所在卷） | 7 份 |
+| `/var/backups/jiajiao/LAST_STATUS`（最近一次结果 JSON） | 覆盖写 |
+
+**手动跑 / 排查**
 
 ```bash
-# 方式 A（服务器上、不依赖仓库）：容器内 mysqldump
-ssh kd211 "mkdir -p /var/backups/jiajiao && sudo -n docker exec jiajiao-mysql-1 sh -c 'mysqldump -uroot -p\"\$MYSQL_ROOT_PASSWORD\" --single-transaction --databases jiajiao' | gzip > /var/backups/jiajiao/jiajiao-\$(date +%Y%m%d-%H%M%S).sql.gz"
-
-# 方式 B（有仓库时）：MYSQL_MODE=docker OUT_DIR=/var/backups/jiajiao node tools/db-backup.mjs --keep 14
+ssh kd211 "sudo -n systemctl start jiajiao-backup.service"          # 立刻跑一次
+ssh kd211 "sudo -n cat /var/backups/jiajiao/LAST_STATUS"            # 最近结果
+ssh kd211 "sudo -n journalctl -u jiajiao-backup -n 30 --no-pager"   # 明细
+ssh kd211 "sudo -n systemctl list-timers jiajiao-backup.timer"      # 下次触发
 ```
 
-> ⚠️ 目前**尚未**把备份排进定时任务（B3 缺口）。要恢复：`gunzip < 备份.sql.gz | docker exec -i jiajiao-mysql-1 mysql -uroot -p<口令>`。
+脚本内建**防空校验**：gzip 完整性 + 表数量 < 30 直接判失败（不会留个空壳备份），且先写 `.tmp` 再原子改名。
+
+**装/更新定时任务**（脚本即期望状态，幂等）
+
+```bash
+# 把 deploy/ 下的脚本和 systemd/ 目录一起传上去后：
+ssh kd211 "sudo -n bash /tmp/bk/deploy/install-backup.sh"           # 装 + 立刻跑一次
+ssh kd211 "sudo -n bash /tmp/bk/deploy/install-backup.sh --check"   # 只体检
+```
+
+**失败通知**：`OnFailure=jiajiao-backup-notify.service` → 写 journal（error 级）+ 可选 webhook。开启方式是在 `/opt/jiajiao/deploy/.env` 里加一行：
+
+```bash
+BACKUP_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+```
+
+POST 的 JSON 同时带 `msgtype/text.content`（企业微信/钉钉/飞书）与顶层 `content`，用 `json.dumps` 精确转义；HTTP 状态码会打到 journal（`[backup-notify] webhook HTTP 200`）。没配 webhook 时失败只进 journal，用上面 §2 的巡检命令能看到。
+
+**恢复**
+
+```bash
+ssh kd211 "gunzip -c /var/backups/jiajiao/jiajiao-<时间戳>.sql.gz | sudo -n docker exec -i jiajiao-mysql-1 sh -c 'mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\"'"
+```
 
 ---
 
@@ -171,6 +211,7 @@ ssh kd211 "mkdir -p /var/backups/jiajiao && sudo -n docker exec jiajiao-mysql-1 
 | Docker 守护 | 删 `daemon.json` 里 `live-restore`/`no-new-privileges` 后 `sudo systemctl restart docker` | `/etc/docker/daemon.json` |
 | 主机加固整体 | `deploy/harden-server.sh` 幂等，可重跑到一致状态 | 脚本本身即「期望状态」 |
 | 数据 | `gunzip < xx.sql.gz \| docker exec -i jiajiao-mysql-1 mysql -uroot -p<口令>` | `/var/backups/jiajiao/` |
+| 备份定时任务 | `sudo systemctl disable --now jiajiao-backup.timer`（停用）；重装用 `deploy/install-backup.sh` | `/opt/jiajiao/bin/*.sh` + `/etc/systemd/system/jiajiao-backup*` |
 
 **证书/域名切换失败**：`node tools/switch-domain.mjs` 内部已做「失败自动回滚到 `/etc/nginx/jiajiao.conf.bak`」，重跑即可。
 
@@ -194,7 +235,7 @@ ssh kd211 "mkdir -p /var/backups/jiajiao && sudo -n docker exec jiajiao-mysql-1 
 
 ## 7. 待办（运维侧尚未完成）
 
-1. **备份定时任务**：每日 `mysqldump` + 保留 14 份 + 异地/对象存储归档（B3 缺口）。
+1. ~~**备份定时任务**~~：✅ 已完成（2026-10-23，`jiajiao-backup.timer` 每日 03:20、DB 留 14 份、上传卷留 7 份、失败走 `OnFailure` + webhook）。仍缺**异地/对象存储归档**（同一台机器上，机器挂了备份也没了）。
 2. **监控告警**：Prometheus/Grafana + 告警规则（错误率/延迟/担保台账不平/任务卡死）。
 3. **日志集中化**：Loki/ELK + `trace_id` 串联（当前只有 `docker logs` 与 Nginx 文件）。
 4. **域名备案**：备案通过后 `node tools/switch-domain.mjs` 切回 `https://www.kd211.com`。
@@ -210,3 +251,4 @@ ssh kd211 "mkdir -p /var/backups/jiajiao && sudo -n docker exec jiajiao-mysql-1 
 | 2026-10-23 | 发现域名未备案被拦截（302 → webblock、HTTPS 重置） | 增加按 IP 的 80 `default_server` 测试入口 |
 | 2026-10-23 | 主机加固（SSH 仅公钥/禁 root、ufw、fail2ban、自动更新、sysctl、Docker、Nginx 限速） | 密码与 root 登录被拒；限速第 6 次起 429；业务冒烟 17/17 无回归 |
 | 2026-10-23 | 新增 `SMS_MOCK_LOG_CODE`（测试环境从日志取验证码） | 日志取码 → 验证码登录成功；接口仍不回显 `devCode` |
+| 2026-10-23 | 每日备份定时任务（systemd timer + 保留策略 + 防空校验 + 失败 webhook） | 手动/定时均可跑；剪枝 18→14 正确；故意制造失败 → 退出码 1、`LAST_STATUS` 记原因、`OnFailure` 触发通知、webhook 收到**合法 JSON**（HTTP 200）；备份 11 KB / 37 表 + 上传卷 4 KB |

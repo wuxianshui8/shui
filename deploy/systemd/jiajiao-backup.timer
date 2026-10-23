@@ -1,0 +1,13 @@
+[Unit]
+Description=每日 03:20 备份家教平台数据库（错过则开机后补跑）
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+# 错开整点、避免和其它任务撞车
+RandomizedDelaySec=600
+# 服务器重启/关机错过的时间点，开机后补跑一次
+Persistent=true
+Unit=jiajiao-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -27,7 +27,7 @@
 | --- | --- | --- | --- |
 | B1 | HTTPS / 域名 / 证书 | ❌ 应用只监听 HTTP（令牌为 Bearer，明文会被截获） | 前置 Nginx/Caddy 或云 LB + ACME 自动续期；`TRUST_PROXY=1` 已在 compose 中预留（**务必只在前置代理时打开**，否则登录锁定可被伪造 XFF 绕过） |
 | B2 | 多实例水平扩容 | ❌ 验证码/登录失败计数、规则配置内存缓存均为**单实例**（规则缓存有 300s TTL） | 按 `docs/SECURITY.md §8 第 11 条` 全部迁到 Redis；会话无状态（当前令牌自包含，可直接多实例）、补共享限流 |
-| B3 | 备份自动化与演练 | ✅ **已完成**：`npm run db:backup`（自检「表 37 + 含 orders」）/ `db:restore`（恢复前后双重校验）+ **保留策略**（`KEEP`/`--keep`，默认留 14 份，实测剪枝正确）+ `tools/backup-schedule.ps1`（Install/Uninstall/Status/RunNow，生成固定 node/docker 路径的 `backup-run.cmd` 与 `backup.log`）+ 破坏性恢复回环实测。**仍缺**：异地/对象存储归档、RPO/RTO 定义、每月恢复演练排期 | 上传对象存储（版本化 + 生命周期）+ 写一页 RPO/RTO；⚠️ 安装计划任务需管理员会话（本机 Agent 会话 `schtasks /Create` 返回 Access is denied，该段未实测，其余链路已实测） |
+| B3 | 备份自动化与演练 | ✅ **已完成（2026-10-23 起每日自动跑）**：服务器上装了 `jiajiao-backup.timer`（每日 03:20，错峰 ±10 分钟，关机错过开机补跑）→ `backup-db.sh` 容器内 `mysqldump` + 上传卷打包，**防空校验**（gzip 完整性 + 表数 <30 判失败）+ 原子改名，保留 DB 14 份 / 上传 7 份；失败由 `OnFailure=jiajiao-backup-notify.service` 写 journal（error）并可选 POST `BACKUP_WEBHOOK_URL`。本地另有 `npm run db:backup`/`db:restore`（恢复前后双重校验）与保留策略实测。实测：剪枝 18→14 正确、故意造失败 → 退出码 1 + `LAST_STATUS` 记原因 + webhook 收到合法 JSON（HTTP 200）。**仍缺**：异地/对象存储归档（本机备份跟着机器一起没）、RPO/RTO 定义、每月恢复演练排期；`schtasks` 安装段本机权限不足未实测（服务器侧改用 systemd timer，已实测） | 备份推到对象存储（版本化 + 生命周期）+ 写一页 RPO/RTO；每月做一次真实恢复演练 |
 | B4 | 监控与告警 | 🟡 有 `/api/health`（匿名仅可用性）与 `/api/health/detail`（管理员，含用户数/订单/担保额/DB+Redis 延迟） | 接 Prometheus 指标端点 + Grafana 面板 + 告警规则（错误率/延迟/担保台账不平/任务卡死） |
 | B5 | 日志集中化 | 🟡 应用日志走 stdout（容器 `docker logs` 可看） | 接 Loki/ELK：结构化 JSON 日志、保留策略、按 `trace_id` 串联；审计日志已在库内（`audit_logs`） |
 | B6 | 灰度与回滚 | ❌ 无镜像 tag 策略、无一键回滚脚本 | 镜像按 git sha 打 tag，compose 固定 tag；回滚 = 改 tag + `up -d`；DB 变更走向后兼容的两步法 |
