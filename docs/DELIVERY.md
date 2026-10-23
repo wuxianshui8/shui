@@ -11,7 +11,7 @@
 | 交付物 | 位置 | 说明 |
 | --- | --- | --- |
 | 参考实现（5 端 UI + 后端） | `server/`、`web/` | 零构建原生 ESM + SQLite，作为 UI 蓝本；7 套测试套件 |
-| 正式实现后端 | `apps/api-nest/` | NestJS 10 + MySQL 8 + Redis，**159 个路由 / 18 个控制器** |
+| 正式实现后端 | `apps/api-nest/` | NestJS 10 + MySQL 8 + Redis，**160 个路由 / 18 个控制器** |
 | PC 管理后台 | `apps/web-admin/` | Vue3 + Vite + Element Plus，**20 个页面**（含自助改密） |
 | 移动四端 | `apps/web-mobile/` | uni-app（H5 + 微信小程序双产物），**14 个页面** |
 | 容器化交付 | `deploy/` | Dockerfile + compose（本地开发版 / 服务器版）+ Nginx + 系统加固 + 备份 timer |
@@ -74,8 +74,8 @@ node tools/switch-domain.mjs
 | 数据规模 | **37 张表**、13 用户 / 11 订单 / 3 教员档案 / 17 组规则（含冒烟产生的数据） |
 | 业务链路冒烟 | `npm run smoke:online` → **17/17 通过**：游客浏览 → 家长/教员/管理员登录 → 下单 → 担保支付 → 支付幂等 → 家长申请取消（不退款）→ 教员待处理列表 → 同意退款 → 后台可查 → 越权 403 |
 | 单元测试 | **173 用例 / 23 模块**，行覆盖 **99.40%**（`npm run test:unit`，覆盖率门槛默认即门禁） |
-| 接口契约 | **159 路由 / 18 控制器**（`npm run api:doc:check` 保证文档与代码不漂移） |
-| 前端产物契约 | 后台 **65** 项 / 移动 **109** 项 |
+| 接口契约 | **160 路由 / 18 控制器**（`npm run api:doc:check` 保证文档与代码不漂移） |
+| 前端产物契约 | 后台 **70** 项 / 移动 **109** 项 |
 | 集成门禁 | `npm run ci:full` **30 步全绿**（约 5 分钟） |
 | CI | GitHub Actions：`e002f97` 在 master 与 main 均 **success** |
 | 安全加固 | SSH 仅公钥（`passwordauthentication no` / `permitrootlogin no`）、ufw 只放 22/80/443、fail2ban 运行中、自动安全更新 enabled；外网探测 3306/6379/4300 **均 closed** |
@@ -159,7 +159,7 @@ MySQL 8（容器，卷持久化）    Redis 7（容器）
 | 多实例扩容 | 验证码/失败计数/规则缓存在进程内（单实例） |
 | 灰度回滚 | 镜像无 tag 策略（当前用 `latest` + 手工留 tar） |
 | 镜像 SBOM/签名 | 未做（需 `syft`/`cosign`） |
-| Playwright UI 回归 | 未做（现有前端为产物级契约 65 + 109） |
+| Playwright UI 回归 | 未做（现有前端为产物级契约 70 + 109） |
 | 地图合规 | 在线瓦片用无 key 公开端点，生产需换自有/天地图 + 审图号；缺地址逆地理编码 |
 
 > 完整清单与"补齐条件"见 `docs/GO-LIVE-CHECKLIST.md`。

@@ -435,7 +435,7 @@ export class AdminOpsService {
   /* ---------------- 管理员账号（需求 4.5.9：账号管理，不再是内置单管理员）---------------- */
   async admins() {
     const rows = await this.ds.query(
-      "SELECT `id`,`nickname`,`phone`,`status`,`created_at`,`last_login_at` FROM `users` WHERE `role` = 'admin' ORDER BY `id`",
+      "SELECT `id`,`nickname`,`phone`,`status`,`created_at`,`last_login_at` FROM `users` WHERE `role` = 'admin' AND `deleted_at` IS NULL ORDER BY `id`",
     );
     return rows.map((a: any) => ({
       id: Number(a.id),
@@ -486,6 +486,56 @@ export class AdminOpsService {
       await audit(m, ctx, "admin.admin.toggle", "users:" + target.id, { status: next });
     });
     return { status: next };
+  }
+
+  /**
+   * 删除管理员账号。
+   * - 护栏：不能删自己；至少要保留一个启用状态的管理员
+   * - 有审批/审计痕迹 → 软删除（打 deleted_at + 匿名化，保留 id 供审计与工单引用）
+   * - 完全空白（刚建还没用过）→ 物理删除
+   */
+  async deleteAdmin(ctx: any, id: number) {
+    const target: any = await this.one("SELECT * FROM `users` WHERE `id` = ?", [id]);
+    if (!target || target.role !== "admin" || target.deleted_at) throw notFound("管理员账号不存在");
+    if (Number(ctx.user.uid) === Number(target.id)) throw forbidden("不能删除当前登录的管理员账号");
+    const activeOthers = await this.cnt(
+      "SELECT COUNT(*) AS c FROM `users` WHERE `role` = 'admin' AND `status` = 'active' AND `deleted_at` IS NULL AND `id` <> ?",
+      [id],
+    );
+    if (target.status === "active" && activeOthers === 0) throw biz("LAST_ADMIN", "至少保留一个启用状态的管理员");
+
+    const kept: string[] = [];
+    const add = (n: number, label: string) => {
+      if (n) kept.push(label.replace("{n}", String(n)));
+    };
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `audit_logs` WHERE `actor_id` = ?", [id]), "{n} 条操作日志");
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `withdrawals` WHERE `reviewed_by` = ?", [id]), "{n} 笔提现审批");
+    add(await this.cnt("SELECT COUNT(*) AS c FROM `invoices` WHERE `handled_by` = ?", [id]), "{n} 笔发票受理");
+
+    const nickname = target.nickname ?? null;
+    const phone = maskPhone(target.phone ?? "");
+
+    if (kept.length) {
+      // 软删除：账号立即失效、个人信息清空，但 id 留在库里，历史审计与审批仍可追溯
+      await this.ds.transaction(async (m) => {
+        await m.query(
+          "UPDATE `users` SET `status` = 'disabled', `deleted_at` = ?, `phone` = NULL, `wx_openid` = NULL, " +
+            "`nickname` = ?, `avatar` = NULL, `real_name` = NULL, `id_card` = NULL, `password_hash` = NULL, " +
+            "`device_fp` = NULL, `reg_ip` = NULL, `must_change_password` = 0, " +
+            "`token_version` = COALESCE(`token_version`,0) + 1 WHERE `id` = ?",
+          [nowIso(), "已删除管理员#" + id, id],
+        );
+        await audit(m, ctx, "admin.admin.delete", "users:" + id, { mode: "soft", nickname, phone, kept });
+      });
+      return { id, mode: "soft", kept };
+    }
+
+    await this.ds.transaction(async (m) => {
+      await m.query("DELETE FROM `wallets` WHERE `user_id` = ?", [id]);
+      await m.query("DELETE FROM `users` WHERE `id` = ? AND `role` = 'admin'", [id]);
+      await audit(m, ctx, "admin.admin.delete", "users:" + id, { mode: "hard", nickname, phone, kept: [] });
+    });
+    return { id, mode: "hard", kept: [] };
   }
 
   /* ---------------- 细粒度权限矩阵（需求 4.5.9）---------------- */

@@ -322,4 +322,10 @@ export class AdminOpsController {
   async toggleAdmin(@Param("id") id: string, @Req() req: any) {
     return ok(await this.svc.toggleAdmin(req, Number(id)));
   }
+
+  /** 删除管理员账号（有审计/审批痕迹走软删除，空白账号物理删除） */
+  @Delete("admins/:id")
+  async deleteAdmin(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.svc.deleteAdmin(req, Number(id)));
+  }
 }

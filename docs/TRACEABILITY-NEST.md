@@ -5,7 +5,7 @@
 - 参考实现（`server/` + SQLite + 原生 ESM 前端）的追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md)；两套实现共用同一套 `/api` 契约。
 - 本文件引用的每个 `方法 /api/路径` 都会被 `tools/check-trace-nest.mjs` 与控制器源码比对，**引用了不存在的接口会直接报错**；
   引用的脚本文件缺失同样报错。校验命令：`npm run trace:check`。
-- 接口总表（自动生成、148 路由 / 18 控制器）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
+- 接口总表（自动生成、160 路由 / 18 控制器）见 [`docs/API-NEST.md`](API-NEST.md)；性能基线见 [`docs/PERF.md`](PERF.md)。
 - 门禁简称：`e2e §n` = `test/e2e.test.js` 第 n 段；`rules` = `test/rules.test.js`；`sec` = `test/security.test.js`；
   `conc` = `tools/concurrency-mysql.mjs`；`races` = `tools/check-money-races.mjs`；`priv` = `tools/check-privacy-auth.mjs`；
   `hc` = `tools/healthcheck-mysql.mjs`；`admin` = `tools/check-admin-spa.mjs`；`mobile` = `tools/check-mobile-spa.mjs`。
@@ -113,10 +113,10 @@
 
 | 条目 | 实现 | 验证 |
 | --- | --- | --- |
-| 6.1 后端 NestJS | `apps/api-nest/`（45 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
+| 6.1 后端 NestJS | `apps/api-nest/`（46 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密） | `admin` 65 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员） | `admin` 70 项 |
 | 6.1 移动端 uni-app | `apps/web-mobile/`（14 页，H5 + 微信小程序双产物，含入驻认证、定位接单、附近教员/立即预约/订单详情） | `mobile` 109 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
@@ -147,9 +147,9 @@
 | 条目 | 交付物 | 验证 |
 | --- | --- | --- |
 | 9.1 可运行系统 | `start.bat` → MySQL 3307 + Redis 6380 + NestJS 4300（自动建库、灌数据、编译） | 六端 200 实测（README 顶部） |
-| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 148 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
+| 9.2 接口文档 | `docs/API-NEST.md`（自动生成 160 路由 / 18 控制器）+ `docs/API.md`（参考实现） | `npm run api:doc:check` |
 | 9.3 追溯与偏离 | 本文件 + `docs/TRACEABILITY.md` + `docs/MIGRATION.md` | `npm run trace:check` |
-| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 65 + mobile 109 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **739** | `npm run ci` / `npm run ci:full` |
+| 9.4 测试门禁 | e2e 173 + sec 53 + rules 50 + conc 23 + races 27 + priv 38 + perm 17 + admin 70 + mobile 109 + 支付 32 + 镜像运行契约 33 + 证件识别 20 + 围栏 72 + verify 15 + hc 12 = **744** | `npm run ci` / `npm run ci:full` |
 | 9.5 性能报告 | `docs/PERF.md`（两轮实测 + 优化记录 + 性能边界） | `npm run nest:bench` |
 
 ## 偏离与说明（逐条给出原因）

@@ -280,6 +280,24 @@ const selfDisable = await api("POST", "/admin/admins/" + (login.body.data.user.i
 assert(selfDisable.status === 403 && /当前登录/.test(selfDisable.body?.message || ""),
   "管理员账号页：禁止禁用自己（" + selfDisable.body?.message + "）");
 
+
+  // 删除管理员：不能删自己；刚建的空白账号物理删除；删完再从列表里消失；重复删 404
+  const selfDelete = await api("DELETE", "/admin/admins/" + login.body.data.user.id, { token });
+  assert(selfDelete.status === 403 && /当前登录/.test(selfDelete.body?.message || ""),
+    "管理员账号页：禁止删除自己（" + selfDelete.body?.message + "）");
+  const delNew = await api("DELETE", "/admin/admins/" + newAdminId, { token });
+  assert(delNew.status === 200 && ["hard", "soft"].includes(delNew.body.data?.mode),
+    "管理员账号页：删除刚建的管理员（mode=" + delNew.body.data?.mode + "，保留 " +
+      ((delNew.body.data?.kept || []).join("、") || "无历史") + "）");
+  const afterAdminDel = await api("GET", "/admin/admins", { token });
+  assert(!(afterAdminDel.body.data || []).some((a) => a.id === newAdminId),
+    "管理员账号页：删除后不再出现在列表（软删除也隐藏）");
+  const delAgain = await api("DELETE", "/admin/admins/" + newAdminId, { token });
+  assert(delAgain.status === 404, "管理员账号页：重复删除返回 404（" + delAgain.status + "）");
+  const admAssets = (await import("node:fs")).readdirSync(new URL("../apps/web-admin/dist/assets", import.meta.url));
+  const adminsChunk = admAssets.filter((f) => f.startsWith("Admins-") && f.endsWith(".js"));
+  assert(adminsChunk.length === 1, "管理员账号页分包存在（Admins-" + adminsChunk.length + "，含删除按钮）");
+
 /* ---------- 权限矩阵页（需求 4.5.9） ---------- */
 const perms = await api("GET", "/admin/permissions", { token });
 assert(perms.status === 200 && (perms.body.data.keys || []).length === 4, "权限矩阵页：/admin/permissions 返回 4 个权限点");

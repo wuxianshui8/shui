@@ -52,6 +52,30 @@ async function toggle(row) {
     if (e !== "cancel") ElMessage.error(e.message || String(e));
   }
 }
+
+async function remove(row) {
+  const self = row.id === (auth.user || {}).id;
+  try {
+    await ElMessageBox.confirm(
+      self
+        ? "不能删除当前登录的管理员账号（后端会拒绝）。仍要尝试吗？"
+        : "确认删除管理员「" + row.nickname + "」？\n\n" +
+            "· 如果这个账号做过审批/操作（有日志、提现或发票处理记录），会做软删除：账号立即失效、手机号与口令清空，但 id 与历史记录保留以便审计追溯。\n" +
+            "· 如果是从未使用过的空白账号，会直接物理删除。",
+      "删除管理员",
+      { type: "warning", confirmButtonText: "确认删除", confirmButtonClass: "el-button--danger" },
+    );
+    const r = await api.del("/admin/admins/" + row.id);
+    ElMessage.success(
+      r.mode === "soft"
+        ? "已删除（软删除，保留历史：" + (r.kept || []).join("、") + "）"
+        : "已删除（空白账号，物理删除）",
+    );
+    load();
+  } catch (e) {
+    if (e !== "cancel") ElMessage.error(e.message || String(e));
+  }
+}
 </script>
 
 <template>
@@ -87,11 +111,12 @@ async function toggle(row) {
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column prop="lastLoginAt" label="最后登录" width="180" />
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button size="small" :type="row.status === 'active' ? 'danger' : 'primary'" text @click="toggle(row)">
               {{ row.status === "active" ? "禁用" : "启用" }}
             </el-button>
+            <el-button size="small" type="danger" text @click="remove(row)" data-test="admin-delete">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
