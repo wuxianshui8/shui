@@ -133,13 +133,14 @@ async function changePassword() {
       <view class="muted" style="margin-bottom: 24rpx">移动端 · uni-app（家长 / 教员 / 业务员 / 区域代理）</view>
 
       <template v-if="!needChange">
-        <!-- 微信一键登录放在最上面：家长端最常见的入口 -->
-        <view class="btn wechat" @click="wechatLogin">{{ loading ? "登录中…" : "💬 微信一键登录" }}</view>
-        <view class="or"><text class="or-text">或使用手机号口令登录</text></view>
-
         <input v-model="phone" class="input" placeholder="手机号" />
         <input v-model="password" class="input" password placeholder="口令" />
-        <view class="btn" @click="login">{{ loading ? "登录中…" : "登录" }}</view>
+        <view class="btn" @click="login">{{ loading ? "登录中…" : "登录 / 注册" }}</view>
+
+        <!-- 微信一键登录排在「登录 / 注册」下面：先用手机号，或直接微信 -->
+        <view class="or"><text class="or-text">或</text></view>
+        <view class="btn wechat" @click="wechatLogin">{{ loading ? "登录中…" : "💬 微信一键登录" }}</view>
+
         <view class="muted" style="margin-top: 20rpx">
           演示：家长 13900000301 / 教员 13900000201 / 业务员 13900000101 / 代理 13900000010，口令均 a123456
         </view>
@@ -166,7 +167,7 @@ async function changePassword() {
 .or {
   display: flex;
   align-items: center;
-  margin: 28rpx 0 20rpx;
+  margin: 18rpx 0;
 }
 .or-text {
   flex: 1;

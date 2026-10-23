@@ -219,8 +219,6 @@ function loginHtml() {
     '<div class="brandmark" aria-hidden="true">👨‍👩‍👦</div>' +
     "<h2>家长端登录</h2>" +
     '<p class="lead">地图找教员 · 发布家教需求 · 平台担保支付 · 课后评价<br>登录后即可发布需求、预约教员、查看订单<br>演示账号 <b>13900000301</b>，点击「获取验证码」自动填入</p>' +
-    '<button class="btn btn-wechat btn-block" type="button" data-lg="wechat">💬 微信一键登录</button>' +
-    '<div class="or-line"><span>或使用手机号验证码</span></div>' +
     '<div class="card mt16" style="margin-bottom:0">' +
     '<div class="field"><label for="lg-phone">手机号</label>' +
     '<input class="input" id="lg-phone" type="tel" inputmode="numeric" maxlength="11" value="13900000301" autocomplete="tel"></div>' +
@@ -230,6 +228,8 @@ function loginHtml() {
     '<label class="login-check mt8"><input type="checkbox" id="lg-agree" checked>' +
     "<span>我已阅读并同意《用户协议》《隐私政策》《退款规则》，同意平台按公示规则撮合与结算</span></label>" +
     '<button class="btn btn-primary btn-block mt16" type="button" data-lg="login">登录 / 注册</button>' +
+    '<div class="or-line"><span>或</span></div>' +
+    '<button class="btn btn-wechat btn-block" type="button" data-lg="wechat">💬 微信一键登录</button>' +
     '<button class="btn btn-sm btn-ghost btn-block mt8" type="button" data-lg="pwd" style="box-shadow:none">使用演示密码登录（a123456）</button>' +
     "</div>" +
     '<p class="tiny faint mt16 center">登录即代表同意平台仅提供信息撮合服务，教员资质由平台人工核验；不登录也能先看需求表单</p>';

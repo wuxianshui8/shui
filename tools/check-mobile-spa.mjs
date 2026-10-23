@@ -133,6 +133,21 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("/public/home"), "H5 产物使用公开首页接口（游客无需登录即可看发布需求页）");
   assert(bundle.includes("pendingDemand"), "H5 产物带「登录后自动继续发布」的草稿逻辑");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
+  // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
+  {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const loginVue = readFileSync(
+      fileURLToPath(new URL("../apps/web-mobile/src/pages/login/index.vue", import.meta.url)),
+      "utf8",
+    );
+    // 只在 <template> 里比顺序（脚本里也有「微信一键登录」的注释，按全文比会误判）
+    const tpl = loginVue.slice(loginVue.indexOf("<template>"), loginVue.indexOf("</template>"));
+    const loginAt = tpl.indexOf("登录 / 注册");
+    const wxAt = tpl.indexOf("微信一键登录");
+    assert(loginAt > 0 && wxAt > loginAt, "移动端登录页排版：登录 / 注册在上、微信一键登录在其下方");
+    assert(!/微信一键登录放在最上面/.test(loginVue), "登录页不再把微信按钮顶到最前");
+  }
 }
 // 游客接口：不发 token 也要能拿到首页与教员列表
 const guestHome = await api("GET", "/public/home?lat=30.262&lng=120.133");

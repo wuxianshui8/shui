@@ -899,6 +899,11 @@ async function loginPassword(phone) {
   assert(/guard\(homeView, \{ guest: true \}\)/.test(parentJs), "家长端首页对游客开放（不再一启动就弹登录）");
   assert(parentJs.includes("/api/public/home"), "游客首页走公开接口 /api/public/home");
   assert(parentJs.includes('data-lg="wechat"') && parentJs.includes("微信一键登录"), "登录层含「微信一键登录」按钮");
+  // 排版口径（用户反馈）：微信一键登录排在「登录 / 注册」下方，不是压在最上面
+  assert(
+    parentJs.indexOf('data-lg="login"') < parentJs.indexOf('data-lg="wechat"'),
+    "登录层排版：手机号「登录 / 注册」在上、微信一键登录在其下方",
+  );
   assert(/function requireLogin\(/.test(parentJs) && /if \(isGuest\(\)\) \{/.test(parentJs),
     "发布需求 / 立即预约等动作走 requireLogin（点动作才弹登录）");
   assert(/state\.pending = typeof pending === "function"/.test(parentJs), "登录成功后自动接着执行原动作（不丢表单）");

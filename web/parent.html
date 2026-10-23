@@ -89,13 +89,13 @@
   .code-row { display: flex; gap: 8px; }
   .code-row .btn { flex: 0 0 auto; padding: 0 14px; height: 44px; font-size: 13px; }
   .code-row .input { flex: 1; }
-  /* 微信一键登录主按钮 + 分隔线 + 关闭（先随便看看） */
+  /* 微信一键登录 + 分隔线（微信按钮排在「登录 / 注册」下方）+ 关闭（先随便看看） */
   .login-layer .login-head { display: flex; margin: -20px 0 0 -8px; }
   .login-layer .login-head .back-btn { position: static; background: rgba(17, 24, 39, .06); color: var(--ink-2); }
-  .btn-wechat { background: linear-gradient(135deg, #07c160, #06a350); color: #fff; margin-top: 18px;
+  .btn-wechat { background: linear-gradient(135deg, #07c160, #06a350); color: #fff; margin-top: 0;
     box-shadow: 0 8px 20px rgba(7, 193, 96, .28); }
   .btn-wechat:active { transform: translateY(1px); }
-  .or-line { display: flex; align-items: center; gap: 10px; margin: 20px 0 0; font-size: 11px; color: var(--ink-3); }
+  .or-line { display: flex; align-items: center; gap: 10px; margin: 14px 0; font-size: 11px; color: var(--ink-3); }
   .or-line::before, .or-line::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
   @media (prefers-reduced-motion: reduce) {
