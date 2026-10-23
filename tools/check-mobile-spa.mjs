@@ -133,6 +133,11 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("/public/home"), "H5 产物使用公开首页接口（游客无需登录即可看发布需求页）");
   assert(bundle.includes("pendingDemand"), "H5 产物带「登录后自动继续发布」的草稿逻辑");
   assert(bundle.includes("/parent/avatar") && bundle.includes("my-avatar"), "H5 产物带家长头像上传（chooseImage → /parent/avatar）");
+  // 入驻/资料修改页：资质材料按身份只显示一张证书，且排在提交按钮上面，图片用背景图自适应
+  assert(bundle.includes("教师资格证") && bundle.includes("学生证") && bundle.includes("技能证书"),
+    "H5 产物按身份类型区分证书（在职教师→教师资格证 / 学生→学生证 / 社会→技能证书）");
+  assert(bundle.includes("资质材料"), "H5 产物有「资质材料」版块");
+  assert(bundle.includes("backgroundImage"), "上传后的证件图用背景图渲染（框内 background-size: cover 自适应）");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {

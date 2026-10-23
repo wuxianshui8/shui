@@ -908,6 +908,23 @@ async function loginPassword(phone) {
     "发布需求 / 立即预约等动作走 requireLogin（点动作才弹登录）");
   assert(/state\.pending = typeof pending === "function"/.test(parentJs), "登录成功后自动接着执行原动作（不丢表单）");
 
+  // 教员端「入驻认证 / 资料修改」：资质材料按身份只显示一张证书，且排在提交/保存按钮上面
+  {
+    const teacherJs = await (await fetch(BASE + "/assets/js/teacher.js")).text();
+    assert(teacherJs.includes('data-cert="in_service"') && teacherJs.includes('data-cert="student"') && teacherJs.includes('data-cert="part_time"'),
+      "入驻认证按身份类型分区显示证书（在职教师 / 学生 / 社会）");
+    assert(teacherJs.includes('label: "教师资格证"') && teacherJs.includes('label: "学生证"') && teacherJs.includes('label: "技能证书"'),
+      "三种身份各自对应一张证书（教师资格证 / 学生证 / 技能证书）");
+    const applyCert = teacherJs.indexOf("<h3>资质材料</h3>");
+    const applySubmit = teacherJs.indexOf("提交入驻申请");
+    assert(applyCert > 0 && applySubmit > applyCert, "入驻认证：资质材料排在「提交入驻申请」按钮上面");
+    const profCert = teacherJs.indexOf("资质材料放在「保存资料」上面");
+    const saveBtn = teacherJs.indexOf("保存资料</button>");
+    assert(profCert > 0 && saveBtn > profCert, "资料修改：资质材料排在「保存资料」按钮上面");
+    assert(/\.uploader \.thumb img \{[^}]*object-fit: cover/.test(await (await fetch(BASE + "/assets/css/base.css")).text()),
+      "证件缩略图在框内 object-fit: cover（自适应不拉伸）");
+  }
+
   // 家长头像：可上传图片并设为头像（登录态），外链地址被拒，null 可恢复默认
   {
     const pngDataUrl =

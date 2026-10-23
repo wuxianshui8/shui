@@ -229,7 +229,7 @@ jobs:
           REDIS_PORT: "6379"
           PORT: "4300"
           RESTART_API: "1"
-      - name: PC 后台（58）与移动端（77）产物校验
+      - name: PC 后台（58）与移动端（80）产物校验
         run: |
           node tools/check-admin-spa.mjs
           node tools/check-mobile-spa.mjs

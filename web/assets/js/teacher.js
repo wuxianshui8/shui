@@ -1331,19 +1331,25 @@ async function profileView() {
     '<div class="form-hint">格式：星期 + 时段，多个时段用「/」分隔，每行一个星期。</div></div>' +
     '<div class="field"><label for="pf-intro">自我介绍</label>' +
     '<textarea class="textarea" id="pf-intro" name="intro" placeholder="教学经验、提分案例、教学风格">' + esc(p.intro || "") + "</textarea></div>" +
-    '<button class="btn btn-primary btn-block" type="submit">保存资料</button></form></div>' +
-    '<div class="card"><div class="card-title"><h3>资质材料</h3><span class="more">如需更新请重新提交入驻审核</span></div>' +
+    // 资质材料放在「保存资料」上面（用户反馈的排版口径），图片按身份类型显示：
+    // 身份证正反面始终显示；在职教师看教师资格证、在校大学生看学生证、社会兼职看技能证书
+    '<div class="divider"></div>' +
+    '<div class="card-title" style="margin-top:2px"><h3>资质材料</h3><span class="more">如需更新请重新提交入驻审核</span></div>' +
     kv("身份证", esc(p.idCard || "-") + (p.idCardVerified ? ' <span class="badge ok">人证一致</span>' : ' <span class="badge gray">未识别</span>')) +
     '<div class="field"><label>证件图片</label><div class="uploader">' +
-    ["idCardFrontUrl", "idCardBackUrl", "eduCertUrl", "teacherCertUrl", "skillCertUrl"]
-      .map((k) => (p[k] ? imageThumb(p[k], k) : ""))
+    [["idCardFrontUrl", "身份证正面"], ["idCardBackUrl", "身份证反面"],
+      ...({ in_service: [["teacherCertUrl", "教师资格证"]], student: [["eduCertUrl", "学生证"]], part_time: [["skillCertUrl", "技能证书"]] }[p.identityType] || [])]
+      .map(([k, label]) => (p[k] ? imageThumb(p[k], label) : ""))
       .join("") +
-    (["idCardFrontUrl", "idCardBackUrl", "eduCertUrl", "teacherCertUrl", "skillCertUrl"].some((k) => p[k])
+    ([["idCardFrontUrl", "idCardBackUrl"],
+      ...({ in_service: ["teacherCertUrl"], student: ["eduCertUrl"], part_time: ["skillCertUrl"] }[p.identityType] || [])].some((k) => p[k])
       ? ""
       : '<span class="faint tiny">未上传</span>') +
     "</div></div>" +
     (p.idCardName ? kv("证件识别姓名", esc(p.idCardName)) : "") +
-    '<p class="tiny faint mt8">已通过审核的账号修改资质需重新提交审核，当前接口不支持在线替换已审核资质。</p></div>'
+    '<p class="tiny faint mt8">当前身份类型：' + esc(identityText(p.identityType)) +
+    "。已通过审核的账号修改资质需重新提交审核，当前接口不支持在线替换已审核资质。</p>" +
+    '<button class="btn btn-primary btn-block mt16" type="submit">保存资料</button></form></div>'
   );
 
   bindPicker(bodyEl(), "pf-subjects");
@@ -1536,13 +1542,6 @@ async function applyView() {
     '<div class="field"><label for="ap-id">身份证号<span class="req">*</span></label>' +
     '<input class="input" id="ap-id" name="idCard" maxlength="18" value="" placeholder="18 位身份证号"></div></div>' +
     '<div class="form-hint" style="margin-top:-6px;margin-bottom:14px">平台不回显已提交的身份证号，重新提交审核时请再次输入完整号码。</div>' +
-    '<div class="field-row">' +
-    uploadFieldHtml({ name: "idCardFrontUrl", label: "身份证正面（人像面）", value: p.idCardFrontUrl || "", required: true, metaId: "ap-ocr-meta", hint: "必传：上传后自动识别姓名与身份证号，须与上方填写一致" }) +
-    uploadFieldHtml({ name: "idCardBackUrl", label: "身份证反面（国徽面）", value: p.idCardBackUrl || "", hint: "建议上传，审核时核对有效期与签发机关" }) +
-    "</div>" +
-    uploadFieldHtml({ name: "eduCertUrl", label: "学历证书", value: p.eduCertUrl && !String(p.eduCertUrl).startsWith("data:") ? p.eduCertUrl : "", hint: "毕业证/学位证照片，可留空" }) +
-    uploadFieldHtml({ name: "teacherCertUrl", label: "教师资格证", value: p.teacherCertUrl || "", hint: "教师资格证照片，可留空" }) +
-    uploadFieldHtml({ name: "skillCertUrl", label: "技能证书", value: p.skillCertUrl || "", hint: "如普通话等级、竞赛证书等，可留空" }) +
     '<div class="field"><label for="ap-intro">自我介绍</label>' +
     '<textarea class="textarea" id="ap-intro" name="intro" placeholder="教学经验、提分案例、教学风格">' + esc(p.intro || "") + "</textarea></div>" +
     '<div class="field"><label>擅长科目<span class="req">*</span></label>' + chipPicker("ap-subjects", dict.subjects || [], p.subjects || []) + "</div>" +
@@ -1561,6 +1560,21 @@ async function applyView() {
     '<div class="field"><label for="ap-lng">服务基点经度</label>' +
     '<input class="input" id="ap-lng" name="lng" value="' + (p.baseLng ?? DEFAULT_LNG) + '" inputmode="decimal"></div></div>' +
     '<button type="button" class="btn btn-sm btn-outline" data-fillcoord>📍 填入默认基点（' + DEFAULT_LAT + " / " + DEFAULT_LNG + "）</button>" +
+    // 资质材料放在提交按钮上面：身份证正反面必传，其余证书按「身份类型」只显示该身份需要的那一张
+    '<div class="card-title" style="margin:22px 0 10px"><h3>资质材料</h3><span class="more">身份证必传 · 证书按身份类型</span></div>' +
+    '<div class="field-row">' +
+    uploadFieldHtml({ name: "idCardFrontUrl", label: "身份证正面（人像面）", value: p.idCardFrontUrl || "", required: true, metaId: "ap-ocr-meta", hint: "必传：上传后自动识别姓名与身份证号，须与上方填写一致" }) +
+    uploadFieldHtml({ name: "idCardBackUrl", label: "身份证反面（国徽面）", value: p.idCardBackUrl || "", hint: "建议上传，审核时核对有效期与签发机关" }) +
+    "</div>" +
+    '<div data-cert="in_service">' +
+    uploadFieldHtml({ name: "teacherCertUrl", label: "教师资格证", value: p.teacherCertUrl || "", hint: "在职教师请上传教师资格证，审核通过后才能按在职教师等级派单" }) +
+    "</div>" +
+    '<div data-cert="student">' +
+    uploadFieldHtml({ name: "eduCertUrl", label: "学生证", value: p.eduCertUrl && !String(p.eduCertUrl).startsWith("data:") ? p.eduCertUrl : "", hint: "在校大学生请上传学生证（含注册页），可留空" }) +
+    "</div>" +
+    '<div data-cert="part_time">' +
+    uploadFieldHtml({ name: "skillCertUrl", label: "技能证书", value: p.skillCertUrl || "", hint: "社会兼职请上传技能/职业证书（如普通话等级、竞赛证书），可留空" }) +
+    "</div>" +
     '<div class="hint mt12">提交后进入人工审核，审核通过即可上线接单。身份证与证书仅用于平台核验，不对外展示。</div>' +
     '<button class="btn btn-primary btn-block mt16" type="submit">' + (d.applied ? "重新提交审核" : "提交入驻申请") + "</button>" +
     "</form></div>"
@@ -1569,10 +1583,18 @@ async function applyView() {
   bindPicker(bodyEl(), "ap-subjects");
   bindPicker(bodyEl(), "ap-stages");
   let identity = p.identityType || "student";
+  // 资质材料按身份类型只显示对应的那一张证书（身份证正反面始终显示）
+  const syncCertBlocks = () => {
+    $$("[data-cert]").forEach((box) => {
+      box.style.display = box.dataset.cert === identity ? "" : "none";
+    });
+  };
+  syncCertBlocks();
   $$("[data-identity]").forEach((el) => {
     el.addEventListener("click", () => {
       identity = el.dataset.identity;
       $$("[data-identity]").forEach((n) => n.classList.toggle("on", n === el));
+      syncCertBlocks();
     });
   });
   const form = $('[data-form="apply"]');

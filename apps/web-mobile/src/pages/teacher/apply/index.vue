@@ -48,6 +48,18 @@ const IDENTITY = [
 ];
 
 const editable = computed(() => status.value === "none" || status.value === "rejected");
+
+/** 按身份类型决定第三张证书：在职教师→教师资格证；在校大学生→学生证；社会兼职→技能证书 */
+const CERT_SLOT = {
+  in_service: [{ key: "teacherCertUrl", label: "教师资格证" }],
+  student: [{ key: "eduCertUrl", label: "学生证" }],
+  part_time: [{ key: "skillCertUrl", label: "技能证书" }],
+};
+const certSlot = computed(() => CERT_SLOT[form.identityType] || CERT_SLOT.student);
+const certHint = computed(() => {
+  const label = (IDENTITY.find((x) => x.value === form.identityType) || IDENTITY[0]).label;
+  return "当前身份「" + label + "」需要上传「" + certSlot.value[0].label + "」";
+});
 const statusText = computed(() => ({
   none: "尚未提交入驻资料",
   pending: "资料审核中，请耐心等待",
@@ -313,52 +325,6 @@ async function submit() {
       <input v-model="form.idCard" class="input" maxlength="18" placeholder="18 位身份证号" :disabled="!editable" />
       <view class="muted" style="margin-top: 8rpx">平台不回显已提交的身份证号，重新提交时请再次填写完整号码。</view>
 
-      <!-- 身份证正反面：上传 + 缩略图 + 识别反馈 -->
-      <view class="muted" style="margin: 22rpx 0 10rpx">身份证正面（人像面）*</view>
-      <view class="uploader">
-        <image v-if="form.idCardFrontUrl" class="shot" :src="form.idCardFrontUrl" mode="aspectFill" @click="uni.previewImage({ urls: [form.idCardFrontUrl] })" />
-        <view class="pick" @click="pickImage('idCardFrontUrl')">
-          <text class="ico">📷</text>
-          <text>{{ form.idCardFrontUrl ? "重新上传" : "上传图片" }}</text>
-        </view>
-        <view v-if="form.idCardFrontUrl" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage('idCardFrontUrl')">删除</view>
-      </view>
-      <view v-if="uploading.idCardFrontUrl" class="muted">{{ uploading.idCardFrontUrl }}</view>
-      <view
-        v-if="ocrState.text"
-        class="muted"
-        :style="{ color: ocrState.ok === true ? '#15803d' : ocrState.ok === false ? '#c02a2a' : '#999' }"
-      >{{ ocrState.text }}</view>
-
-      <view class="muted" style="margin: 22rpx 0 10rpx">身份证反面（国徽面）*</view>
-      <view class="uploader">
-        <image v-if="form.idCardBackUrl" class="shot" :src="form.idCardBackUrl" mode="aspectFill" @click="uni.previewImage({ urls: [form.idCardBackUrl] })" />
-        <view class="pick" @click="pickImage('idCardBackUrl')">
-          <text class="ico">📷</text>
-          <text>{{ form.idCardBackUrl ? "重新上传" : "上传图片" }}</text>
-        </view>
-        <view v-if="form.idCardBackUrl" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage('idCardBackUrl')">删除</view>
-      </view>
-      <view v-if="uploading.idCardBackUrl" class="muted">{{ uploading.idCardBackUrl }}</view>
-
-      <!-- 其它证书：可留空 -->
-      <template v-for="c in [
-        { key: 'eduCertUrl', label: '学历证书' },
-        { key: 'teacherCertUrl', label: '教师资格证' },
-        { key: 'skillCertUrl', label: '技能证书' },
-      ]" :key="c.key">
-        <view class="muted" style="margin: 22rpx 0 10rpx">{{ c.label }}（可留空）</view>
-        <view class="uploader">
-          <image v-if="form[c.key]" class="shot" :src="form[c.key]" mode="aspectFill" @click="uni.previewImage({ urls: [form[c.key]] })" />
-          <view class="pick" @click="pickImage(c.key)">
-            <text class="ico">📷</text>
-            <text>{{ form[c.key] ? "重新上传" : "上传图片" }}</text>
-          </view>
-          <view v-if="form[c.key]" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage(c.key)">删除</view>
-        </view>
-        <view v-if="uploading[c.key]" class="muted">{{ uploading[c.key] }}</view>
-      </template>
-
       <view class="muted" style="margin: 22rpx 0 10rpx">自我介绍</view>
       <textarea v-model="form.intro" class="input" style="min-height: 140rpx" placeholder="教学经验、提分案例、教学风格" :disabled="!editable" />
 
@@ -401,6 +367,68 @@ async function submit() {
 
       <view class="muted" style="margin: 22rpx 0 10rpx">覆盖区域描述</view>
       <input v-model="form.coverArea" class="input" placeholder="如 西湖区文三路周边 5 公里" :disabled="!editable" />
+    </view>
+
+    <!-- 资质材料：放在提交按钮上面；身份证正反面必传，第三张证书按身份类型只显示一张 -->
+    <view class="card">
+      <view class="card-title">资质材料</view>
+      <view class="muted" style="margin-bottom: 6rpx">身份证必传；{{ certHint }}</view>
+
+      <view class="muted" style="margin: 18rpx 0 10rpx">身份证正面（人像面）*</view>
+      <view class="uploader">
+        <view
+          v-if="form.idCardFrontUrl"
+          class="shot"
+          :style="{ backgroundImage: 'url(' + form.idCardFrontUrl + ')' }"
+          @click="uni.previewImage({ urls: [form.idCardFrontUrl] })"
+        ></view>
+        <view class="pick" @click="pickImage('idCardFrontUrl')">
+          <text class="ico">📷</text>
+          <text>{{ form.idCardFrontUrl ? "重新上传" : "上传图片" }}</text>
+        </view>
+        <view v-if="form.idCardFrontUrl" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage('idCardFrontUrl')">删除</view>
+      </view>
+      <view v-if="uploading.idCardFrontUrl" class="muted">{{ uploading.idCardFrontUrl }}</view>
+      <view
+        v-if="ocrState.text"
+        class="muted"
+        :style="{ color: ocrState.ok === true ? '#15803d' : ocrState.ok === false ? '#c02a2a' : '#999' }"
+      >{{ ocrState.text }}</view>
+
+      <view class="muted" style="margin: 22rpx 0 10rpx">身份证反面（国徽面）*</view>
+      <view class="uploader">
+        <view
+          v-if="form.idCardBackUrl"
+          class="shot"
+          :style="{ backgroundImage: 'url(' + form.idCardBackUrl + ')' }"
+          @click="uni.previewImage({ urls: [form.idCardBackUrl] })"
+        ></view>
+        <view class="pick" @click="pickImage('idCardBackUrl')">
+          <text class="ico">📷</text>
+          <text>{{ form.idCardBackUrl ? "重新上传" : "上传图片" }}</text>
+        </view>
+        <view v-if="form.idCardBackUrl" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage('idCardBackUrl')">删除</view>
+      </view>
+      <view v-if="uploading.idCardBackUrl" class="muted">{{ uploading.idCardBackUrl }}</view>
+
+      <!-- 按身份类型只显示对应证书：在职教师→教师资格证；在校大学生→学生证；社会兼职→技能证书 -->
+      <template v-for="c in certSlot" :key="c.key">
+        <view class="muted" style="margin: 22rpx 0 10rpx">{{ c.label }}（可留空）</view>
+        <view class="uploader">
+          <view
+            v-if="form[c.key]"
+            class="shot"
+            :style="{ backgroundImage: 'url(' + form[c.key] + ')' }"
+            @click="uni.previewImage({ urls: [form[c.key]] })"
+          ></view>
+          <view class="pick" @click="pickImage(c.key)">
+            <text class="ico">📷</text>
+            <text>{{ form[c.key] ? "重新上传" : "上传图片" }}</text>
+          </view>
+          <view v-if="form[c.key]" class="tag" style="background: #f4f6fa; color: #666" @click="removeImage(c.key)">删除</view>
+        </view>
+        <view v-if="uploading[c.key]" class="muted">{{ uploading[c.key] }}</view>
+      </template>
 
       <view class="btn" :class="{ ghost: !editable }" style="margin-top: 26rpx" @click="submit">
         {{ !editable ? statusText : submitting ? "提交中…" : status === "rejected" ? "重新提交审核" : "提交入驻申请" }}
@@ -414,7 +442,13 @@ async function submit() {
 
 <style scoped>
 .uploader { display: flex; align-items: center; gap: 16rpx; flex-wrap: wrap; }
-.uploader .shot { width: 168rpx; height: 112rpx; border-radius: 12rpx; background: #f1f4f9; }
+/* 上传后的图片在框内自适应：等比铺满、居中裁切（不拉伸、不留白边）；
+   用背景图而不是 <image>，因为这一版 uni-app 的 H5 端 <image :src> 不会把动态 src 落到 DOM */
+.uploader .shot {
+  width: 168rpx; height: 112rpx; border-radius: 12rpx; background-color: #f1f4f9;
+  background-size: cover; background-position: center center; background-repeat: no-repeat;
+  border: 1rpx solid #e2e8f2;
+}
 .uploader .pick {
   width: 168rpx; height: 112rpx; border-radius: 12rpx; border: 1rpx dashed #c9d3e0; background: #fbfcfe;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx;
