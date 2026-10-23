@@ -64,6 +64,8 @@ services:
       TRUST_PROXY: "1"
       JOBS_ENABLED: ${JOBS_ENABLED:-1}
       SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      # 仅测试/预发：mock 短信时把验证码打进日志（默认 0，生产不要开）
+      SMS_MOCK_LOG_CODE: ${SMS_MOCK_LOG_CODE:-0}
       TENCENT_SMS_SECRET_ID: ${TENCENT_SMS_SECRET_ID:-}
       TENCENT_SMS_SECRET_KEY: ${TENCENT_SMS_SECRET_KEY:-}
       TENCENT_SMS_SDK_APP_ID: ${TENCENT_SMS_SDK_APP_ID:-}

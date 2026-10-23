@@ -265,6 +265,17 @@ node tools/deploy-remote.mjs --status  # 只看容器与健康
 
 **HTTPS（2026-10-23 安全组放行 443 后切完）**：Let's Encrypt 证书 `www.kd211.com`（有效期至 2027-01-21），`certbot.timer` 自动续期且 `certbot renew --dry-run` 通过；站点加 `Strict-Transport-Security: max-age=15552000`（**不带 `includeSubDomains`**，避免影响其它子域）+ `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`；80 段保留 `/.well-known/acme-challenge/` 直出，保证续期不被跳转吃掉。
 
+**测试环境怎么拿短信验证码**（没有真实短信网关时）：`.env` 里设 `SMS_MOCK_LOG_CODE=1`，mock 通道会把验证码写进容器日志（手机号仍脱敏、日志带「仅限测试环境」标记），接口**不会**回显 `devCode`（生产铁律不变）。
+
+```bash
+curl -s -X POST http://127.0.0.1:4300/api/auth/send-code -H 'Content-Type: application/json' -d '{"phone":"13900000301"}'
+docker logs --tail 20 jiajiao-app-1 | grep 'SMS_MOCK_LOG_CODE=1'
+# [sms:mock] 未配置真实短信通道（SMS_MOCK_LOG_CODE=1，仅限测试环境）验证码=751202 手机号=139****0301 有效期=300s
+```
+
+2026-10-23 实测：日志取到码 `751202` → `POST /api/auth/login` 登录成功拿到 token；同一接口的响应里依然没有 `devCode`。
+⚠️ 默认 `0`（关闭）；**对外生产环境不要开**，否则日志出现验证码等于验证码泄露。
+
 **部署后回归**：`npm run smoke:online`（`tools/smoke-online.mjs`）跑真实业务链路——健康检查 → 游客浏览 → 家长/教员/管理员三种登录 → 下单 → 担保支付 → 支付幂等 → 家长申请取消（不退款）→ 教员待处理列表 → 同意退款 → 后台可查 → 非本单教员退款 403。指定环境：
 
 ```powershell

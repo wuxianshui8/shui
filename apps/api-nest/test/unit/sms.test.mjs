@@ -199,6 +199,33 @@ test("MockSmsSender：记录 outbox 且日志只出现脱敏手机号", async ()
   }
 });
 
+test("MockSmsSender：SMS_MOCK_LOG_CODE=1 才把验证码打进日志（默认不打）", async () => {
+  const orig = console.warn;
+  const origFlag = process.env.SMS_MOCK_LOG_CODE;
+  const warns = [];
+  console.warn = (...a) => warns.push(a.join(" "));
+  try {
+    // 默认（未开开关）：日志里不得出现验证码
+    delete process.env.SMS_MOCK_LOG_CODE;
+    await new MockSmsSender().sendCode("13900000001", "445566", 300);
+    assert.ok(!warningsHasCode(warns, "445566"), "默认不得打印验证码：" + wins(warns));
+
+    // 打开开关：日志里出现验证码，但手机号仍脱敏
+    warns.length = 0;
+    process.env.SMS_MOCK_LOG_CODE = "1";
+    await new MockSmsSender().sendCode("13900000001", "778899", 300);
+    assert.ok(warningsHasCode(warns, "778899"), "开了开关应打印验证码：" + wins(warns));
+    assert.ok(warns.some((w) => w.includes("139****0001")), "手机号仍要脱敏：" + wins(warns));
+    assert.ok(!warns.some((w) => w.includes("13900000001")), "不得出现完整手机号");
+    assert.ok(warns.some((w) => w.includes("仅限测试环境")), "日志要标明仅限测试环境：" + wins(warns));
+  } finally {
+    console.warn = orig;
+    if (origFlag === undefined) delete process.env.SMS_MOCK_LOG_CODE;
+    else process.env.SMS_MOCK_LOG_CODE = origFlag;
+  }
+});
+
+const warningsHasCode = (list, code) => list.some((w) => w.includes(code));
 const wins = (a) => a.join(" | ");
 
 test("MockSmsSender：outbox 有上限，不会无限增长", async () => {

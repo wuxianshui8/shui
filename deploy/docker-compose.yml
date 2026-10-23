@@ -58,6 +58,8 @@ services:
       DEV_SMS: "0"
       # 短信通道（A1）：默认 mock（验证码只写服务端日志）；上线改为 tencent 并配齐下面 5 项
       SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      # 仅测试环境：mock 短信时把验证码打进日志（默认 0；生产不要开）
+      SMS_MOCK_LOG_CODE: ${SMS_MOCK_LOG_CODE:-0}
       TENCENT_SMS_SECRET_ID: ${TENCENT_SMS_SECRET_ID:-}
       TENCENT_SMS_SECRET_KEY: ${TENCENT_SMS_SECRET_KEY:-}
       TENCENT_SMS_SDK_APP_ID: ${TENCENT_SMS_SDK_APP_ID:-}
