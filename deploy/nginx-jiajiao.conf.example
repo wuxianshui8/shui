@@ -26,8 +26,9 @@ server {
 
 # --- HTTPS ---
 server {
-    listen 443 ssl;
-    http2 on;
+    # nginx < 1.25（如 Ubuntu 22.04 自带的 1.18）用下面这种写法；
+    # nginx >= 1.25 请拆成 `listen 443 ssl;` + `http2 on;`
+    listen 443 ssl http2;
     server_name DOMAIN;
 
     ssl_certificate     /etc/letsencrypt/live/DOMAIN/fullchain.pem;
@@ -53,7 +54,7 @@ server {
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade           $http_upgrade;
-        proxy_set_header Connection        $connection_upgrade;
+        # 本应用没有 WebSocket，这两行可整体删掉（删掉就不需要下面的 map）
     }
 
     # 健康检查不写访问日志，避免刷日志

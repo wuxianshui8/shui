@@ -261,9 +261,10 @@ node tools/deploy-remote.mjs --status  # 只看容器与健康
 
 实测环境（2026-10-23）：腾讯云 Ubuntu 22.04 / 2 vCPU / 3.6G / 50G，`docker.io 29.1.3` + `docker-compose-v2 2.40.3`（Ubuntu 仓库直装），`registry-mirrors` 用 `mirror.ccs.tencentyun.com` + `docker.m.daocloud.io`（该机 **Docker Hub 与 GitHub 均不可达**，所以不要在服务器上 `git clone` 或 `get.docker.com`）。
 
-**实测结果**：三容器 healthy；`www.kd211.com` 经 Nginx 反代，`/api/health`、`/admin-vue/`、`/m/`、`/parent.html` 全部 200；家长账号 `13900000301` 真实登录拿到 token；后台登录后总览读到真实数据（12 用户 / 3 单 / GMV ¥200）；证书 Let's Encrypt 签发（`www.kd211.com`，有效期至 2027-01-21，`certbot.timer` 自动续期）。
+**实测结果**：三容器 healthy；`https://www.kd211.com` 经 Nginx 反代，`/api/health`、`/admin-vue/`、`/m/`、`/parent.html` 全部 **200**，`http://` 一律 **301** 跳 HTTPS；家长与管理员账号真实登录均拿到 token；后台登录后总览读到真实数据（12 用户 / 3 单 / GMV ¥200）；图片上传 → 落盘 → 经 Nginx 取回 200 / `image/png`；客户端证书校验 `ssl_verify=0`（真实信任链）。
 
-⚠️ 当前两点限制：
+**HTTPS（2026-10-23 安全组放行 443 后切完）**：Let's Encrypt 证书 `www.kd211.com`（有效期至 2027-01-21），`certbot.timer` 自动续期且 `certbot renew --dry-run` 通过；站点加 `Strict-Transport-Security: max-age=15552000`（**不带 `includeSubDomains`**，避免影响其它子域）+ `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`；80 段保留 `/.well-known/acme-challenge/` 直出，保证续期不被跳转吃掉。
 
-1. **安全组只放行了 80，443 未放行** —— 因而已**暂时**让 80 直接反代（不加 80→443 跳转），等 443 放行后把 `80` 段里的 `location /` 换成 `return 301 https://$host$request_uri;` 即可（站点配置里有注释标记）。
-2. **apex `kd211.com` 还没有 A 记录**（只有 `www`）—— 需要补一条 A 记录指向服务器 IP，否则 `https://kd211.com` 打不开、证书也只签了 `www`。
+⚠️ 仍缺一项：
+
+1. **apex `kd211.com` 还没有 A 记录**（只有 `www`）—— 需要补一条 A 记录指向服务器 IP，否则 `https://kd211.com` 打不开，证书也需重新扩到 apex。
