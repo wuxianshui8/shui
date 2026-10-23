@@ -79,22 +79,29 @@
 - 凭证必须走环境变量或密钥管理（B7），**不得写入仓库**；`.env` 已在 `.gitignore`；
 - 日志里不得出现完整手机号/证件号（现有 `maskPhone` 已覆盖接口返回，短信网关日志需另行脱敏）。
 
-## 6. 落地进度（2026-10-22）
+## 6. 落地进度（2026-10-23）
 
 | 项 | 状态 | 已做 | 未做 |
 | --- | --- | --- | --- |
 | 短信（A1，腾讯云） | ✅ 代码完成，待密钥 | `src/integrations/sms/`：TC3-HMAC-SHA256 签名、SendSms 请求体、错误码分支、mock 兜底、`SMS_PROVIDER` 工厂、启动即校验配置；`sendCode` 先下发后落码；单测覆盖签名与错误分支 | 真实下发（需 5 项密钥 + 已备案签名/模板） |
-| 支付（A2，微信支付 v3） | 🟡 通道层完成 | `src/integrations/pay/`：`PayProvider` 端口、mock（本地/自动化）、微信 v3 实现（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款）；单测用本地 RSA 密钥对与自加密验证，**不需要商户号** | ① 订单流程接线（`orders.pay` 拆「建预支付单 → `payments.status=pending` → 回调确认」）；② 回调路由 `/api/pay/wechat/notify`（原始报文 + 头部透传）；③ 金额/单号一致性校验与重复回调幂等；④ 渠道对账文件解析 |
-| 打款（提现出款） | ⬜ 未做（方案已定：线下打款 + 后台确认） | — | `reviewWithdrawal` 通过时标注 `channel=offline` 与打款凭证字段；UI 文案「线下已打款」；对账口径说明 |
+| 支付（A2，微信支付 v3） | 🟡 通道层 + 服务端接线完成，待商户号与前端唤起 | `src/integrations/pay/`：`PayProvider` 端口、mock（本地/自动化）、微信 v3 实现（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款）；`orders.pay` 已拆「建预支付单（`payments.status=pending`、`trade_no=PREPAY:<单号>`）→ 渠道回调确认」，支付/退款回调路由 + 幂等入账 + 超时关单 + 渠道退款均就绪；对账 `npm run pay:recon` 可跑；单测用本地 RSA 密钥对与自加密验证，**不需要商户号** | ① 商户号凭证（8 项 `WECHAT_PAY_*`）+ 公网 HTTPS 回调地址；② **前端唤起支付**——小程序 `uni.requestPayment(params)`、公众号 H5 `WeixinJSBridge.invoke('getBrandWCPayRequest', params)`，两侧代码里都还没有；③ `openId` 取用——真实通道缺则报 `OPENID_REQUIRED`，现在只认前端 `body.openId`，而 `users.wx_openid` 已随微信登录落库、建议服务端兜底；④ 对账单 `--download`（需商户 APIv3 证书） |
+| 打款（提现出款） | 🟡 后台确认已实现，无真实代付通道 | `reviewWithdrawal` 通过即把 `withdrawals.status` 置 `paid` + 记 `reviewed_by/reviewed_at` + 通知用户「已打款」；**钱仍是线下人工转**，无代付 API、无打款凭证字段与打款失败回滚 | ① 接微信商家转账/银行代付（或明确长期线下打款并写清 SLA）；② 补 `channel`/`voucher_no`/`paid_at` 与凭证上传；③ 打款失败回滚 + 出款对账口径 |
 | 证件识别（OCR，腾讯云 IDCardOCR） | ✅ 通道完成，待密钥 | `src/integrations/ocr/`：`OcrProvider` 端口、mock（按「姓名_18位身份证号」文件名解析，仅本地联调）、腾讯云实现（TC3-HMAC-SHA256 签名 + `IDCardOCR` + 响应归一化）、`OCR_PROVIDER` 工厂、启动即校验（配 tencent 缺密钥拒绝启动）；`POST /api/upload`（base64 → 落盘，仅图片、≤2MB）+ `POST /api/teacher/ocr-idcard`（识别预览，回显姓名与脱敏号码）；`teacher.apply` 落库正反面 URL + 识别姓名 + `id_card_verified`，**姓名/号码与证件不一致直接拒**；门禁 `check-teacher-idcard` 20 项 | 真实识别（需 `TENCENT_SECRET_ID/KEY` + 开通 OCR 服务）；证件上的有效期/签发机关解析（背面 OCR，`CardSide=BACK`） |
 | 微信登录（家长端「微信一键登录」，P55/P56） | 🟡 通道完成，待微信 appid | `src/integrations/wechat/wechat.service.ts`：`WechatProvider` 端口——`WECHAT_APPID`+`WECHAT_SECRET` 都配 → 小程序 `sns/jscode2session`（`WECHAT_OAUTH=1` 切公众号 `sns/oauth2/access_token`，再调 `sns/userinfo` 取昵称/头像，`WECHAT_USERINFO=0` 可关）；都没配 → mock（`openid = mock_wx_ + sha1(code)`，昵称同源稳定）；**只配一半拒绝启动**；`POST /api/auth/wechat` 首次登录自动注册家长（`parent_profiles`+`wallets`+邀请绑定+与验证码注册同一套设备/IP 反作弊阈值），返回 `{token,user,wechatChannel}`；`GET /api/auth/wechat/authorize-url?redirect=&state=` 生成 `snsapi_userinfo` 授权链接，`redirect_uri` 命中 `WECHAT_OAUTH_REDIRECT_ALLOWLIST` 才放行（防开放重定向），未配置时 400 `WECHAT_NOT_CONFIGURED`；`main.ts` 启动自检打印当前通道 | 真实登录（需小程序 appid/secret 并与 `manifest.json` 对齐）；公众号后台配置「网页授权域名」后接 H5 跳转与回跳页（当前前端仍走演示 code 通道）；`unionid` 跨端合并账号（已落 session，未并入用户表逻辑） |
 
-### A2 剩余步骤（按依赖顺序，均可回归验证）
+### A2 剩余步骤（2026-10-23 更新：1–4 已完成，只剩商户号与前端）
 
-1. `payments` 表增加 `prepay_id` / `channel_txn_id` 落地（回调写入），`trade_no` 上加唯一索引（幂等兜底）。
-2. `POST /api/orders/:id/pay`：`PAY_PROVIDER=mock` 保持现状（立即成功，26 步门禁零回归）；`wechat` 时改为
-   先落 `pending` 再返回 `params`，前端据 `params` 唤起。
-3. 新增 `POST /api/pay/wechat/notify`（**免鉴权**，只靠验签）：原文取 `rawBody`，头部透传给 `verifyNotify`，
-   成功后按 `out_trade_no` 行锁 + `FOR UPDATE` 入账，重复回调返回成功但不重复入账。
-4. 支付超时关单（15 分钟）与渠道 `close` 调用；退款走 `refund()` 并把渠道状态回写到 `payments`。
-5. 对账：`tools/check-recon.mjs` 下载渠道对账单，与我方 `payments`/`withdrawals` 逐笔比对。
+| # | 步骤 | 状态 |
+| --- | --- | --- |
+| 1 | `payments` 落预支付流水（`trade_no=PREPAY:<单号>`、`idem_key` 唯一索引兜底），回调成功改写为渠道流水号 | ✅ |
+| 2 | `POST /api/orders/:id/pay`：`mock` 立即成功；`wechat` 先落 `pending` 再返回 `{prepayId, params}` 供前端唤起 | ✅ 服务端 / ⚠️ 前端未接唤起 |
+| 3 | `POST /api/pay/wechat/notify`（免鉴权、只验签）：`rawBody` + `wechatpay-*` 头 → 行锁入账，重复回调返回成功但不重复入账；另有 `/api/pay/wechat/refund-notify` | ✅ |
+| 4 | 支付超时关单（规则可调）+ 退款走 `refund()` 并把渠道状态回写 `payments` | ✅ |
+| 5 | 对账：`tools/check-recon.mjs --bill <csv>` 逐笔比对可用（`--self-test` 已进 CI 静态门禁）；`--download` 需商户 APIv3 证书 | 🟡 下载未实现 |
+
+**还差的（按依赖顺序）**：
+
+1. 你提供 `AppID`/`MchID`/证书序列号/商户私钥/APIv3 密钥/平台证书公钥 + 公网 HTTPS 回调地址（`WECHAT_PAY_NOTIFY_URL`）。
+2. 前端唤起：小程序 `uni.requestPayment`、公众号 H5 `WeixinJSBridge.invoke('getBrandWCPayRequest', params)`。
+3. `openId` 取用：真实通道缺 `openId` 直接 `OPENID_REQUIRED`；建议 `orders.pay` 在未显式传入时用当前用户的 `users.wx_openid` 兜底（该列已在 P55 微信登录时落库）。
+4. `--download` 拉对账单 + 与 `payments`/`withdrawals` 逐笔核对纳入定期任务。

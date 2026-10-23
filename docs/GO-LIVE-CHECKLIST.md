@@ -13,7 +13,7 @@
 | # | 项 | 现状 | 补齐条件 |
 | --- | --- | --- | --- |
 | A1 | 短信验证码 | 🟡 **代码已就绪，待密钥**：腾讯云短信通道已实现（`src/integrations/sms/`：TC3-HMAC-SHA256 签名、SendSms 请求体、错误码分支、`SMS_PROVIDER=mock/tencent` 工厂、缺配置/占位串启动即拒绝），单测 101 项覆盖签名与错误分支；`SMS_PROVIDER=tencent` + 5 项密钥即可真实下发 | 你提供：`SecretId`/`SecretKey`/`SdkAppId`/已备案签名/模板 ID（模板变量 ${1}=验证码、${2}=分钟） |
-| A2 | 支付通道 | 🟡 **通道层已实现，待商户号 + 流程接线**：`src/integrations/pay/` 含 `PayProvider` 端口、mock、微信支付 v3（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款），单测用本地生成的 RSA 密钥对与自加密验证签名/验签/解密链路（**无需商户号**）；启动即校验 `PAY_PROVIDER` 配置 | 你提供：`AppID`/`MchID`/证书序列号/商户私钥/APIv3 密钥/平台证书公钥/公网 HTTPS 回调地址；我方接线：`orders.pay` 拆预支付与回调、`/api/pay/wechat/notify`、幂等入账、超时关单、对账（见 `docs/INTEGRATIONS.md §6`） |
+| A2 | 支付通道 | 🟡 **通道层与服务端接线都已完成，待商户号 + 前端唤起**：`src/integrations/pay/` 含 `PayProvider` 端口、mock、微信支付 v3（JSAPI 下单、`WECHATPAY2-SHA256-RSA2048` 请求签名、回调验签 + 时间戳防重放、`AEAD_AES_256_GCM` 解密、退款），单测用本地生成的 RSA 密钥对与自加密验证签名/验签/解密链路（**无需商户号**）；启动即校验 `PAY_PROVIDER` 配置。**流程已接线**：`orders.pay` 拆「建预支付单（`payments.status=pending`、`trade_no=PREPAY:<单号>`）→ 渠道回调确认」，`POST /api/pay/wechat/notify` 与 `/refund-notify` 用 `rawBody` + `wechatpay-*` 头验签解密后幂等入账（重复投递识别、金额/单号一致性校验、校验失败回非 2xx 让渠道重试），外加超时关单、渠道退款、对账骨架（`npm run pay:recon`，`--download` 尚未实现、明确退出码 2） | 你提供：`AppID`/`MchID`/证书序列号/商户私钥/APIv3 密钥/平台证书公钥/公网 HTTPS 回调地址。我方仍缺：① **前端唤起支付**——`web/` 与 `apps/web-mobile/` 目前没有 `wx.requestPayment` / `WeixinJSBridge.invoke`（mock 不需要，真实商户号必需）；② **openid 来源**——真实通道要求 `openId`（缺则 `OPENID_REQUIRED`），现在只能由前端 `body.openId` 传入而前端尚未取，后端其实已在微信登录时把 `users.wx_openid` 落库、可直接用登录态兜底；③ 对账单下载（需商户 APIv3 证书）与逐笔核对（C3） |
 | A3 | 地图与围栏 | 🟡 **围栏已换真实行政区边界**：`tools/build-admin-areas.mjs` 从阿里云 DataV `areas_v3` 生成 3237 个行政区（省 34 / 市 363 / 区县 2840，47 万点，gzip 1.9MB 随包），片区可直接「按地名设置」（勾选行政区 → 多环围栏）；距离为 Haversine，点在多边形为真实判定；`Regions.vue` 带在线瓦片底图（失败自动回落离线省界） | 仍缺：**地址 → 经纬度逆地理编码**（现有「手填地址」按片区默认坐标落库，精度到片区不到门牌）、地图 SDK 选点/拖拽纠偏、在线瓦片换自有或天地图并带审图号 |
 | A4 | 文件存储 | 🟡 **上传能力已具备**：`POST /api/upload`（base64、仅 PNG/JPG/WEBP、≤2MB，落盘 `data/uploads`，返回 `/uploads/xxx`）+ 家长头像（`PUT /api/parent/avatar`）+ 教员身份证正反面/证书（`/api/teacher/apply`），前端上传后框内自适应显示 | 仍缺：对象存储（OSS/COS）直传签名与 CDN、图片鉴黄/病毒扫描、DB 只存 key、多实例共享卷或桶 |
 | A5 | 微信小程序上架 | 🟡 **工程与登录链路已就绪**：`mp-weixin` 产出 **14 页**（家长 5 + 教员 3 + 业务员 2 + 代理 2 + 登录 + 消息 + …）可直接导入开发者工具；`POST /api/auth/wechat` 走 `jscode2session`（`WECHAT_APPID/SECRET` 未配时 mock），首次登录自动注册家长 | 未做：小程序**审核发布**、手机号快速验证组件、订阅消息模板、真实 appid 与前端 `manifest` 对齐（另见 `docs/INTEGRATIONS.md`） |
@@ -65,7 +65,7 @@
 
 ## 优先级建议（按「上线阻断程度」排序，D1/D2 已完成）
 
-1. ~~**D1 单元测试（资金/规则）+ D2 覆盖率**~~ —— ✅ 已完成（82 用例、9 模块行覆盖 ≥ 98.5%，纳入 `npm run ci`）。
-2. **A1 短信 + A2 支付真实通道** —— 模拟实现可演示不可上线；这是当前唯一的**功能性**上线阻断项。
+1. ~~**D1 单元测试（资金/规则）+ D2 覆盖率**~~ —— ✅ 已完成（172 用例 / 23 模块，行覆盖 99.4%，纳入 `npm run ci`）。
+2. **A1 短信 + A2 支付真实通道** —— 模拟实现可演示不可上线，是当前唯一的**功能性**上线阻断项。A2 的服务端接线已完成，实际只剩「你给商户号凭证」+「前端唤起支付（`requestPayment` / `WeixinJSBridge`）」两件事；A1 只剩 5 项短信密钥。
 3. **B1 HTTPS + B3 定时备份与恢复演练** —— 上线前的最低安全与可恢复底线（备份脚本已具备，缺调度与异地留存）。
 4. **D3 依赖漏洞扫描** —— 🟡 npm audit 已接入（预算制、CI 静态门禁）；镜像扫描待镜像源可达。
