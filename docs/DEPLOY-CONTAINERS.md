@@ -317,21 +317,34 @@ $env:SMOKE_BASE = "https://www.kd211.com"; npm run smoke:online
 $env:DEPLOY_HOST = "kd211"; $env:DEPLOY_SUDO = "1"
 $env:DOMAIN = "www.kd211.com"; $env:DOMAIN_ALT = "kd211.com"
 $env:LETSENCRYPT_EMAIL = "admin@kd211.com"
-node tools/switch-domain.mjs --dry-run     # 只探测 + 预演
+node tools/switch-domain.mjs --dry-run     # 只探测 + 预演（会把两份配置写到本机临时目录供检查）
 node tools/switch-domain.mjs               # 真切换（默认把按 IP 的临时入口移除）
+
+# 演练用（域名仍被拦截、证书已存在时）：跳过签证书，只验证配置写入与限速
+node tools/switch-domain.mjs --force --keep-ip --skip-certbot
 ```
 
 `tools/switch-domain.mjs`（`npm run deploy:switch-domain`）按顺序做：
 
 1. **拦截探测**：域名 A 记录是否指向本机；`http(s)://域名/` 是否仍被 302 到 `webblock` 或 TLS 被重置。
    拦截**按请求间歇生效**，所以 4 个 URL 各探两次，任一命中就判定「仍被拦截」并**直接拒绝执行**（避免把现在能用的 IP 入口关掉）。`--force` 可强切。
-2. **过渡配置 + 签证书**：先写「域名仅 HTTP + ACME」配置（可选保留 IP 兜底段），再 `certbot certonly --webroot`；
-   apex 若还没解析到本机，会自动跳过而不让整张证书失败。
-3. **最终配置**：`80 → 443` 跳转 + HTTPS + HSTS；默认移除 `80 default_server`（`--keep-ip` 保留）。
+2. **过渡配置 + 签证书**：先写「域名仅 HTTP + ACME」配置（可选保留 IP 兜底段），再 `certbot certonly --webroot --expand`
+   （`--expand` 是给已有证书加域名必需的，否则 certbot 会停下来问）；apex 若还没解析到本机，会自动跳过而不让整张证书失败。
+   `--skip-certbot` 可跳过这一步（演练 / 证书已有效）。
+3. **最终配置**：`80 → 443` 跳转 + HTTPS + HSTS + **认证接口限速块**；同时写 `/etc/nginx/conf.d/00-hardening.conf`
+   （`server_tokens off` + `limit_req_zone authlimit`）。也就是说**不需要**再手动跑一次 `harden-server.sh` 补限速——两边写的是同一份内容，谁后跑都一致。
+   默认移除 `80 default_server`（`--keep-ip` 保留）。
 4. **外部复验**：`http` 必须 301、`https` 四入口必须 200，否则非零退出。
 
 任一步失败都会把 Nginx 配置回滚到 `/etc/nginx/jiajiao.conf.bak`（`set -o pipefail` 保证 certbot 的失败不会被管道吞掉）。
 
-**演练记录（2026-10-23，仍在拦截状态下用 `--force --keep-ip` 实跑）**：过渡配置、证书复用、最终配置写入与 reload 全部走通；外部复验 5 项按预期失败（拦截未解除）；演练后按 IP 的四个入口仍 200、业务冒烟 17/17 未回归。
+**线上配置对照**：`deploy/nginx/jiajiao.conf.deployed` 是服务器上**真实生效**的站点配置快照（含 IP 兜底段与限速块），
+供 diff / 审计；它由脚本生成，不参与部署——要改线上配置，改脚本再跑。
+
+**演练记录（2026-10-23，仍在拦截状态下实跑）**：
+
+- 先跑 `--force --keep-ip`（含签证书）：certbot 因「已有证书要加 apex 域名」停下要求 `--expand` → 触发自动回滚（正是加 `--expand` 的由来，回滚路径因此被真实检验了一次）
+- 再跑 `--force --keep-ip --skip-certbot`：过渡配置 → 最终配置写入 → `nginx -t` → reload 全部走通；本机校验 `http 301` / `https 200`；**站点配置里 `limit_req zone=authlimit` 命中 2 处**（443 段 + IP 兜底段）、`00-hardening.conf` 由脚本写入；连续 20 次登录请求**第 2 次起 429**；按 IP 的四入口仍 200、业务冒烟 17/17 未回归
+- 外部复验 5 项按预期失败（备案拦截未解除），脚本以非零退出并提示备份位置
 
 ⚠️ **证书续期风险**：`certbot renew` 走 HTTP-01，需要 Let's Encrypt 能从公网访问 `http://域名/.well-known/acme-challenge/`；域名被拦截期间续期必然失败（演练中 `--dry-run` 即 1 failure）。当前证书有效期到 **2027-01-21**，请在此前完成备案（或在到期前换已备案域名/迁境外），否则 HTTPS 会过期。

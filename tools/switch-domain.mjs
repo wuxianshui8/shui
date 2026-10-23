@@ -35,6 +35,8 @@ const EMAIL = process.env.LETSENCRYPT_EMAIL || "";
 const DRY = process.argv.includes("--dry-run");
 const KEEP_IP = process.argv.includes("--keep-ip");
 const FORCE = process.argv.includes("--force");
+// 演练/证书已有效时跳过 certbot（域名被拦截时 HTTP-01 必然失败，但仍要验证配置写入与限速）
+const SKIP_CERTBOT = process.argv.includes("--skip-certbot");
 
 const die = (m) => {
   console.error("\n✗ " + m);
@@ -147,7 +149,28 @@ const NAMES = usableNames;
 const CERT_DIR = `/etc/letsencrypt/live/${DOMAIN}`;
 const serverNames = NAMES.join(" ");
 
-// 可选：按 IP 直连的兜底段（--keep-ip 时保留；备案前演练也能用）
+// 认证类接口限速块：由 switch-domain 直接写进每个「反代到应用」的 server 块，
+// 不再依赖「切完记得再跑 harden-server.sh」；limit_req_zone 由下面 00-hardening.conf 提供
+const authLimitBlock = `
+    # 认证类接口限速（挡撞库 / 短信轰炸）：30r/m，突发 10（zone 见 /etc/nginx/conf.d/00-hardening.conf）
+    location ~ ^/api/auth/(login|login-password|login-account|send-code|wechat) {
+        limit_req zone=authlimit burst=10 nodelay;
+        proxy_pass http://127.0.0.1:4300;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+`;
+
+// 全局加固文件（http 上下文）：隐藏版本号 + 定义限速区
+// 内容必须与 deploy/harden-server.sh 里写的那份**逐字节一致**（两个脚本谁后跑都行）
+const hardeningConf = `server_tokens off;
+limit_req_zone $binary_remote_addr zone=authlimit:10m rate=30r/m;
+limit_req_status 429;
+`;
+
 const ipBlock = KEEP_IP
   ? `
 server {
@@ -157,6 +180,7 @@ server {
 
     client_max_body_size 8m;
 
+${authLimitBlock}
     location / {
         proxy_pass http://127.0.0.1:4300;
         proxy_http_version 1.1;
@@ -237,6 +261,7 @@ server {
 
     client_max_body_size 8m;
 
+${authLimitBlock}
     location / {
         proxy_pass http://127.0.0.1:4300;
         proxy_http_version 1.1;
@@ -258,12 +283,21 @@ ${ipBlock}`;
 
 if (DRY) {
   step("2) 预演（--dry-run，不改服务器）");
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "switch-domain-"));
+  fs.writeFileSync(path.join(dir, "00-hardening.conf"), hardeningConf, "utf8");
+  fs.writeFileSync(path.join(dir, "jiajiao.conf"), finalConf, "utf8");
   console.log(`  过渡配置 server_name：${serverNames}${KEEP_IP ? "（含 IP 兜底段）" : ""}`);
   console.log(
     `  certbot certonly --webroot -w /var/www/certbot ${NAMES.map((n) => "-d " + n).join(" ")} ` +
-      `--non-interactive --agree-tos -m ${EMAIL} --keep-until-expiring`,
+      `--non-interactive --agree-tos -m ${EMAIL} --keep-until-expiring --expand`,
   );
-  console.log(`  最终配置：80→443 + HTTPS + HSTS；IP 直连段：${KEEP_IP ? "保留" : "移除"}`);
+  console.log(`  最终配置：80→443 + HTTPS + HSTS + 认证限速；IP 直连段：${KEEP_IP ? "保留" : "移除"}`);
+  console.log(`  生成的配置已写到本机临时目录供检查：`);
+  console.log(`    ${path.join(dir, "jiajiao.conf")}`);
+  console.log(`    ${path.join(dir, "00-hardening.conf")}`);
   process.exit(0);
 }
 
@@ -297,9 +331,17 @@ const certbotCmd = [
   "--non-interactive --agree-tos",
   `-m ${EMAIL}`,
   "--keep-until-expiring",
+  // 证书里加新域名（如 apex）必须带 --expand，否则 certbot 会停下来问
+  "--expand",
 ].join(" ");
 
-ssh(`
+if (SKIP_CERTBOT) {
+  step("2b) 跳过签证书（--skip-certbot）");
+  console.log(`  certbot 命令（备案通过后去掉 --skip-certbot 会实际执行）：`);
+  console.log(`    ${certbotCmd}`);
+  console.log(`  证书目录：${CERT_DIR}（服务器上已有则沿用，无需重签）`);
+} else {
+  ssh(`
 set -eo pipefail
 echo "--- certbot ---"
 if ! ${certbotCmd} 2>&1 | tail -10; then
@@ -314,11 +356,16 @@ if [ ! -f ${CERT_DIR}/fullchain.pem ]; then
 fi
 openssl x509 -in ${CERT_DIR}/fullchain.pem -noout -subject -enddate
 `);
+}
 
 /* ---------- 4) 最终配置 ---------- */
 step("3) 写最终配置（80→443 + HTTPS + HSTS）");
 ssh(`
 set -e
+# 先写全局加固（server_tokens off + 限速区），保证下面的 limit_req zone=authlimit 有定义；
+# 这台服务器上 deploy/harden-server.sh 写的是同一份内容，二者谁后跑都一致
+mkdir -p /etc/nginx/conf.d
+echo '${b64(hardeningConf)}' | base64 -d > /etc/nginx/conf.d/00-hardening.conf
 echo '${b64(finalConf)}' | base64 -d > ${CONF}
 if ! nginx -t 2>&1; then
   echo "✗ 最终配置语法错误，回滚"

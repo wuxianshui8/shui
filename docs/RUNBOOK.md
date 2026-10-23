@@ -115,6 +115,10 @@ ssh kd211 "sudo -n systemctl reload nginx"                                      
 ssh kd211 "sleep 2; curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.kd211.com' http://127.0.0.1/api/health"  # ⑤ 验证
 ```
 
+> **线上配置长什么样**：`deploy/nginx/jiajiao.conf.deployed` 是服务器上真实生效的配置快照（含 IP 兜底段与认证限速块）。
+> 它由 `tools/switch-domain.mjs` + `deploy/harden-server.sh` 生成——**要改线上配置就改脚本再跑**，别直接 ssh 上去改（改了下次跑脚本就没了，且仓库里看不到）。
+> 想 diff 现状：`scp kd211:/etc/nginx/sites-available/jiajiao.conf /tmp/a.conf` 后与快照比对。
+
 ### 3.4 灌/重置演示数据
 
 ```bash
@@ -206,6 +210,7 @@ ssh kd211 "gunzip -c /var/backups/jiajiao/jiajiao-<时间戳>.sql.gz | sudo -n d
 | Nginx 站点 | `sudo cp /etc/nginx/jiajiao.conf.bak /etc/nginx/sites-available/jiajiao.conf; sudo nginx -t; sudo systemctl reload nginx` | `/etc/nginx/jiajiao.conf.bak` |
 | 应用镜像 | 本机 `docker load -i <旧 jiajiao-app.tar>` → 上传 → `docker load` → `compose up -d --no-build` | 每次发版前保存的 `jiajiao-app.tar` |
 | 防火墙 | `sudo ufw disable`（临时）或 `sudo ufw delete allow <port>` | `/etc/default/ufw`（`DEFAULT_FORWARD_POLICY` 改过） |
+| Nginx 全局加固 | 备份后删 `/etc/nginx/conf.d/00-hardening.conf` 并 reload（会把版本号隐藏与认证限速一并撤掉） | 由 `deploy/harden-server.sh` 或 `tools/switch-domain.mjs` 重新生成（两者写出的文件逐字节一致） |
 | fail2ban | `sudo systemctl stop fail2ban`（临时）；或删 `/etc/fail2ban/jail.local` 后重启 | `/etc/fail2ban/jail.local` |
 | 内核参数 | 删 `/etc/sysctl.d/99-hardening.conf` 后 `sudo sysctl --system` | 原值未动（新增文件） |
 | Docker 守护 | 删 `daemon.json` 里 `live-restore`/`no-new-privileges` 后 `sudo systemctl restart docker` | `/etc/docker/daemon.json` |
@@ -248,6 +253,8 @@ ssh kd211 "gunzip -c /var/backups/jiajiao/jiajiao-<时间戳>.sql.gz | sudo -n d
 | 日期 | 变更 | 结果 |
 | --- | --- | --- |
 | 2026-10-23 | 首次部署（镜像上传 + compose + seed + Nginx + Let's Encrypt） | 三容器 healthy、四入口 200、冒烟 17/17 |
+| 2026-10-23 | `switch-domain.mjs` 自带认证限速与全局加固，新增 `--expand`/`--skip-certbot`；`--dry-run` 把配置写到本机临时目录 | 演练实跑：`authlimit` 命中 2 处、20 次登录第 2 次起 429、IP 四入口 200；certbot 缺 `--expand` 时正确自动回滚 |
+| 2026-10-23 | 线上真实 nginx 配置快照入库 `deploy/nginx/jiajiao.conf.deployed` | 仓库可 diff / 审计；消除「服务器配置与仓库模板不一致」的盲区 |
 | 2026-10-23 | 发现域名未备案被拦截（302 → webblock、HTTPS 重置） | 增加按 IP 的 80 `default_server` 测试入口 |
 | 2026-10-23 | 主机加固（SSH 仅公钥/禁 root、ufw、fail2ban、自动更新、sysctl、Docker、Nginx 限速） | 密码与 root 登录被拒；限速第 6 次起 429；业务冒烟 17/17 无回归 |
 | 2026-10-23 | 新增 `SMS_MOCK_LOG_CODE`（测试环境从日志取验证码） | 日志取码 → 验证码登录成功；接口仍不回显 `devCode` |
