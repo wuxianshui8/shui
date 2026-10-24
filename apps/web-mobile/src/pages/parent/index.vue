@@ -2,6 +2,7 @@
 import { onShow } from "@dcloudio/uni-app";
 import { ref } from "vue";
 import { currentUser, goLogin, isLogin, request } from "../../auth.js";
+import { invokePay, payOrder, waitPaid } from "../../pay.js";
 
 const home = ref(null);
 const orders = ref([]);
@@ -104,21 +105,28 @@ async function load() {
 }
 onShow(load);
 
+/**
+ * 支付（P69）：mock 通道后端直接入账；真实通道返回 prepay → 唤起收银台 → 轮询订单状态。
+ * 细节都在 ../../pay.js，这里只处理页面提示。
+ */
 async function pay(o) {
   busy.value = "pay" + o.id;
-  const r = await new Promise((resolve) => {
-    uni.request({
-      url: "/api/orders/" + o.id + "/pay",
-      method: "POST",
-      data: {},
-      header: { Authorization: "Bearer " + uni.getStorageSync("token"), "Content-Type": "application/json", "X-Idem-Key": "m-pay-" + o.id + "-" + Date.now() },
-      success: (res) => resolve(res.data && res.data.code === 0 ? res.data.data : null),
-      fail: () => resolve(null),
-    });
-  });
-  busy.value = "";
-  toast(r ? "担保支付成功" : "支付失败");
-  load();
+  try {
+    const res = await payOrder(o.id);
+    if (res.mode === "prepay") {
+      await invokePay(res.params);
+      const paid = await waitPaid(o.id);
+      toast(paid ? "支付成功（" + (paid.statusText || paid.status) + "）" : "支付结果确认中，请稍后刷新订单");
+    } else {
+      toast("担保支付成功");
+    }
+  } catch (e) {
+    if (e && e.code === "PAY_CANCELLED") toast("已取消支付");
+    else toast((e && e.message) || "支付失败");
+  } finally {
+    busy.value = "";
+    load();
+  }
 }
 
 async function confirmDone(o) {

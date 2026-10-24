@@ -758,8 +758,16 @@ function orderActions() {
         "立即支付"
       );
       if (!yes) return;
-      await api.post("/api/orders/" + id + "/pay", { channel: "wechat_jsapi" }, { idem: idemKey("pay") });
-      toastOk("支付成功，教员将按时上门");
+      // 支付唤起（P69）：参考实现后端是 mock 通道（直接入账），拿到的就是订单视图；
+      // 一旦换成真实微信支付（返回 {mode:"prepay", params}），这里走 H5 收银台唤起 —— 与正式实现同构。
+      const res = await api.post("/api/orders/" + id + "/pay", { channel: "wechat_jsapi" }, { idem: idemKey("pay") });
+      if (res && res.mode === "prepay") {
+        await wxH5Pay(res.params);
+        const paid = await waitOrderPaid(id);
+        paid ? toastOk("支付成功，教员将按时上门") : toast("支付结果确认中，请稍后刷新订单");
+      } else {
+        toastOk("支付成功，教员将按时上门");
+      }
       ROUTER.render();
     },
     cancel: async (el) => {
@@ -1328,6 +1336,54 @@ function minLocalNow() {
   const d = new Date(Date.now() + 3600000);
   const p = (n) => String(n).padStart(2, "0");
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+/* ---------------- 支付唤起（P69） ----------------
+ * 参考实现后端跑 mock 通道（点一下即入账），所以下面两个函数实际走不到；
+ * 一旦把 PAY_PROVIDER 换成真实微信支付（后端返回 {mode:"prepay", params}），
+ * 这里就按微信 H5 收银台唤起 —— 与正式实现 apps/web-mobile 的 pay.js 同构。
+ */
+function wxH5Pay(params) {
+  return new Promise((resolve, reject) => {
+    const p = params || {};
+    const inWx = /MicroMessenger/i.test(navigator.userAgent || "");
+    if (!inWx) {
+      toastErr("微信支付需在微信中打开本页面");
+      return reject(new Error("PAY_NEEDS_WECHAT"));
+    }
+    const invoke = () => {
+      window.WeixinJSBridge.invoke(
+        "getBrandWCPayRequest",
+        {
+          appId: p.appId,
+          timeStamp: String(p.timeStamp || ""),
+          nonceStr: p.nonceStr,
+          package: p.package,
+          signType: p.signType || "RSA",
+          paySign: p.paySign,
+        },
+        (res) => {
+          const msg = String((res && res.err_msg) || "");
+          if (msg.indexOf(":ok") > -1) resolve(true);
+          else if (msg.indexOf(":cancel") > -1) { toast("已取消支付"); reject(new Error("PAY_CANCELLED")); }
+          else { toastErr("支付失败：" + msg); reject(new Error("PAY_FAILED")); }
+        }
+      );
+    };
+    if (window.WeixinJSBridge) invoke();
+    else document.addEventListener("WeixinJSBridgeReady", invoke, false);
+  });
+}
+
+/** 等支付结果落地（渠道回调有几秒延迟）；返回订单或 null（超时不等于失败） */
+async function waitOrderPaid(orderId, timeoutMs = 20000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const o = await api.get("/api/orders/" + orderId).catch(() => null);
+    if (o && o.status && o.status !== "awaiting_payment") return o;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return null;
 }
 
 /* ---------------- 路由：需求发布 / 我的需求 ---------------- */

@@ -101,7 +101,7 @@
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
 | GET | `/api/orders/:id` | 相关方/运营 | 订单详情（按角色返回状态文案与脱敏） |
-| POST | `/api/orders/:id/pay` | 家长 | 担保支付（幂等）。进入 `pending_class` 并生成分账 |
+| POST | `/api/orders/:id/pay` | 家长 | 担保支付（幂等，可带 `X-Idem-Key`）。**两种返回形态**：① mock 通道（`PAY_PROVIDER=mock`）→ 直接入账并返回**订单视图**（无 `mode` 字段，进入 `pending_class` 并生成分账）；② 真实通道（微信支付 v3）→ 返回 `{mode:"prepay", orderId, amount, prepayId, params}`，`params={appId,timeStamp,nonceStr,package,signType,paySign}` 交前端唤起收银台（小程序 `uni.requestPayment` / 微信内 H5 `WeixinJSBridge.getBrandWCPayRequest`），支付结果由 `/api/pay/wechat/notify` 回调确认。已支付订单再次调用幂等返回订单视图 |
 | POST | `/api/orders/:id/checkin` | 教员 / 家长 | `{lat,lng}` 到场打卡，超出阈值（规则 `checkin.max_distance_m`，默认 500m）拦截并写风控事件。`place=home`：仅教员打卡，打完即 `in_class`；`place=teacher_place`：**双方各打一次卡**（家长证明带孩子到了教学点、教员确认在此开课），都到齐才 `in_class`，家长打卡会记 `parent_checkin_*`；`home` 订单家长打卡返回 400 `NOT_TEACHER_PLACE`，同一方重复打卡 400 `ALREADY_CHECKED_IN` |
 | POST | `/api/orders/:id/finish` | 教员 | 结束授课 → `awaiting_parent_confirm` |
 | POST | `/api/orders/:id/confirm` | 家长 | 确认完成 → `completed`，课时费进入冻结 |

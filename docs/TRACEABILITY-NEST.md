@@ -118,7 +118,7 @@
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
 | 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员/订单授课方式列） | `admin` 84 项 |
-| 6.1 移动端 uni-app | `apps/web-mobile/`（16 页，H5 + 微信小程序双产物，含入驻认证/授课地址、我的服务（上门授课/在教员家授课）、定位接单、附近教员/立即预约（按服务支持的形式）/订单详情/家长到场打卡/我的需求+确认教员） | `mobile` 135 项 |
+| 6.1 移动端 uni-app | `apps/web-mobile/`（16 页，H5 + 微信小程序双产物，含入驻认证/授课地址、我的服务（上门授课/在教员家授课）、定位接单、附近教员/立即预约（按服务支持的形式）/订单详情/家长到场打卡/我的需求+确认教员、支付唤起（小程序 `uni.requestPayment` / 微信内 H5 `WeixinJSBridge`）） | `mobile` 144 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
 ## 第 7 章 非功能需求

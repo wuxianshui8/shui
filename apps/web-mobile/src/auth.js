@@ -46,9 +46,9 @@ export function goLogin(next) {
  * 统一请求：code=0 时 resolve(data)，否则 reject(Error{status})。
  * 不在这里自动跳登录——什么时候弹登录由业务动作决定（游客浏览不该被打断）。
  */
-export function request(method, path, body) {
+export function request(method, path, body, extraHeaders) {
   return new Promise((resolve, reject) => {
-    const header = { "Content-Type": "application/json" };
+    const header = Object.assign({ "Content-Type": "application/json" }, extraHeaders || {});
     if (token()) header.Authorization = "Bearer " + token();
     uni.request({
       url: "/api" + path,

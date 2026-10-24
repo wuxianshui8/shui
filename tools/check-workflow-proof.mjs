@@ -33,7 +33,7 @@ const PROOF = [
   { match: /node \.\.\/\.\.\/tools\/healthcheck-mysql\.mjs/, gate: "MySQL 巡检 → 12/12（gate-p9）" },
   { match: /node \.\.\/\.\.\/tools\/ci-reset\.mjs/, gate: "数据重置 → 2.3s（本机按 CI 顺序 + 每步重置串跑全部通过）" },
   { match: /node tools\/check-admin-spa\.mjs/, gate: "admin SPA → 84/84" },
-  { match: /node tools\/check-mobile-spa\.mjs/, gate: "mobile SPA → 135/135" },
+  { match: /node tools\/check-mobile-spa\.mjs/, gate: "mobile SPA → 144/144" },
   { match: /node tools\/check-geo-fence\.mjs/, gate: "电子围栏几何 → 72/72" },
   { match: /npm --prefix apps\/web-admin run build/, gate: "web-admin vite build 本地多次通过（dist 存在）" },
   { match: /npm --prefix apps\/web-mobile run build:h5/, gate: "web-mobile uni build（H5）本地多次通过" },

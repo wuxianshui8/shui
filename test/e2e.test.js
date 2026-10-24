@@ -1248,6 +1248,32 @@ async function loginPassword(phone) {
     await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
   }
 
+  section("26. 支付前端唤起（prepay 分发 + 唤起后轮询落地）");
+  {
+    // 前端契约（静态）：H5 走微信 JSSDK bridge；后端给 prepay 才唤起，给订单视图就跳过
+    const pjs = await (await fetch(BASE + "/assets/js/parent.js")).text();
+    assert(pjs.includes("WeixinJSBridge") && pjs.includes("getBrandWCPayRequest"),
+      "家长端含微信内 JSSDK 支付唤起（WeixinJSBridge.getBrandWCPayRequest）");
+    assert(/mode\s*===\s*"prepay"/.test(pjs), "前端按后端返回的 prepay 决定是否唤起收银台（不无脑 toast 成功）");
+    assert(/function waitOrderPaid\(/.test(pjs), "唤起后轮询订单状态等渠道回调落地（waitOrderPaid）");
+    assert(pjs.includes("微信中打开"), "非微信环境明确提示，不假装支付成功");
+
+    // 后端契约：参考实现没有真实渠道，pay 直接入账并返回订单视图（无 mode）
+    const svcList = (await api("GET", "/api/teacher/services", { token: teacherToken })).body.data;
+    const mk = await api("POST", "/api/orders/from-service", {
+      token: parentToken,
+      body: { serviceId: svcList[0].id, lessonTime: new Date(Date.now() + 20 * 86400000).toISOString(), remark: "e2e P69 pay" },
+    });
+    assert(mk.status === 200 && mk.body.data.status === "awaiting_payment", "创建待支付订单（支付链路验证用）", mk.text);
+    const oid = mk.body.data.id;
+    const pay1 = await api("POST", "/api/orders/" + oid + "/pay", { token: parentToken, body: {} });
+    assert(pay1.status === 200 && pay1.body.data.status === "pending_class" && pay1.body.data.mode === undefined,
+      "参考实现 pay 直接入账并返回订单视图（无 prepay.mode）→ 前端据此不唤起收银台");
+    const pay2 = await api("POST", "/api/orders/" + oid + "/pay", { token: parentToken, body: {} });
+    assert(pay2.status === 200 && pay2.body.data.status === "pending_class" && pay2.body.data.paidAt === pay1.body.data.paidAt,
+      "已支付订单再次 pay 幂等（paidAt 不变，不二次入账）");
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

@@ -2,6 +2,7 @@
 import { onLoad } from "@dcloudio/uni-app";
 import { computed, reactive, ref } from "vue";
 import { isLogin, request } from "../../../auth.js";
+import { invokePay, payOrder, waitPaid } from "../../../pay.js";
 
 /** 家长订单详情：状态、教员、上课信息、金额；按状态给「支付 / 申请取消 / 确认完成 / 评价」 */
 const o = ref(null);
@@ -181,25 +182,31 @@ async function raiseSos() {
   }
 }
 
+/**
+ * 支付（P69）：mock 通道后端直接入账；真实通道返回 prepay → 唤起收银台 → 轮询订单状态。
+ * 唤起细节在 ../../../pay.js（小程序 requestPayment / 微信内 H5 WeixinJSBridge）。
+ */
 async function pay() {
   busy.value = "pay";
-  const r = await new Promise((resolve) => {
-    uni.request({
-      url: "/api/orders/" + o.value.id + "/pay",
-      method: "POST",
-      data: {},
-      header: {
-        Authorization: "Bearer " + uni.getStorageSync("token"),
-        "Content-Type": "application/json",
-        "X-Idem-Key": "m-order-pay-" + o.value.id + "-" + Date.now(),
-      },
-      success: (res) => resolve(res.data && res.data.code === 0 ? res.data.data : null),
-      fail: () => resolve(null),
-    });
-  });
-  busy.value = "";
-  uni.showToast({ title: r ? "担保支付成功" : "支付失败", icon: "none" });
-  if (r) await load();
+  try {
+    const res = await payOrder(o.value.id);
+    if (res.mode === "prepay") {
+      await invokePay(res.params);
+      const paid = await waitPaid(o.value.id);
+      uni.showToast({ title: paid ? "支付成功" : "支付结果确认中，请稍后刷新", icon: "none" });
+      if (paid) o.value = paid;
+      else await load();
+    } else {
+      uni.showToast({ title: "担保支付成功", icon: "none" });
+      await load();
+    }
+  } catch (e) {
+    if (e && e.code === "PAY_CANCELLED") uni.showToast({ title: "已取消支付", icon: "none" });
+    else if (e && e.code === "PAY_NEEDS_WECHAT") uni.showModal({ title: "请在微信中打开", content: "微信支付需要在微信内置浏览器或小程序里完成，请用微信打开本页面后再支付。", showCancel: false });
+    else uni.showToast({ title: (e && e.message) || "支付失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
 }
 
 async function submitCancel() {

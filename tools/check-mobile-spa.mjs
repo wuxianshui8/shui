@@ -39,7 +39,22 @@ for (const p of assets) {
   const ct = r.headers.get("content-type") || "";
   assert(r.status === 200 && /javascript|css/.test(ct), "静态资源可访问：" + p.replace("/m/assets/", "") + "（" + ct.split(";")[0] + "）");
 }
-
+// P69：H5 侧支付唤起走 WeixinJSBridge（微信内浏览器），小程序专用 requestPayment 不能串进 H5 产物
+{
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const h5Assets = fileURLToPath(new URL("../apps/web-mobile/dist/build/h5/assets/", import.meta.url));
+  const payChunk = readFileSync ? (readdirSync(h5Assets).find((f) => /^pay\.[\w-]+\.js$/.test(f)) || "") : "";
+  assert(!!payChunk, "H5 产物含独立支付分包（pay.*.js）");
+  if (payChunk) {
+    const js = readFileSync(h5Assets + payChunk, "utf8");
+    assert(js.includes("getBrandWCPayRequest") && js.includes("WeixinJSBridge"),
+      "H5 支付分包含微信内唤起（WeixinJSBridge.getBrandWCPayRequest）");
+    assert(js.includes("PAY_NEEDS_WECHAT"), "H5 支付分包对非微信环境明确提示（不假装支持支付）");
+    assert(js.includes("prepay") && js.includes("X-Idem-Key"), "H5 支付分包识别 prepay 返回并带幂等键");
+    assert(!js.includes("requestPayment"), "H5 支付分包不含小程序专用 requestPayment（条件编译生效）");
+  }
+}
 // 四个角色分包（uni-app 按页面分包产出）
 const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index", "pages-sales-index", "pages-agent-index"];
 
@@ -66,6 +81,11 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
     const teacherJs = readFileSync(mp + "/pages/teacher/index.js", "utf8");
     assert(teacherWxml.includes("附近需求") && teacherJs.includes("重新定位") && teacherJs.includes("nearby-demands"),
       "小程序教员首页含「重新定位」与附近需求入口（定位接单）");
+    // 支付唤起（P69）：小程序侧必须是 uni.requestPayment，H5 的 WeixinJSBridge 不能串进小程序包
+    const mpPay = readFileSync(mp + "/pay.js", "utf8");
+    assert(mpPay.includes("requestPayment"), "小程序侧支付走 uni.requestPayment（微信收银台）");
+    assert(mpPay.includes("prepay") && mpPay.includes("miniprogram"), "小程序支付分包识别 prepay 返回并走小程序通道");
+    assert(!mpPay.includes("getBrandWCPayRequest"), "小程序包不含 H5 专用 WeixinJSBridge 分支（条件编译生效）");
   }
 }
 
@@ -161,8 +181,10 @@ const sos = await api("POST", "/orders/" + orderId + "/sos", {
   body: { lat: 30.262, lng: 120.133, note: "移动端验收求助" },
 });
 assert(sos.status === 200 && !!sos.body.data?.message, "订单详情：紧急求助已受理（" + (sos.body.data?.message || "") + "）", sos.text);
-
-// 申请退款（最后做，会把订单状态改成 refunding）
+/* P69：已支付订单再调 pay 走幂等回放——返回订单视图（无 prepay.mode），不会二次入账 */
+const payDup = await api("POST", "/orders/" + orderId + "/pay", { token: parent.body.data.token, idem: "mob-p69-pay-probe" });
+assert(payDup.status === 200 && payDup.body.data && !payDup.body.data.mode && payDup.body.data.id === orderId,
+  "已支付订单再次 pay → 幂等返回订单视图（无 prepay.mode），前端据此跳过唤起", payDup.text);
 const refund = await api("POST", "/orders/" + orderId + "/refund", {
   token: parent.body.data.token,
   body: { reason: "移动端验收：临时有事" },
