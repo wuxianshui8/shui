@@ -285,3 +285,4 @@ npm run check:server-state     # 复核：仓库与服务器是否一致（不�
 | 2026-10-23 | 主机加固（SSH 仅公钥/禁 root、ufw、fail2ban、自动更新、sysctl、Docker、Nginx 限速） | 密码与 root 登录被拒；限速第 6 次起 429；业务冒烟 17/17 无回归 |
 | 2026-10-23 | 新增 `SMS_MOCK_LOG_CODE`（测试环境从日志取验证码） | 日志取码 → 验证码登录成功；接口仍不回显 `devCode` |
 | 2026-10-23 | 每日备份定时任务（systemd timer + 保留策略 + 防空校验 + 失败 webhook） | 手动/定时均可跑；剪枝 18→14 正确；故意制造失败 → 退出码 1、`LAST_STATUS` 记原因、`OnFailure` 触发通知、webhook 收到**合法 JSON**（HTTP 200）；备份 11 KB / 37 表 + 上传卷 4 KB |
+| 2026-10-24 | 上线 `0440e6a`（P64）：镜像重建 → `deploy-remote.mjs` 上传 87 MB → `compose up -d --no-build`；旧 5 端 UI 的 `web/assets/js/admin.js` 随之更新（Nest 侧 `POST /api/auth/change-password`、`DELETE /api/admin/admins/:id` 早已存在，故只换静态产物即可） | 三容器 healthy、四入口 200；线上接口验收 **26/26**（含未改密前 `MUST_CHANGE_PASSWORD`、改密后旧令牌 401、软删/硬删/重复删 404/删自己 403、列表回 `[1]`）；真实浏览器 DOM 验收：顶栏「🔑 修改口令」弹三字段、空提交被前端拦、列表「操作」列有「删除」+ 二次确认文案含软/硬删说明；业务冒烟 17/17；演示账号口令未动（残留一个**软删除**临时管理员 id=19，已匿名化且不在列表） |
