@@ -5,7 +5,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, EntityManager } from "typeorm";
 import { bad, biz, conflict, forbidden, notFound } from "../common/errors";
 import { nowIso } from "../common/reply";
-import { haversineKm } from "../common/geo";
+import { haversineKm, resolveRegion } from "../common/geo";
 import { audit, notify } from "../common/audit";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { RuleEngineService } from "../rules/rule-engine.service";
@@ -67,13 +67,20 @@ export class OrdersService {
       lessonTime: o.lesson_time,
       lessonEnd: o.lesson_end,
       address: mask && String(o.address || "").length > 10 ? String(o.address).slice(0, 8) + "***" : o.address,
+      // 授课地点（P65）：home=教员上门到家长地址 / teacher_place=家长到教员授课地址
+      place: o.place === "teacher_place" ? "teacher_place" : "home",
+      placeText: o.place === "teacher_place" ? "到教员处上课" : "教员上门",
       // mask=true（代理/业务员视角）时坐标只保留 2 位小数（约 1km 精度）：否则地址虽打码、经纬度仍可精确定位到家长门口
       lat: mask ? Number(Number(o.lat).toFixed(2)) : Number(o.lat),
       lng: mask ? Number(Number(o.lng).toFixed(2)) : Number(o.lng),
       amount: Number(o.amount),
       urgentFee: Number(o.urgent_fee),
       status: o.status,
-      statusText: STATUS_TEXT[o.status]?.[role] || o.status,
+      // 到教员处上课时教员不是「待上门」，而是等家长到（P65）
+      statusText:
+        o.place === "teacher_place" && o.status === "pending_class"
+          ? (role === "teacher" ? "待家长到" : "待上课")
+          : STATUS_TEXT[o.status]?.[role] || o.status,
       commissionRate: Number(o.commission_rate),
       serviceFee: Number(o.service_fee),
       teacherIncome: Number(o.teacher_income),
@@ -144,13 +151,51 @@ export class OrdersService {
     return rows[0] || null;
   }
 
+  /* ---------------- 授课地点（P65） ----------------
+   * home          = 教员上门到家长地址（历史默认行为）
+   * teacher_place = 家长带孩子到教员的授课地址上课
+   * 订单的 address/lat/lng 始终表示「实际上课地点」，所以打卡校验、上课提醒、
+   * 定位风控都不用改：到教员处时该点就是教员自己的位置，距离≈0 自然通过。
+   */
+  private normalizePlace(v: any) {
+    return String(v || "") === "teacher_place" ? "teacher_place" : "home";
+  }
+
+  /** 教员授课地址（家长「到教员处上课」时的实际上课地点）；未填完整返回 null */
+  async teacherPlaceAddress(db: EntityManager | DataSource, teacherId: number) {
+    const rows = await db.query(
+      "SELECT `base_address`,`base_lat`,`base_lng` FROM `teacher_profiles` WHERE `user_id` = ? LIMIT 1",
+      [teacherId],
+    );
+    const tp: any = rows[0];
+    const address = String(tp?.base_address || "").trim();
+    if (!address || tp.base_lat == null || tp.base_lng == null) return null;
+    return { address, lat: Number(tp.base_lat), lng: Number(tp.base_lng) };
+  }
+
+  /** 解析本次上课的实际上课地点（到教员处时忽略家长地址，改教员地址） */
+  async resolveLessonPlace(
+    db: EntityManager | DataSource,
+    p: { place?: string; teacherId: number; address: string | null; lat: number | null; lng: number | null },
+  ) {
+    const place = this.normalizePlace(p.place);
+    if (place === "home") return { place, address: p.address, lat: p.lat, lng: p.lng };
+    const tp = await this.teacherPlaceAddress(db, p.teacherId);
+    if (!tp) throw biz("TEACHER_ADDRESS_REQUIRED", "该教员尚未填写授课地址，暂不能选择「到教员处上课」");
+    return { place, address: tp.address, lat: tp.lat, lng: tp.lng };
+  }
+
   /* ---------------- 创建订单 ---------------- */
   async createOrder(m: EntityManager, p: {
     parentId: number; teacherId: number; demandId?: number; serviceId?: number;
     subject: string; stage: string; lessonTime: string; lessonEnd?: string;
-    address: string; lat: number; lng: number; regionId: number; amount: number;
-    urgentFee?: number; remark?: string; couponId?: number;
+    address: string | null; lat: number | null; lng: number | null; regionId: number; amount: number;
+    urgentFee?: number; remark?: string; couponId?: number; place?: string;
   }) {
+    // 授课地点（P65）：到教员处上课时 address/lat/lng 换成教员的授课地址
+    const lesson = await this.resolveLessonPlace(m, {
+      place: p.place, teacherId: p.teacherId, address: p.address, lat: p.lat, lng: p.lng,
+    });
     const sales = (await m.query("SELECT `sales_id`,`agent_id` FROM `bindings` WHERE `user_id` = ? LIMIT 1", [p.parentId]))[0];
     const teacherSales = (await m.query("SELECT `sales_id`,`agent_id` FROM `bindings` WHERE `user_id` = ? LIMIT 1", [p.teacherId]))[0];
     const finalRegion = p.demandId
@@ -191,10 +236,10 @@ export class OrdersService {
 
     const r = await m.query(
       `INSERT INTO \`orders\` (\`order_no\`,\`parent_id\`,\`teacher_id\`,\`demand_id\`,\`service_id\`,\`subject\`,\`stage\`,\`lesson_time\`,\`lesson_end\`,
-        \`address\`,\`lat\`,\`lng\`,\`region_id\`,\`sales_id\`,\`agent_id\`,\`amount\`,\`urgent_fee\`,\`status\`,\`commission_rate\`,\`remark\`,\`created_at\`,\`updated_at\`)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        \`address\`,\`place\`,\`lat\`,\`lng\`,\`region_id\`,\`sales_id\`,\`agent_id\`,\`amount\`,\`urgent_fee\`,\`status\`,\`commission_rate\`,\`remark\`,\`created_at\`,\`updated_at\`)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [orderNo(), p.parentId, p.teacherId, p.demandId ?? null, p.serviceId ?? null, p.subject, p.stage, p.lessonTime,
-        p.lessonEnd ?? null, p.address, p.lat, p.lng, finalRegion, sales?.sales_id ?? null, agentId,
+        p.lessonEnd ?? null, lesson.address, lesson.place, lesson.lat, lesson.lng, finalRegion, sales?.sales_id ?? null, agentId,
         finalAmount, p.urgentFee ?? 0, "awaiting_payment", commissionRate,
         couponNote || p.remark || "", nowIso(), nowIso()],
     );
@@ -244,6 +289,8 @@ export class OrdersService {
         subject: d.subject, stage: d.stage, lessonTime, lessonEnd: first.end || null,
         address: d.address, lat: Number(d.lat), lng: Number(d.lng), regionId: Number(d.region_id),
         amount: Number(d.budget), urgentFee: Number(d.urgent_fee), remark: d.remark || "",
+        // 需求发布时选定的授课形式带到订单：teacher_place 时地址改教员授课地址
+        place: d.mode,
       });
       await audit(m, { user: { uid: parentId, role: "parent" } }, "order.confirmDemand", "orders:" + order.id, { demandId: d.id, appId: app.id });
       return this.view(order, "parent");
@@ -258,10 +305,23 @@ export class OrdersService {
       const tp = (await m.query("SELECT * FROM `teacher_profiles` WHERE `user_id` = ? AND `audit_status` = 'approved'", [svc.teacher_id]))[0];
       if (!tp) throw biz("BAD_STATUS", "该教员暂不可接单");
       if (!b.lessonTime) throw bad("请选择上课时间");
-      const addr = b.addressId
-        ? (await m.query("SELECT * FROM `addresses` WHERE `id` = ? AND `user_id` = ?", [b.addressId, parentId]))[0]
-        : (await m.query("SELECT * FROM `addresses` WHERE `user_id` = ? ORDER BY `is_default` DESC, `id` DESC LIMIT 1", [parentId]))[0];
-      if (!addr) throw bad("请先添加上课地址");
+      // 授课地点（P65）：到教员处上课时不需要家长地址，地点/坐标/片区取教员的授课地址
+      const place = this.normalizePlace(b.place);
+      let addr: any = null;
+      let regionId = 0;
+      if (place === "teacher_place") {
+        const tpPlace = await this.teacherPlaceAddress(m, Number(svc.teacher_id));
+        if (!tpPlace) throw biz("TEACHER_ADDRESS_REQUIRED", "该教员尚未填写授课地址，暂不能选择「到教员处上课」");
+        const region: any = await resolveRegion(this.ds, tpPlace.lat, tpPlace.lng);
+        if (!region) throw biz("OUT_OF_SERVICE", "该地址暂未开通服务片区");
+        regionId = Number(region.id);
+      } else {
+        addr = b.addressId
+          ? (await m.query("SELECT * FROM `addresses` WHERE `id` = ? AND `user_id` = ?", [b.addressId, parentId]))[0]
+          : (await m.query("SELECT * FROM `addresses` WHERE `user_id` = ? ORDER BY `is_default` DESC, `id` DESC LIMIT 1", [parentId]))[0];
+        if (!addr) throw bad("请先添加上课地址");
+        regionId = Number(addr.region_id);
+      }
       // 5.1 时段冲突校验：同一教员同一时段不可重复接单
       const conflictOrder = (await m.query(
         "SELECT `id` FROM `orders` WHERE `teacher_id` = ? AND `lesson_time` = ? AND `status` IN ('pending_class','in_class','awaiting_parent_confirm','completed')",
@@ -273,8 +333,11 @@ export class OrdersService {
         subject: String(svc.subjects || "").split(",")[0] || "其他",
         stage: String(svc.stages || "").split(",")[0] || "小学",
         lessonTime: b.lessonTime, lessonEnd: b.lessonEnd || null,
-        address: addr.address, lat: Number(addr.lat), lng: Number(addr.lng), regionId: Number(addr.region_id),
+        // teacher_place 时这里传 null，createOrder 会换成教员的授课地址
+        address: addr?.address ?? null, lat: addr ? Number(addr.lat) : null, lng: addr ? Number(addr.lng) : null,
+        regionId,
         amount: Number(svc.price), urgentFee: 0, remark: b.remark || "", couponId: b.couponId || null,
+        place,
       });
       await audit(m, { user: { uid: parentId, role: "parent" } }, "order.fromService", "orders:" + order.id, { serviceId: svc.id });
       return this.view(order, "parent");

@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS `teacher_profiles` (
   `base_lng`        DOUBLE,
   `schedule`        TEXT,
   `cover_area`      TEXT,
+  `base_address`    TEXT,                               -- 教员授课地址（家长「到教员处上课」时的实际上课地点，P65）
   `audit_status`    VARCHAR(255) NOT NULL DEFAULT 'pending',
   `reject_reason`   TEXT,
   `online`          INT NOT NULL DEFAULT 0,
@@ -126,7 +127,7 @@ CREATE TABLE IF NOT EXISTS `demands` (
   `parent_id`       BIGINT UNSIGNED NOT NULL REFERENCES users(id),
   `stage`           VARCHAR(255) NOT NULL,
   `subject`         VARCHAR(255) NOT NULL,
-  `mode`            VARCHAR(255) NOT NULL DEFAULT 'home',
+  `mode`            VARCHAR(255) NOT NULL DEFAULT 'home',  -- home=教员上门（默认）| teacher_place=家长到教员处上课（P65）
   `address_id`      BIGINT UNSIGNED,
   `address`         TEXT NOT NULL,
   `lat`             DOUBLE NOT NULL,
@@ -169,6 +170,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `lesson_time`     VARCHAR(255) NOT NULL,
   `lesson_end`      VARCHAR(255),
   `address`         TEXT NOT NULL,
+  `place`           VARCHAR(32) NOT NULL DEFAULT 'home',   -- 授课地点：home=教员上门 / teacher_place=家长到教员处（P65）
   `lat`             DOUBLE NOT NULL,
   `lng`             DOUBLE NOT NULL,
   `region_id`       BIGINT UNSIGNED NOT NULL,

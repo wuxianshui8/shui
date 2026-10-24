@@ -94,6 +94,7 @@
 | intro, subjects, stages | 介绍与授课范围（逗号分隔） |
 | hourly_price | 课时单价（分） |
 | service_radius_km, base_lat, base_lng, cover_area | 服务半径与基点 |
+| base_address | **教员授课地址**（P65）：非空表示支持「家长到教员处上课」，与 base_lat/base_lng 配对使用；留空=只支持上门 |
 | schedule | JSON 可授课时间表 |
 | audit_status, reject_reason | `pending` / `approved` / `rejected` |
 | online | 在线接单开关 |
@@ -122,7 +123,7 @@
 ## 4. 需求与撮合域
 
 ### demands — 家长发布的家教需求
-`parent_id, stage, subject, mode(仅 home), address_id, address, lat, lng, region_id, times(JSON[{date,start,end}]), budget(分), remark, gender_pref, urgent, urgent_fee, status(published|paused|revoked|matched|closed), confirm_app_id`
+`parent_id, stage, subject, mode(home 教员上门(默认) / teacher_place 家长到教员处), address_id, address, lat, lng, region_id, times(JSON[{date,start,end}]), budget(分), remark, gender_pref, urgent, urgent_fee, status(published/paused/revoked/matched/closed), confirm_app_id, created_at, updated_at`（P65 起 `mode` 正式启用：`teacher_place` 的需求确认成单时，订单上课地点改取教员授课地址）
 
 ### applications — 教员报名（抢单）
 `demand_id, teacher_id, status(pending|confirmed|rejected|cancelled), priority, distance_km`
@@ -137,7 +138,7 @@
 | --- | --- |
 | 标识 | `id, order_no(UNIQUE)` |
 | 参与方 | `parent_id, teacher_id, demand_id, service_id` |
-| 内容 | `subject, stage, lesson_time, lesson_end, address, lat, lng, remark` |
+| 内容 | `subject, stage, lesson_time, lesson_end, address, place, lat, lng, remark`——`address/lat/lng` 恒为**实际上课地点**（`place=teacher_place` 时即教员授课地址，故打卡/提醒/风控无需区分；P65） |
 | 归属 | `region_id, sales_id, agent_id`（收益归属按需求地址片区） |
 | 金额 | `amount(实付), urgent_fee, commission_rate, service_fee, teacher_income, agent_share, sales_commission, platform_revenue` |
 | 状态 | `status`（见状态机） |

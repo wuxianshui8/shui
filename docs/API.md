@@ -46,13 +46,13 @@
 | GET | `/api/parent/teachers/:id` | 教员详情：资质/科目/价格/覆盖/服务列表/评价/评分分布/等级权益表/是否收藏 |
 | GET | `/api/parent/orders?status=` | `awaiting`(待接单) / `pending`(待上课/进行中) / `completed` / `cancelled` |
 | GET | `/api/parent/profile` | 个人中心：信用等级、信用分、评价权重、规则、统计、信用流水 |
-| POST | `/api/demands` | 发布需求 `{stage,subject,address,lat,lng,budget,remark,urgent,times[],genderPref,addressId}` |
+| POST | `/api/demands` | 发布需求 `{stage,subject,mode,address,lat,lng,budget,remark,urgent,times[],genderPref,addressId}`；`mode`=`home`（教员上门，默认）/`teacher_place`（家长到教员处） |
 | GET | `/api/demands/mine` | 我的需求列表（含报名数） |
 | GET | `/api/demands/:id` | 需求详情 + 报名教员列表 |
 | PUT | `/api/demands/:id` | 编辑需求（仅未确认） |
 | POST | `/api/demands/:id/action` | `{action:'pause'\|'resume'\|'revoke'}` 暂停/恢复/撤销 |
 | POST | `/api/demands/:id/confirm` | `{applicationId}` 确认某位报名教员 → 生成订单（并发安全） |
-| POST | `/api/orders/from-service` | 选购服务直接下单 `{serviceId,lessonTime,addressId,remark,couponId}` |
+| POST | `/api/orders/from-service` | 选购服务直接下单 `{serviceId,lessonTime,addressId,place,remark,couponId}`；`place`=`home`（默认）/`teacher_place`——后者**不需要 addressId**，订单上课地点自动取教员授课地址，教员未填则 400 `TEACHER_ADDRESS_REQUIRED` |
 
 ### 通用（登录用户）
 | 方法 | 路径 | 说明 |
@@ -76,9 +76,9 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/teacher/apply` | 入驻提交 `{realName,idCard,identityType,subjects,stages,hourlyPrice,serviceRadiusKm,lat,lng,schedule,coverArea,intro,eduCertUrl,teacherCertUrl,skillCertUrl}` |
-| GET | `/api/teacher/profile` | `{applied, profile}`（含脱敏身份证、驳回原因） |
-| PUT | `/api/teacher/profile` | 修改授课设置 |
+| POST | `/api/teacher/apply` | 入驻提交 `{realName,idCard,identityType,subjects,stages,hourlyPrice,serviceRadiusKm,lat,lng,baseAddress,schedule,coverArea,intro,eduCertUrl,teacherCertUrl,skillCertUrl}` |
+| GET | `/api/teacher/profile` | `{applied, profile}`（含脱敏身份证、驳回原因、授课地址 `baseAddress`） |
+| PUT | `/api/teacher/profile` | 修改授课设置（含 `baseAddress`：教员授课地址，传空串表示关闭「家长到教员处上课」；P65） |
 | POST | `/api/teacher/online` | `{online:true\|false}` 上线/下线（需审核通过） |
 | GET | `/api/teacher/dashboard` | 接单首页：在线状态、今日单量/收入、评分、等级、下一等级、服务状态、待处理数、钱包、公告 |
 | GET | `/api/teacher/nearby-demands` | 附近订单（按派单优先级排序，含距离/加急/已报名状态） |

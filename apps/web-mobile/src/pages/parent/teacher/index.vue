@@ -22,6 +22,8 @@ const today = () => {
 const draft = reactive({
   serviceId: 0,
   addressId: 0,
+  // 授课方式（P65）：home=教员上门 / teacher_place=家长到教员处（教员填了授课地址才可选）
+  place: "home",
   date: today(),
   start: "19:00",
   end: "20:30",
@@ -32,7 +34,14 @@ const newAddr = reactive({ contact: "", phone: "", address: "", label: "家" });
 
 const services = computed(() => (teacher.value && teacher.value.services) || []);
 const chosenService = computed(() => services.value.find((s) => Number(s.id) === Number(draft.serviceId)) || services.value[0] || null);
-const canBook = computed(() => !!draft.addressId && !!draft.date && !!draft.start && !!chosenService.value);
+const atTeacher = computed(() => !!(teacher.value && teacher.value.acceptAtTeacherPlace));
+const canBook = computed(
+  () =>
+    (draft.place === "teacher_place" ? atTeacher.value : !!draft.addressId) &&
+    !!draft.date &&
+    !!draft.start &&
+    !!chosenService.value,
+);
 
 onLoad((options) => {
   id.value = Number((options && options.id) || 0);
@@ -102,7 +111,7 @@ async function saveAddr() {
 
 async function submit() {
   if (!chosenService.value) return uni.showToast({ title: "该教员暂未上架可预约服务", icon: "none" });
-  if (!draft.addressId) return uni.showToast({ title: "请先添加上课地址", icon: "none" });
+  if (draft.place !== "teacher_place" && !draft.addressId) return uni.showToast({ title: "请先添加上课地址", icon: "none" });
   if (!draft.date || !draft.start) return uni.showToast({ title: "请选择上课时间", icon: "none" });
   const startAt = new Date(draft.date + "T" + draft.start + ":00");
   if (Number.isNaN(startAt.getTime())) return uni.showToast({ title: "上课时间格式不正确", icon: "none" });
@@ -114,7 +123,8 @@ async function submit() {
       serviceId: Number(chosenService.value.id),
       lessonTime: startAt.toISOString(),
       lessonEnd: draft.end ? draft.date + "T" + draft.end + ":00" : null,
-      addressId: Number(draft.addressId),
+      addressId: draft.place === "teacher_place" ? undefined : Number(draft.addressId),
+      place: draft.place,
       remark: String(draft.remark || "").trim(),
     });
     uni.showToast({ title: "预约已创建，去支付", icon: "none" });
@@ -207,6 +217,24 @@ async function submit() {
           >{{ s.title }} · {{ money(s.price) }}</view>
         </view>
 
+        <view v-if="atTeacher" class="muted" style="margin: 20rpx 0 10rpx">授课方式</view>
+        <view v-if="atTeacher" class="row" style="flex-wrap: wrap; gap: 12rpx; border-bottom: none">
+          <view
+            class="tag"
+            :style="{ background: draft.place === 'home' ? '#1f6feb' : '#eef4ff', color: draft.place === 'home' ? '#fff' : '#1f6feb' }"
+            @click="draft.place = 'home'"
+          >🏠 教员上门</view>
+          <view
+            class="tag"
+            :style="{ background: draft.place === 'teacher_place' ? '#1f6feb' : '#eef4ff', color: draft.place === 'teacher_place' ? '#fff' : '#1f6feb' }"
+            @click="draft.place = 'teacher_place'"
+          >📍 我到教员处</view>
+        </view>
+        <view v-if="atTeacher" class="muted" style="margin-bottom: 12rpx; font-size: 24rpx">
+          {{ draft.place === 'teacher_place' ? '教员授课地址：' + (teacher.acceptAtTeacherPlace ? teacher.baseAddress || '' : '') : '教员到您选择的上课地址授课' }}
+        </view>
+
+        <template v-if="draft.place !== 'teacher_place'">
         <view class="muted" style="margin: 20rpx 0 10rpx">上课地址</view>
         <picker v-if="addrs.length" :range="addrs" range-key="address" @change="(e) => (draft.addressId = Number(addrs[e.detail.value].id))">
           <view class="input">
@@ -222,6 +250,7 @@ async function submit() {
           <view class="btn ghost" @click="saveAddr">保存地址</view>
         </view>
         <view v-else class="muted" style="margin-bottom: 12rpx" @click="addingAddr = true">＋ 添加新地址</view>
+        </template>
 
         <view class="muted" style="margin: 8rpx 0 10rpx">上课日期</view>
         <picker mode="date" :value="draft.date" @change="(e) => (draft.date = e.detail.value)">

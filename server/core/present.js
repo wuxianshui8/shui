@@ -39,6 +39,9 @@ export function teacherCard(userId, { revealPhone = false, tp: preTp = null, use
     auditStatus: tp.audit_status,
     baseLat: tp.base_lat,
     baseLng: tp.base_lng,
+    // 授课地址（P65）：非空表示该教员支持「家长到教员处上课」，家长预约时可选
+    baseAddress: String(tp.base_address || "").trim() || null,
+    acceptAtTeacherPlace: !!(String(tp.base_address || "").trim() && tp.base_lat != null && tp.base_lng != null),
     status: u.status,
   };
 }
@@ -181,12 +184,15 @@ function composeOrderView(o, viewerRole, parts, { mask = false } = {}) {
     lessonTime: o.lesson_time,
     lessonEnd: o.lesson_end,
     address: mask ? maskAddress(o.address) : o.address,
+    // 授课地点（P65）：home=教员上门到家长地址 / teacher_place=家长到教员授课地址
+    place: o.place === "teacher_place" ? "teacher_place" : "home",
+    placeText: o.place === "teacher_place" ? "到教员处上课" : "教员上门",
     lat: o.lat,
     lng: o.lng,
     amount: o.amount,
     urgentFee: o.urgent_fee,
     status: o.status,
-    statusText: orderStatusText(o.status, viewerRole),
+    statusText: orderStatusText(o.status, viewerRole, o.place),
     commissionRate: o.commission_rate,
     serviceFee: o.service_fee,
     teacherIncome: o.teacher_income,
@@ -224,7 +230,11 @@ function composeOrderView(o, viewerRole, parts, { mask = false } = {}) {
   };
 }
 
-export function orderStatusText(status, role = "parent") {
+export function orderStatusText(status, role = "parent", place = "home") {
+  // 到教员处上课时教员不是「待上门」，而是等家长到
+  if (place === "teacher_place" && status === "pending_class") {
+    return role === "teacher" ? "待家长到" : "待上课";
+  }
   const parentMap = {
     awaiting_payment: "待付款",
     pending_class: "待上课",

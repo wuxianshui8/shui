@@ -23,6 +23,7 @@
 | 第 3 章 教员端界面（接单/收入/等级） | `pages/teacher/index` | `pages/teacher/index.vue` | 课时看板、等级权益、附近需求抢单、「上门打卡（真实定位）/ 结束授课」 |
 | 第 3 章 收入与提现 | `pages/teacher/wallet/index` | `pages/teacher/wallet/index.vue` | 余额/冻结/累计收支、提现申请（最低额与手续费规则驱动、幂等键）、提现记录与流水 |
 | 第 3 章 入驻认证（资质材料） | `pages/teacher/apply/index` | `pages/teacher/apply/index.vue` | 身份类型、真实姓名/身份证号、**「资质材料」卡排在提交按钮之上**：身份证正反面必传；第三张按身份只显示一张——在职教师→教师资格证、在校大学生→学生证、社会兼职→技能证书（`certSlot` + `certHint`）；上传后图片用背景图 `background-size: cover` 在框内自适应（`<image :src>` 在本版 H5 不落 DOM）；人像面即调 `/api/teacher/ocr-idcard` 回显「识别到：姓名 · 脱敏号码」与是否一致；提交走 `/api/teacher/apply`（姓名/号码与证件不一致会被服务端拒） |
+| 第 2 章 授课地点（教员上门 / 家长到教员处） | `pages/parent/teacher`、`pages/parent/publish`、`pages/parent/order`、`pages/teacher/apply` | `pages/parent/teacher/index.vue`、`pages/parent/publish/index.vue`、`pages/parent/order/index.vue`、`pages/teacher/apply/index.vue` | **P65**：教员在入驻/资料里填「授课地址」后，家长预约页出现「🏠 教员上门 / 📍 我到教员处」两个选项（选后者隐藏家长地址选择、显示教员地址），发布需求也能选上课形式；订单详情显示「授课方式」与「教员授课地址」；下单带 `place`，到教员处时后端自动把订单地点换成教员授课地址，无需家长地址 |
 | （UI 说明书未单列业务员端） | `pages/sales/index` | `pages/sales/index.vue` | 按同规范扩展：本月注册/成交/GMV/待结奖励、双通道推广码、客户 |
 | （同上）奖励明细 | `pages/sales/rewards/index` | `pages/sales/rewards/index.vue` | 六类奖励按类型汇总与筛选、结算状态、钱包可用 |
 | 第 4 章 区域代理端界面（大盘/订单） | `pages/agent/index` | `pages/agent/index.vue` | 片区 GMV/订单/业务员、考核完成度、片区订单 |

@@ -46,6 +46,18 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "TEXT NULL",
     why: "教员驳回理由（回给家长看）",
   },
+  {
+    table: "teacher_profiles",
+    column: "base_address",
+    ddl: "TEXT NULL",
+    why: "教员授课地址（家长「到教员处上课」时的实际上课地点，P65）",
+  },
+  {
+    table: "orders",
+    column: "place",
+    ddl: "VARCHAR(32) NOT NULL DEFAULT 'home'",
+    why: "授课地点：home=教员上门到家长地址 / teacher_place=家长到教员授课地址（P65）",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {

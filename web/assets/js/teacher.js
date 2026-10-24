@@ -1456,6 +1456,9 @@ async function profileView() {
     '<input class="input" id="pf-radius" name="serviceRadiusKm" type="number" min="1" step="1" value="' + (p.serviceRadiusKm ?? 5) + '"></div></div>' +
     '<div class="field"><label for="pf-area">覆盖区域描述</label>' +
     '<input class="input" id="pf-area" name="coverArea" value="' + esc(p.coverArea || "") + '" placeholder="如 西湖区、拱墅区"></div>' +
+    '<div class="field"><label for="pf-baseaddr">授课地址（家长可带孩子来这里上课）</label>' +
+    '<input class="input" id="pf-baseaddr" name="baseAddress" value="' + esc(p.baseAddress || "") + '" placeholder="如 西湖区文三路 100 号 3 幢 501；留空表示只支持上门">' +
+    '<div class="form-hint">填写后，家长预约时可选「我到教员处」；上课地点用上面的服务基点坐标，请一起填准。</div></div>' +
     '<div class="field-row"><div class="field"><label for="pf-lat">服务基点纬度</label>' +
     '<input class="input" id="pf-lat" name="lat" value="' + (p.baseLat ?? DEFAULT_LAT) + '" inputmode="decimal"></div>' +
     '<div class="field"><label for="pf-lng">服务基点经度</label>' +
@@ -1513,6 +1516,7 @@ async function profileView() {
         lat: Number(fd.lat),
         lng: Number(fd.lng),
         coverArea: fd.coverArea,
+        baseAddress: fd.baseAddress,
         schedule: textToSchedule(fd.schedule),
       });
       toastOk("资料已更新");
@@ -1690,6 +1694,9 @@ async function applyView() {
     '<div class="form-hint">格式：星期 + 时段，多个时段用「/」分隔。</div></div>' +
     '<div class="field"><label for="ap-area">覆盖区域描述</label>' +
     '<input class="input" id="ap-area" name="coverArea" value="' + esc(p.coverArea || "") + '" placeholder="如 西湖区文三路周边 5 公里"></div>' +
+    '<div class="field"><label for="ap-baseaddr">授课地址（家长可带孩子来这里上课，可不填）</label>' +
+    '<input class="input" id="ap-baseaddr" name="baseAddress" value="' + esc(p.baseAddress || "") + '" placeholder="如 西湖区文三路 100 号 3 幢 501">' +
+    '<div class="form-hint">填了家长就能选「我到教员处」；上课地点用下面的服务基点坐标。</div></div>' +
     '<div class="field-row"><div class="field"><label for="ap-lat">服务基点纬度</label>' +
     '<input class="input" id="ap-lat" name="lat" value="' + (p.baseLat ?? DEFAULT_LAT) + '" inputmode="decimal"></div>' +
     '<div class="field"><label for="ap-lng">服务基点经度</label>' +
@@ -1799,6 +1806,7 @@ async function applyView() {
         serviceRadiusKm: Number(fd.serviceRadiusKm) || 5,
         schedule: textToSchedule(fd.schedule),
         coverArea: fd.coverArea || "",
+        baseAddress: fd.baseAddress || "",
         lat: Number(fd.lat),
         lng: Number(fd.lng),
       });

@@ -1546,10 +1546,11 @@ async function viewOrders(root) {
 
   const orderTable = (list) =>
     tableHtml(
-      ["订单号", "科目 / 学段", "家长", "教员", "实付", "平台服务费", "教员实收", "状态", "下单时间", "操作"],
+      ["订单号", "科目 / 学段", "授课方式", "家长", "教员", "实付", "平台服务费", "教员实收", "状态", "下单时间", "操作"],
       list.map((o) => [
         '<span class="mono">' + esc(o.orderNo) + "</span>",
         "<b>" + esc(o.subject) + "</b> · " + esc(o.stage),
+        '<span class="tiny">' + esc(o.placeText || "教员上门") + "</span>",
         esc(o.parent?.nickname || "—"),
         esc(o.teacher?.nickname || "—") + (o.teacher ? '<div class="tiny faint">' + levelBadge(o.teacher.level) + "</div>" : ""),
         '<span class="num bold">' + money(o.amount) + "</span>",

@@ -20,6 +20,8 @@ const form = reactive({
   hourlyPrice: "",
   serviceRadiusKm: 5,
   coverArea: "",
+  // 授课地址（P65）：填了家长就能选「我到教员处」；上课地点用下面的服务基点坐标
+  baseAddress: "",
   scheduleText: "",
   lat: 30.261,
   lng: 120.132,
@@ -106,6 +108,7 @@ async function load() {
       form.serviceRadiusKm = p.serviceRadiusKm || 5;
       form.coverArea = p.coverArea || "";
       form.lat = p.baseLat || form.lat;
+      form.baseAddress = p.baseAddress || "";
       form.lng = p.baseLng || form.lng;
       form.idCardFrontUrl = p.idCardFrontUrl || "";
       form.idCardBackUrl = p.idCardBackUrl || "";
@@ -276,6 +279,7 @@ async function submit() {
       serviceRadiusKm: Number(form.serviceRadiusKm) || 5,
       schedule: parseSchedule(form.scheduleText),
       coverArea: form.coverArea || "",
+      baseAddress: form.baseAddress || "",
       lat: Number(form.lat),
       lng: Number(form.lng),
     });
@@ -367,6 +371,9 @@ async function submit() {
 
       <view class="muted" style="margin: 22rpx 0 10rpx">覆盖区域描述</view>
       <input v-model="form.coverArea" class="input" placeholder="如 西湖区文三路周边 5 公里" :disabled="!editable" />
+      <view class="muted" style="margin: 22rpx 0 10rpx">授课地址（家长可带孩子来这里上课，可不填）</view>
+      <input v-model="form.baseAddress" class="input" placeholder="如 西湖区文三路 100 号 3 幢 501" :disabled="!editable" />
+      <view class="muted" style="font-size: 24rpx">填了家长就能选「我到教员处」；上课地点用下面的服务基点坐标。</view>
     </view>
 
     <!-- 资质材料：放在提交按钮上面；身份证正反面必传，第三张证书按身份类型只显示一张 -->

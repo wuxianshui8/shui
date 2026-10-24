@@ -58,6 +58,8 @@ export function register(router) {
       b.identityType || "student", b.realName, b.idCard, b.eduCertUrl || null, b.teacherCertUrl || null,
       b.skillCertUrl || null, b.intro || "", b.subjects, b.stages || "", Math.round(Number(b.hourlyPrice)),
       Number(b.serviceRadiusKm || 5), lat, lng, JSON.stringify(b.schedule || []), b.coverArea || "",
+      // 授课地址（P65）：家长可带学生到这里上课；留空表示只支持上门
+      String(b.baseAddress || "").trim() || null,
       front || null, back || null, idCardName, idCardVerified,
     ];
 
@@ -65,7 +67,7 @@ export function register(router) {
       run(
         `UPDATE teacher_profiles SET identity_type = ?, real_name = ?, id_card = ?, edu_cert_url = ?, teacher_cert_url = ?,
          skill_cert_url = ?, intro = ?, subjects = ?, stages = ?, hourly_price = ?, service_radius_km = ?,
-         base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?,
+         base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?, base_address = ?,
          id_card_front_url = ?, id_card_back_url = ?, id_card_name = ?, id_card_verified = ?,
          audit_status = 'pending', reject_reason = NULL, updated_at = ?
          WHERE user_id = ?`,
@@ -75,9 +77,9 @@ export function register(router) {
       run(
         `INSERT INTO teacher_profiles (user_id, identity_type, real_name, id_card, edu_cert_url, teacher_cert_url,
           skill_cert_url, intro, subjects, stages, hourly_price, service_radius_km, base_lat, base_lng, schedule,
-          cover_area, id_card_front_url, id_card_back_url, id_card_name, id_card_verified,
+          cover_area, base_address, id_card_front_url, id_card_back_url, id_card_name, id_card_verified,
           audit_status, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         ctx.user.id, ...common, "pending", nowIso(), nowIso()
       );
     }
@@ -120,7 +122,7 @@ export function register(router) {
     const b = ctx.body;
     run(
       `UPDATE teacher_profiles SET intro = ?, subjects = ?, stages = ?, hourly_price = ?, service_radius_km = ?,
-       base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?, updated_at = ? WHERE user_id = ?`,
+       base_lat = ?, base_lng = ?, schedule = ?, cover_area = ?, base_address = ?, updated_at = ? WHERE user_id = ?`,
       b.intro ?? tp.intro,
       b.subjects ?? tp.subjects,
       b.stages ?? tp.stages,
@@ -130,6 +132,8 @@ export function register(router) {
       b.lng != null ? Number(b.lng) : tp.base_lng,
       JSON.stringify(b.schedule ?? (tp.schedule ? JSON.parse(tp.schedule) : [])),
       b.coverArea ?? tp.cover_area,
+      // 授课地址（P65）：传空串表示关闭「到教员处上课」
+      b.baseAddress !== undefined ? (String(b.baseAddress || "").trim() || null) : (tp.base_address ?? null),
       nowIso(), ctx.user.id
     );
     audit(ctx, "teacher.updateProfile", "users:" + ctx.user.id);

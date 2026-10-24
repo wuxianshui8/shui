@@ -12,7 +12,8 @@ import {
 } from "../core/rules.js";
 import { haversineKm, maskPhone } from "../core/geo.js";
 import { creditInfo, reviewsOfTeacher, teacherCard, userBrief, orderView, orderViews } from "../core/present.js";
-import { createOrder } from "./orders.js";
+import { createOrder, normalizePlace, teacherPlaceAddress } from "./orders.js";
+
 /**
  * 加急费：家长可自填（加价买优先推送），但仍要有护栏。
  * - 规则 urgent.fee = 平台标准价，也是最低价；不传金额就按它（保持老行为）
@@ -265,7 +266,7 @@ export function register(router) {
       `INSERT INTO demands (parent_id, stage, subject, mode, address_id, address, lat, lng, region_id, times, budget,
         remark, gender_pref, urgent, urgent_fee, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ctx.user.id, b.stage, b.subject, "home", b.addressId ?? null, b.address, Number(b.lat), Number(b.lng),
+      ctx.user.id, b.stage, b.subject, normalizePlace(b.mode), b.addressId ?? null, b.address, Number(b.lat), Number(b.lng),
       region.id, JSON.stringify(b.times || []), Math.round(Number(b.budget)), b.remark || "", b.genderPref || "",
       b.urgent ? 1 : 0, urgentFee, "published", nowIso(), nowIso()
     );
@@ -501,6 +502,8 @@ export function register(router) {
         amount: d.budget,
         urgentFee: d.urgent_fee,
         remark: d.remark || "",
+        // 需求发布时选定的授课形式带到订单：teacher_place 时地址改教员授课地址
+        place: d.mode,
       });
       audit(ctx, "demand.confirm", "demands:" + d.id, { applicationId: app.id, orderId: order.id });
       return ok(ctx.res, orderView(order, "parent"));
@@ -516,12 +519,23 @@ export function register(router) {
     if (!tp) throw Err.biz("BAD_STATUS", "该教员暂不可接单");
     if (!b.lessonTime) throw Err.bad("请选择上课时间");
 
-    const addr = b.addressId
-      ? get("SELECT * FROM addresses WHERE id = ? AND user_id = ?", b.addressId, ctx.user.id)
-      : get("SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC LIMIT 1", ctx.user.id);
-    if (!addr) throw Err.bad("请先添加上课地址");
-    const region = resolveRegion(addr.lat, addr.lng);
-    if (!region) throw Err.biz("OUT_OF_SERVICE", "该地址暂未开通服务片区");
+    // 授课地点（P65）：到教员处上课时不需要家长地址，地点/坐标/片区取教员的授课地址
+    const place = normalizePlace(b.place);
+    let addr = null;
+    let region = null;
+    if (place === "teacher_place") {
+      const tpPlace = teacherPlaceAddress(svc.teacher_id);
+      if (!tpPlace) throw Err.biz("TEACHER_ADDRESS_REQUIRED", "该教员尚未填写授课地址，暂不能选择「到教员处上课」");
+      region = resolveRegion(tpPlace.lat, tpPlace.lng);
+      if (!region) throw Err.biz("OUT_OF_SERVICE", "该地址暂未开通服务片区");
+    } else {
+      addr = b.addressId
+        ? get("SELECT * FROM addresses WHERE id = ? AND user_id = ?", b.addressId, ctx.user.id)
+        : get("SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC LIMIT 1", ctx.user.id);
+      if (!addr) throw Err.bad("请先添加上课地址");
+      region = resolveRegion(addr.lat, addr.lng);
+      if (!region) throw Err.biz("OUT_OF_SERVICE", "该地址暂未开通服务片区");
+    }
 
     // 时间冲突校验：教员同时段不可重复接单
     const conflict = get(
@@ -538,9 +552,11 @@ export function register(router) {
       stage: (svc.stages || "").split(",")[0] || "小学",
       lessonTime: b.lessonTime,
       lessonEnd: b.lessonEnd || null,
-      address: addr.address,
-      lat: addr.lat,
-      lng: addr.lng,
+      // teacher_place 时 addr 为 null，createOrder 会换成教员的授课地址
+      address: addr?.address ?? null,
+      lat: addr?.lat ?? null,
+      lng: addr?.lng ?? null,
+      place,
       regionId: region.id,
       amount: svc.price,
       urgentFee: 0,

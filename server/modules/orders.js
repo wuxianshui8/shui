@@ -31,8 +31,44 @@ import {
 } from "../core/ledger.js";
 import { orderView, orderStatusText } from "../core/present.js";
 
+
+/* ---------- 授课地点（P65）----------
+ * home          = 教员上门到家长地址（历史默认行为）
+ * teacher_place = 家长带孩子到教员的授课地址上课
+ * 订单的 address/lat/lng 始终表示「实际上课地点」，因此打卡校验、上课提醒、
+ * 定位风控一处都不用改：到教员处时该点就是教员自己的位置，距离≈0 自然通过。
+ */
+
+/** 规整授课地点取值（未知值一律按上门处理，避免脏数据影响老逻辑） */
+export function normalizePlace(v) {
+  return String(v || "") === "teacher_place" ? "teacher_place" : "home";
+}
+
+/** 取教员的授课地址（家长「到教员处上课」时的实际上课地点）；未填写完整则返回 null */
+export function teacherPlaceAddress(teacherId) {
+  const tp = get(
+    "SELECT base_address, base_lat, base_lng FROM teacher_profiles WHERE user_id = ?",
+    teacherId
+  );
+  const address = String(tp?.base_address || "").trim();
+  if (!address || tp.base_lat == null || tp.base_lng == null) return null;
+  return { address, lat: Number(tp.base_lat), lng: Number(tp.base_lng) };
+}
+
+/** 解析本次上课的实际上课地点（到教员处时忽略家长地址，改教员地址） */
+export function resolveLessonPlace({ place, teacherId, address, lat, lng }) {
+  const p = normalizePlace(place);
+  if (p === "home") return { place: "home", address, lat, lng };
+  const tp = teacherPlaceAddress(teacherId);
+  if (!tp) {
+    throw Err.biz("TEACHER_ADDRESS_REQUIRED", "该教员尚未填写授课地址，暂不能选择「到教员处上课」");
+  }
+  return { place: "teacher_place", address: tp.address, lat: tp.lat, lng: tp.lng };
+}
 /* ---------- 创建订单 ---------- */
-export function createOrder({ parentId, teacherId, demandId = null, serviceId = null, subject, stage, lessonTime, lessonEnd = null, address, lat, lng, regionId, amount, urgentFee = 0, remark = "", couponId = null }) {
+export function createOrder({ parentId, teacherId, demandId = null, serviceId = null, subject, stage, lessonTime, lessonEnd = null, address, lat, lng, regionId, amount, urgentFee = 0, remark = "", couponId = null, place = "home" }) {
+  // 授课地点在订单落地前统一解析：到教员处时 address/lat/lng 换成教员的授课地址
+  const lesson = resolveLessonPlace({ place, teacherId, address, lat, lng });
   const sales = get("SELECT sales_id, agent_id, region_id FROM bindings WHERE user_id = ?", parentId);
   const teacherSales = get("SELECT sales_id, agent_id, region_id FROM bindings WHERE user_id = ?", teacherId);
   const region = regionId || get("SELECT id FROM regions ORDER BY id LIMIT 1").id;
@@ -72,10 +108,10 @@ export function createOrder({ parentId, teacherId, demandId = null, serviceId = 
   return tx(() => {
     const r = run(
       `INSERT INTO orders (order_no, parent_id, teacher_id, demand_id, service_id, subject, stage, lesson_time, lesson_end,
-        address, lat, lng, region_id, sales_id, agent_id, amount, urgent_fee, status, commission_rate, remark, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        address, place, lat, lng, region_id, sales_id, agent_id, amount, urgent_fee, status, commission_rate, remark, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       orderNo(), parentId, teacherId, demandId, serviceId, subject, stage, lessonTime, lessonEnd,
-      address, lat, lng, finalRegion, sales?.sales_id ?? null, agentId, finalAmount, urgentFee,
+      lesson.address, lesson.place, lesson.lat, lesson.lng, finalRegion, sales?.sales_id ?? null, agentId, finalAmount, urgentFee,
       "awaiting_payment", commissionRateOf(teacherId), couponNote || remark, nowIso(), nowIso()
     );
     if (couponId) run("UPDATE user_coupons SET order_id = ? WHERE id = ?", r.id, couponId);

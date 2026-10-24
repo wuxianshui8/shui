@@ -143,9 +143,10 @@ async function submitReview() {
 
       <view class="card">
         <view class="card-title">上课信息</view>
+        <view class="row"><text>授课方式</text><text>{{ o.placeText || "教员上门" }}</text></view>
         <view class="row"><text>科目 / 学段</text><text>{{ o.subject }} · {{ o.stage }}</text></view>
         <view class="row"><text>上课时间</text><text>{{ fmt(o.lessonTime) }}</text></view>
-        <view class="row"><text>上课地址</text><text style="max-width: 60%; text-align: right">{{ o.address }}</text></view>
+        <view class="row"><text>{{ o.place === "teacher_place" ? "教员授课地址" : "上课地址" }}</text><text style="max-width: 60%; text-align: right">{{ o.address }}</text></view>
         <view class="row" v-if="o.remark"><text>备注</text><text style="max-width: 60%; text-align: right">{{ o.remark }}</text></view>
         <view class="row"><text>课时费</text><text>{{ money(o.amount) }}</text></view>
         <view class="row" v-if="o.urgentFee"><text>加急费</text><text>{{ money(o.urgentFee) }}</text></view>

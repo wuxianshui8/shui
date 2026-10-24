@@ -258,6 +258,51 @@ const parentLogin = await api("POST", "/auth/login-password", { body: { phone: "
 const deny = await api("GET", "/admin/overview", { token: parentLogin.body.data.token });
 assert(deny.status === 403, "后台接口对非管理员返回 403（" + deny.status + "）");
 
+/* ---------- 授课地点（P65）：家长也可以到教员处上课 ---------- */
+{
+  const tLogin = await api("POST", "/auth/login-password", { body: { phone: "13900000201", password: PW } });
+  const tTok = tLogin.body.data.token;
+  const svcList = await api("GET", "/teacher/services", { token: tTok });
+  const svc = (svcList.body.data.list || svcList.body.data || [])[0];
+  assert(!!svc, "教员有可预约服务可用于下单（" + (svc && svc.title) + "）");
+  const teacherAddr = "西湖区文三路 100 号 3 幢 501（验收用教员处）";
+
+  // 1) 没填授课地址 → 家长不能选「到教员处」
+  await api("PUT", "/teacher/profile", { token: tTok, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
+  const noAddr = await api("POST", "/orders/from-service", {
+    token: parentLogin.body.data.token,
+    body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 6 * 86400000).toISOString(), place: "teacher_place" },
+  });
+  assert(noAddr.status === 400 && noAddr.body.code === "TEACHER_ADDRESS_REQUIRED",
+    "教员未填授课地址时「到教员处」被拒（TEACHER_ADDRESS_REQUIRED）");
+
+  // 2) 填好授课地址 → 教员详情可下发、家长可下单
+  const setAddr = await api("PUT", "/teacher/profile", { token: tTok, body: { baseAddress: teacherAddr, lat: 30.2741, lng: 120.1551 } });
+  assert(setAddr.status === 200 && setAddr.body.data.baseAddress === teacherAddr, "教员资料可保存「授课地址」");
+  const at = await api("POST", "/orders/from-service", {
+    token: parentLogin.body.data.token,
+    body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 7 * 86400000).toISOString(), place: "teacher_place", remark: "后台门禁：到教员处" },
+  });
+  assert(at.status === 200 && at.body.data.place === "teacher_place" && at.body.data.address === teacherAddr,
+    "家长选「到教员处」下单：地点自动用教员授课地址", at.text);
+  assert(at.body.data.placeText === "到教员处上课", "订单视图给出「到教员处上课」文案");
+
+  // 3) 后台订单列表也带授课方式（订单页新增列的数据来源）
+  const adminOrders = await api("GET", "/admin/orders?page=1&pageSize=20", { token });
+  const hit = (adminOrders.body.data.list || []).find((o) => o.id === at.body.data.id);
+  assert(!!hit && hit.placeText === "到教员处上课", "后台订单列表下发授课方式（授课方式列有数据）");
+
+  // 4) 不传 place 仍默认上门
+  const homeOrder = await api("POST", "/orders/from-service", {
+    token: parentLogin.body.data.token,
+    body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 8 * 86400000).toISOString() },
+  });
+  assert(homeOrder.status === 200 && homeOrder.body.data.place === "home", "不传 place 时默认仍为「教员上门」");
+
+  // 收尾：还原授课地址，避免影响其它门禁
+  await api("PUT", "/teacher/profile", { token: tTok, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
+}
+
 /* ---------- 需求池与管理员账号（需求 4.5.3 / 4.5.9） ---------- */
 const demands = await api("GET", "/admin/demands?page=1&pageSize=10", { token });
 assert(demands.status === 200 && Array.isArray(demands.body.data.list),

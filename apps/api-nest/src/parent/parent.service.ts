@@ -59,6 +59,9 @@ export class ParentService {
       // 广场只下发模糊坐标（2 位小数），精确住址在成交后通过订单详情提供
       baseLat: row.base_lat == null ? null : Number(Number(row.base_lat).toFixed(2)),
       baseLng: row.base_lng == null ? null : Number(Number(row.base_lng).toFixed(2)),
+      // 授课地址（P65）：非空 = 支持「家长到教员处上课」；具体门牌在预约/订单里展示
+      baseAddress: String(row.base_address || "").trim() || null,
+      acceptAtTeacherPlace: !!(String(row.base_address || "").trim() && row.base_lat != null && row.base_lng != null),
       status: row.status,
     };
   }

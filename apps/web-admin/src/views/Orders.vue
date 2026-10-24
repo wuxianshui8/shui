@@ -97,6 +97,14 @@ async function priceOrder(row) {
       <el-table-column label="科目" width="120">
         <template #default="{ row }">{{ row.subject }} · {{ row.stage }}</template>
       </el-table-column>
+      <!-- 授课方式（P65）：home=教员上门 / teacher_place=家长到教员处 -->
+      <el-table-column label="授课方式" width="120">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.place === 'teacher_place' ? 'warning' : 'info'">
+            {{ row.placeText || "教员上门" }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="实付" width="100">
         <template #default="{ row }">{{ money(row.amount) }}</template>
       </el-table-column>

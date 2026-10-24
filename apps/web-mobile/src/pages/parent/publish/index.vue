@@ -6,6 +6,8 @@ import { goLogin, isLogin, request, saveDraft, takeDraft } from "../../../auth.j
 const form = reactive({
   stage: "初中",
   subject: "数学",
+  // 上课形式（P65）：home=教员上门（默认）/ teacher_place=家长带孩子到教员处
+  mode: "home",
   address: "西湖区文三路 128 号 学军小区 3 幢 502",
   lat: 30.262,
   lng: 120.133,
@@ -86,6 +88,7 @@ async function submit() {
   const body = {
     stage: form.stage,
     subject: form.subject,
+    mode: form.mode,
     address: form.address,
     lat: Number(form.lat),
     lng: Number(form.lng),
@@ -132,6 +135,22 @@ async function submit() {
         >{{ s }}</view>
       </view>
 
+      <view class="muted" style="margin: 20rpx 0 10rpx">上课形式</view>
+      <view class="row" style="flex-wrap: wrap; gap: 12rpx">
+        <view
+          class="tag"
+          :style="{ background: form.mode === 'home' ? '#1f6feb' : '#eef4ff', color: form.mode === 'home' ? '#fff' : '#1f6feb' }"
+          @click="form.mode = 'home'"
+        >🏠 教员上门</view>
+        <view
+          class="tag"
+          :style="{ background: form.mode === 'teacher_place' ? '#1f6feb' : '#eef4ff', color: form.mode === 'teacher_place' ? '#fff' : '#1f6feb' }"
+          @click="form.mode = 'teacher_place'"
+        >📍 我到教员处</view>
+      </view>
+      <view class="muted" style="margin-top: 8rpx; font-size: 24rpx">
+        {{ form.mode === 'teacher_place' ? '由教员提供授课地址（预约后可见）；下面的地址仅用于匹配片区' : '教员到您填写的上课地址授课' }}
+      </view>
       <view class="muted" style="margin: 20rpx 0 10rpx">上课地址</view>
       <input v-model="form.address" class="input" placeholder="详细地址" />
 

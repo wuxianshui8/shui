@@ -487,8 +487,10 @@ function demandFormHtml({ dict, addrs, urgentFee, urgentMaxFee = null, mode = "q
     '<div class="field"><label for="d-stage">学段<span class="req">*</span></label><select class="select" id="d-stage" name="stage">' + stages + "</select></div>" +
     '<div class="field"><label for="d-subject">科目<span class="req">*</span></label><select class="select" id="d-subject" name="subject">' + subjects + "</select></div>" +
     "</div>" +
-    '<div class="field"><label>上课形式</label><div class="row" style="gap:6px"><span class="chip on" style="pointer-events:none">🏠 仅上门</span>' +
-    '<span class="tiny faint">平台规则：所有订单均为教员上门授课</span></div></div>' +
+    '<div class="field"><label>上课形式</label><div class="row" style="gap:6px">' +
+    '<button type="button" class="chip on" data-place="home">🏠 教员上门</button>' +
+    '<button type="button" class="chip" data-place="teacher_place">📍 我到教员处</button></div>' +
+    '<div class="form-hint" data-place-hint>教员到您填写的上课地址授课</div></div>' +
     '<div class="field"><label for="d-address">上课地址<span class="req">*</span></label>' +
     (addrs.length
       ? '<select class="select mb8" data-pickaddr aria-label="选择已存地址">' + addrOptions + '<option value="">✍️ 手动填写新地址</option></select>'
@@ -542,6 +544,17 @@ function bindDemandForm(root, { mode, addrs, onPublished }) {
       const rows = $$("[data-time-row]", form);
       if (rows.length === 1) return toastErr("至少保留一个时间段");
       del.closest("[data-time-row]").remove();
+      return;
+    }
+    const placeBtn = e.target.closest("[data-place]");
+    if (placeBtn) {
+      $$("[data-place]", form).forEach((n) => n.classList.toggle("on", n === placeBtn));
+      const hint = form.querySelector("[data-place-hint]");
+      if (hint) {
+        hint.textContent = placeBtn.dataset.place === "teacher_place"
+          ? "由教员提供授课地址（预约/订单里可见）；下面的地址仅用于匹配片区"
+          : "教员到您填写的上课地址授课";
+      }
       return;
     }
     const urgent = e.target.closest("[data-urgent]");
@@ -661,7 +674,7 @@ function readDemandPayload(form, { mode, addrs }) {
   return {
     stage: d.stage,
     subject: d.subject,
-    mode: "home",
+    mode: (form.querySelector("[data-place].on")?.dataset.place) || "home",
     address,
     lat,
     lng,
@@ -786,8 +799,9 @@ function contactSheet(o) {
     '<div class="row mt8" style="gap:6px">' + levelBadge(t.level, t.levelName) +
     '<span class="tiny faint">' + esc(identityText(t.identityType)) + "</span></div></div></div>" +
     kv("联系电话", esc(t.phone || "-")) +
+    kv("授课方式", esc(o.placeText || "教员上门")) +
     kv("上课时间", fmtDate(o.lessonTime, "time")) +
-    kv("上课地址", esc(o.address || "-")) +
+    kv(o.place === "teacher_place" ? "教员授课地址" : "上课地址", esc(o.address || "-")) +
     '<div class="hint mt12">为保护双方隐私，平台展示脱敏号码；如需即时联系，请通过平台客服协助 400-800-1234。</div>',
     [{ label: "我知道了", class: "btn-primary" }]
   );
@@ -1138,7 +1152,9 @@ function openBooking(t, addrs, serviceId) {
     );
     return;
   }
-  if (!addrs.length) {
+  // 授课方式（P65）：教员填了授课地址，家长才可以选「我到教员处」
+  const atTeacher = !!t.acceptAtTeacherPlace;
+  if (!atTeacher && !addrs.length) {
     sheet(
       "预约 " + (t.nickname || ""),
       emptyHtml("您还没有保存上课地址", "📍") + '<p class="small muted center">上门授课需要先添加一个上课地址。</p>',
@@ -1147,17 +1163,37 @@ function openBooking(t, addrs, serviceId) {
     return;
   }
   const first = services.find((s) => String(s.id) === String(serviceId)) || services[0];
-  const defAddr = addrs.find((a) => a.is_default) || addrs[0];
-  const draft = { serviceId: first.id, addressId: defAddr.id, lessonTime: "", remark: "" };
+  const defAddr = addrs.find((a) => a.is_default) || addrs[0] || null;
+  const draft = {
+    serviceId: first.id,
+    addressId: defAddr ? defAddr.id : null,
+    lessonTime: "",
+    remark: "",
+    // 没有家长地址但有教员授课地址时，默认就是「到教员处」
+    place: defAddr ? "home" : "teacher_place",
+  };
+  const placeHint = draft.place === "teacher_place"
+    ? "教员授课地址：" + esc(t.baseAddress || "")
+    : "教员到您选择的上课地址授课";
   const html =
     '<div class="field"><label>选择服务</label><div class="col" style="gap:8px">' +
     services.map((s) =>
       '<button type="button" class="chip ' + (String(draft.serviceId) === String(s.id) ? "on" : "") + '" data-bk="service" data-id="' + s.id + '">' +
       esc(s.title) + " · " + money(s.price) + "/课时</button>"
     ).join("") + "</div></div>" +
-    '<div class="field"><label>上课地址</label><select class="select" data-bk="addr">' +
-    addrs.map((a) => '<option value="' + a.id + '" ' + (a.id === draft.addressId ? "selected" : "") + ">" + esc(a.label) + " · " + esc(a.address) + "</option>").join("") +
-    "</select></div>" +
+    (atTeacher
+      ? '<div class="field"><label>授课方式</label><div class="row" style="gap:6px">' +
+        '<button type="button" class="chip ' + (draft.place === "home" ? "on" : "") + '" data-bk="place" data-v="home">🏠 教员上门</button>' +
+        '<button type="button" class="chip ' + (draft.place === "teacher_place" ? "on" : "") + '" data-bk="place" data-v="teacher_place">📍 我到教员处</button>' +
+        '</div><div class="form-hint" data-bk-place-hint>' + placeHint + "</div></div>"
+      : "") +
+    '<div class="field" data-bk-addr-box' + (draft.place === "teacher_place" ? ' style="display:none"' : "") + '><label>上课地址</label>' +
+    (addrs.length
+      ? '<select class="select" data-bk="addr">' +
+        addrs.map((a) => '<option value="' + a.id + '" ' + (a.id === draft.addressId ? "selected" : "") + ">" + esc(a.label) + " · " + esc(a.address) + "</option>").join("") +
+        "</select>"
+      : '<div class="form-hint">还没有上课地址，可到「我的 → 地址管理」添加</div>') +
+    "</div>" +
     '<div class="field"><label>上课时间</label><input class="input" type="datetime-local" data-bk="time" min="' + minLocalNow() + '"></div>' +
     '<div class="field" style="margin-bottom:0"><label>备注（可选）</label>' +
     '<textarea class="textarea" data-bk="remark" placeholder="孩子年级、薄弱环节、希望重点提升的内容"></textarea></div>' +
@@ -1165,11 +1201,13 @@ function openBooking(t, addrs, serviceId) {
 
   const submit = async () => {
     if (!draft.lessonTime) return toastErr("请选择上课时间");
+    if (draft.place === "home" && !draft.addressId) return toastErr("请先添加并选择上课地址");
     try {
       const order = await api.post("/api/orders/from-service", {
         serviceId: draft.serviceId,
         lessonTime: new Date(draft.lessonTime).toISOString(),
-        addressId: draft.addressId,
+        addressId: draft.place === "teacher_place" ? undefined : draft.addressId,
+        place: draft.place,
         remark: draft.remark,
       });
       storeOrder(order);
@@ -1188,6 +1226,19 @@ function openBooking(t, addrs, serviceId) {
       node.addEventListener("click", () => {
         draft.serviceId = Number(node.dataset.id);
         $$('[data-bk="service"]', el).forEach((n) => n.classList.toggle("on", n === node));
+      });
+    } else if (k === "place") {
+      node.addEventListener("click", () => {
+        draft.place = node.dataset.v === "teacher_place" ? "teacher_place" : "home";
+        $$('[data-bk="place"]', el).forEach((n) => n.classList.toggle("on", n === node));
+        const hint = el.querySelector("[data-bk-place-hint]");
+        if (hint) {
+          hint.textContent = draft.place === "teacher_place"
+            ? "教员授课地址：" + (t.baseAddress || "")
+            : "教员到您选择的上课地址授课";
+        }
+        const box = el.querySelector("[data-bk-addr-box]");
+        if (box) box.style.display = draft.place === "teacher_place" ? "none" : "";
       });
     } else if (k === "addr") {
       node.addEventListener("change", () => { draft.addressId = Number(node.value); });

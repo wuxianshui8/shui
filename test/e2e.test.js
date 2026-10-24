@@ -1071,6 +1071,83 @@ async function loginPassword(phone) {
   assert(ajs.includes('data-act="del-admin"') && ajs.includes("/api/admin/admins/"),
     "管理员账号列表有「删除」按钮并调用 DELETE /api/admin/admins/:id");
 
+  /* ---------- 23. 授课地点：家长也可以到教员处上课（P65） ---------- */
+  section("23. 授课地点（家长到教员处上课）");
+  {
+    const teacherAddr = "西湖区文三路 100 号 3 幢 501（张老师家教室）";
+    const prof0 = await api("GET", "/api/teacher/profile", { token: teacherToken });
+    const addr0 = prof0.body.data ? prof0.body.data.baseAddress : null;
+
+    // 1) 没填授课地址的教员：家长不能选「到教员处」
+    await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
+    const svc = (await api("GET", "/api/parent/teachers/" + teacherId, { token: parentToken })).body.data.services[0];
+    const noAddr = await api("POST", "/api/orders/from-service", {
+      token: parentToken, body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 7 * 86400000).toISOString(), place: "teacher_place" },
+    });
+    assert(noAddr.status === 400 && noAddr.body.code === "TEACHER_ADDRESS_REQUIRED",
+      "教员未填授课地址时「到教员处」被拒（TEACHER_ADDRESS_REQUIRED）", noAddr.text);
+
+    // 2) 填好授课地址 → 教员详情对家长开放该选项
+    const setAddr = await api("PUT", "/api/teacher/profile", {
+      token: teacherToken, body: { baseAddress: teacherAddr, lat: 30.2741, lng: 120.1551 },
+    });
+    assert(setAddr.status === 200 && setAddr.body.data.baseAddress === teacherAddr, "教员资料可保存「授课地址」并回读一致");
+    const detail = await api("GET", "/api/parent/teachers/" + teacherId, { token: parentToken });
+    assert(detail.body.data.acceptAtTeacherPlace === true && detail.body.data.baseAddress === teacherAddr,
+      "教员详情下发授课地址与「可到教员处」标记");
+
+    // 3) 家长选「到教员处」下单 → 地点换成教员地址
+    const atTeacher = await api("POST", "/api/orders/from-service", {
+      token: parentToken,
+      body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 8 * 86400000).toISOString(), place: "teacher_place", remark: "e2e 到教员处" },
+    });
+    assert(atTeacher.status === 200 && atTeacher.body.data.place === "teacher_place", "到教员处下单成功（place=teacher_place）", atTeacher.text);
+    const atOrder = atTeacher.body.data;
+    assert(atOrder.address === teacherAddr, "订单上课地点自动使用教员授课地址", atOrder.address);
+    assert(atOrder.placeText === "到教员处上课", "订单视图给出「到教员处上课」文案");
+
+    // 4) 不传 place 仍是上门（老行为不变）
+    const homeOrder = await api("POST", "/api/orders/from-service", {
+      token: parentToken, body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 9 * 86400000).toISOString() },
+    });
+    assert(homeOrder.status === 200 && homeOrder.body.data.place === "home" && homeOrder.body.data.placeText === "教员上门",
+      "不传 place 时默认仍为「教员上门」（老行为不变）");
+
+    // 5) 到教员处的订单也能正常打卡（打卡点就是教员自己的位置）
+    await api("POST", "/api/orders/" + atOrder.id + "/pay", { token: parentToken, idem: "pay-atteacher-" + atOrder.id });
+    const ci = await api("POST", "/api/orders/" + atOrder.id + "/checkin", { token: teacherToken, body: { lat: 30.2741, lng: 120.1551 } });
+    assert(ci.status === 200 && ci.body.data.status === "in_class", "到教员处的订单打卡通过（上课地点=教员处）", ci.text);
+    assert(ci.body.data.statusText === "上课中", "到教员处订单状态文案正常（不进「待上门」）");
+
+    // 6) 需求发布可选上课形式，确认后订单沿用
+    const atDemand = await api("POST", "/api/demands", {
+      token: parentToken,
+      body: {
+        stage: "初中", subject: "数学", mode: "teacher_place",
+        address: "西湖区文三路 128 号", lat: 30.2741, lng: 120.1551, budget: 15000, remark: "e2e 需求到教员处",
+      },
+    });
+    assert(atDemand.status === 200 && atDemand.body.data.mode === "teacher_place", "发需求可选择「我到教员处」（mode 落库）");
+    const did = atDemand.body.data.id;
+    await api("POST", "/api/demands/" + did + "/apply", { token: teacherToken });
+    const apps = await api("GET", "/api/demands/" + did, { token: parentToken });
+    const confirmed = await api("POST", "/api/demands/" + did + "/confirm", {
+      token: parentToken, body: { applicationId: apps.body.data.applications[0].id },
+    });
+    assert(confirmed.status === 200 && confirmed.body.data.place === "teacher_place" && confirmed.body.data.address === teacherAddr,
+      "需求确认成单后沿用「到教员处」并把地点换成教员地址", confirmed.text);
+
+    // 7) 家长订单列表里也带授课方式
+    const myOrders = await api("GET", "/api/parent/orders", { token: parentToken });
+    const found = (myOrders.body.data.list || []).find((o) => o.id === atOrder.id);
+    assert(!!found && found.place === "teacher_place" && found.placeText === "到教员处上课", "家长订单列表下发授课方式");
+
+    // 收尾：把授课地址还原，避免影响其它套件
+    await api("PUT", "/api/teacher/profile", {
+      token: teacherToken, body: { baseAddress: addr0 || "", lat: 30.2741, lng: 120.1551 },
+    });
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

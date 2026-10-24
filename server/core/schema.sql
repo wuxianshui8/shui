@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS teacher_profiles (
   base_lng        REAL,
   schedule        TEXT,                               -- JSON 可授课时间表
   cover_area      TEXT,                               -- 上门覆盖区域描述
+  base_address    TEXT,                               -- 教员授课地址（家长「到教员处上课」时的实际上课地点，P65）
   audit_status    TEXT NOT NULL DEFAULT 'pending',    -- pending | approved | rejected
   reject_reason   TEXT,
   online          INTEGER NOT NULL DEFAULT 0,
@@ -171,6 +172,7 @@ CREATE TABLE IF NOT EXISTS orders (
   lesson_time   TEXT NOT NULL,
   lesson_end    TEXT,
   address       TEXT NOT NULL,
+  place         TEXT NOT NULL DEFAULT 'home',         -- 授课地点：home=教员上门 / teacher_place=家长到教员处（P65）
   lat           REAL NOT NULL,
   lng           REAL NOT NULL,
   region_id     INTEGER NOT NULL,

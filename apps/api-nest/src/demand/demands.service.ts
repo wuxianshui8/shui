@@ -71,12 +71,17 @@ export class DemandsService {
     const r = await this.ds.query(
       `INSERT INTO \`demands\` (\`parent_id\`,\`stage\`,\`subject\`,\`mode\`,\`address_id\`,\`address\`,\`lat\`,\`lng\`,\`region_id\`,\`times\`,\`budget\`,\`remark\`,\`gender_pref\`,\`urgent\`,\`urgent_fee\`,\`status\`,\`created_at\`,\`updated_at\`)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [parentId, b.stage, b.subject, "home", b.addressId ?? null, b.address, Number(b.lat), Number(b.lng), region.id,
+      [parentId, b.stage, b.subject, this.normalizeDemandMode(b.mode), b.addressId ?? null, b.address, Number(b.lat), Number(b.lng), region.id,
         JSON.stringify(b.times || []), Math.round(Number(b.budget)), b.remark || "", b.genderPref || "",
         b.urgent ? 1 : 0, urgentFee, "published", nowIso(), nowIso()],
     );
     const d = (await this.ds.query("SELECT * FROM `demands` WHERE `id` = ?", [r.insertId]))[0];
     return { ...d, urgent_fee: Number(d.urgent_fee) };
+  }
+
+  /** 需求的上课形式（P65）：home=教员上门（默认）/ teacher_place=家长到教员处上课 */
+  private normalizeDemandMode(v: any) {
+    return String(v || "") === "teacher_place" ? "teacher_place" : "home";
   }
 
   async mine(parentId: number) {

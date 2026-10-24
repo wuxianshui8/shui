@@ -110,8 +110,8 @@ npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / hea
 npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生效、admin 不可被移除）→ 17/17
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
-npm run web:admin:check     # PC 后台（Vue3+Element Plus，20 页，含区域管理地图与自助改密）→ 70/70
-npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，14 页；含游客浏览、微信一键登录、立即预约与订单详情）→ 109/109
+npm run web:admin:check     # PC 后台（Vue3+Element Plus，20 页，含区域管理地图与自助改密、订单授课方式）→ 77/77
+npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，14 页；含游客浏览、微信一键登录、立即预约与订单详情、授课地点）→ 113/113
 ```
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：

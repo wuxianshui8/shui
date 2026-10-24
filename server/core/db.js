@@ -72,5 +72,8 @@ export function migrate() {
   ensureColumn("orders", "cancel_requested_at", "TEXT");
   ensureColumn("orders", "cancel_rejected_at", "TEXT");
   ensureColumn("orders", "cancel_reject_reason", "TEXT");
+  // 授课地点：家长到教员处上课（P65）
+  ensureColumn("teacher_profiles", "base_address", "TEXT");
+  ensureColumn("orders", "place", "TEXT NOT NULL DEFAULT 'home'");
 }
 export { DATA_DIR, DB_FILE, ROOT };

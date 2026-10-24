@@ -148,6 +148,12 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("申请取消订单") && bundle.includes("确认完成上课"), "订单详情页含「申请取消 / 确认完成」操作");
   assert(bundle.includes("待教员确认") || bundle.includes("等待教员确认"), "订单详情显示「取消申请等教员确认」状态");
   assert(!/登录成功后.*跳转登录页/.test(bundle), "没有把游客强制踢回登录页的旧逻辑");
+  // 授课地点（P65）：家长可到教员处上课——产物里要有选项，接口要带 place
+  assert(bundle.includes("我到教员处") && bundle.includes("教员上门"),
+    "H5 产物含「教员上门 / 我到教员处」授课方式选择");
+  assert(bundle.includes("teacher_place"), "H5 产物使用 teacher_place 作为授课地点取值");
+  assert(bundle.includes("授课方式") && bundle.includes("教员授课地址"), "订单详情展示授课方式与教员授课地址");
+  assert(bundle.includes("授课地址"), "教员入驻页含「授课地址」字段");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {
     const { readFileSync } = await import("node:fs");

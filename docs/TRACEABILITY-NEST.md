@@ -116,8 +116,8 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（46 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员） | `admin` 70 项 |
-| 6.1 移动端 uni-app | `apps/web-mobile/`（14 页，H5 + 微信小程序双产物，含入驻认证、定位接单、附近教员/立即预约/订单详情） | `mobile` 109 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员/订单授课方式列） | `admin` 77 项 |
+| 6.1 移动端 uni-app | `apps/web-mobile/`（14 页，H5 + 微信小程序双产物，含入驻认证/授课地址、定位接单、附近教员/立即预约（上门或到教员处）/订单详情） | `mobile` 113 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
 ## 第 7 章 非功能需求

@@ -82,12 +82,13 @@
 | 4.1.2 双核心入口：发布需求 / 附近教员广场 | ✅ | 首页双 Tab | page `/` |
 | 4.1.2 轮播 Banner、活动公告、优惠券入口 | ✅ | `/api/public/banners|coupons` + `announcements` | page `/`、`/coupons` |
 | 4.1.2 底部导航四栏 | ✅ | `.m-tabbar` | bc |
-| 4.1.3 必填字段（学段/科目/仅上门/地址/时间/预算/备注） | ✅ | `POST /api/demands` 字段校验 | e2e §2 |
+| 4.1.3 必填字段（学段/科目/上课形式/地址/时间/预算/备注） | ✅ | `POST /api/demands` 字段校验；`mode`=`home`（教员上门，默认）/`teacher_place`（家长到教员处，P65） | e2e §2、§23 |
 | 4.1.3 加急开关 + 加急费 | ✅ | `urgent.fee` 规则（默认 ¥20） | e2e §2 |
 | 4.1.3 发布后可编辑、暂停、撤销 | ✅ | `PUT /api/demands/:id`、`POST /:id/action` | page `/demand/:id` |
 | 4.1.4 地图气泡、筛选、列表/地图切换 | ✅ | `/api/parent/teachers` 六维筛选 + `.map-board` 气泡 | e2e §2 |
 | 4.1.4 教员详情（资质/教龄/科目/价格/评价/等级/覆盖） | ✅ | `GET /api/parent/teachers/:id` | e2e §2 |
 | 4.1.4 收藏教员、直接预约下单 | ✅ | `/api/my/favorites` + `from-service` | page `/teacher/:id` |
+| 4.1.4 授课地点：教员上门 / **家长到教员处**（P65） | ✅ | `from-service` 的 `place`、`orders.place`、`teacher_profiles.base_address`；到教员处时不需要家长地址，订单地点取教员授课地址（打卡/提醒/结算口径不变） | e2e §23（12 项）、`admin` 77、`mobile` 113 |
 | 4.1.5 六种状态分类 + 订单详情 | ✅ | `/api/parent/orders?status=` + `/orders/:id` | e2e §4、page `/orders` |
 | 4.1.5 联系教员、取消、申请退款、确认完成 | ✅ | 对应 5 个订单接口 | e2e §13/§6 |
 | 4.1.5 上课前 1 小时推送提醒 | ✅ | `runLessonReminders()` 定时任务（阈值可配） | e2e §18 |
