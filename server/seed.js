@@ -151,9 +151,12 @@ const teacherIds = TEACHER_DEFS.map((t, i) => {
     Number((4.3 + (i % 7) * 0.1).toFixed(2)), 8 + (i % 12), Math.floor(t.growth / 6), Number((0.9 + (i % 5) * 0.06).toFixed(2)),
     ago(38 - i), nowIso()
   );
-  run("INSERT INTO teacher_services (teacher_id, title, subjects, stages, price, cover_radius_km, schedule, description, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-    uid, t.subjects.split(",")[0] + " 一对一上门辅导", t.subjects, t.stages, t.price, 5,
-    JSON.stringify([{ day: 6, slots: ["09:00-11:00"] }]), "针对孩子基础定制提分计划，含课后作业批改与月度测评反馈。", "on", ago(30), nowIso());
+  // P67：每隔一位教员的服务同时支持「上门授课 + 在教员家授课」，其余只上门——用来演示服务级开关
+  const svcPlaces = i % 2 === 0 ? "home,teacher_place" : "home";
+  run("INSERT INTO teacher_services (teacher_id, title, subjects, stages, price, cover_radius_km, schedule, description, places, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    uid, t.subjects.split(",")[0] + " 一对一辅导", t.subjects, t.stages, t.price, 5,
+    JSON.stringify([{ day: 6, slots: ["09:00-11:00"] }]), "针对孩子基础定制提分计划，含课后作业批改与月度测评反馈。",
+    svcPlaces, "on", ago(30), nowIso());
   if (audit === "approved") {
     run("INSERT INTO growth_logs (teacher_id, change, reason, balance_after, created_at) VALUES (?,?,?,?,?)", uid, t.growth, "历史累计成长分", t.growth, ago(20));
   }

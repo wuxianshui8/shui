@@ -88,7 +88,7 @@
 | 4.1.4 地图气泡、筛选、列表/地图切换 | ✅ | `/api/parent/teachers` 六维筛选 + `.map-board` 气泡 | e2e §2 |
 | 4.1.4 教员详情（资质/教龄/科目/价格/评价/等级/覆盖） | ✅ | `GET /api/parent/teachers/:id` | e2e §2 |
 | 4.1.4 收藏教员、直接预约下单 | ✅ | `/api/my/favorites` + `from-service` | page `/teacher/:id` |
-| 4.1.4 授课地点：教员上门 / **家长到教员处**（P65） | ✅ | `from-service` 的 `place`、`orders.place`、`teacher_profiles.base_address`；到教员处时不需要家长地址，订单地点取教员授课地址（打卡/提醒/结算口径不变） | e2e §23（12 项）、`admin` 77、`mobile` 113 |
+| 4.1.4 授课地点：教员上门 / **家长到教员处**（P65）+ **服务级授课形式**（P67） | ✅ | `from-service` 的 `place`、`orders.place`、`teacher_profiles.base_address`、`teacher_services.places`；每个服务自己声明支持哪种形式，不支持则 400 `PLACE_NOT_SUPPORTED` | e2e §23（12 项）、§25（7 项）、`admin` 84、`mobile` 120 |
 | 4.1.5 六种状态分类 + 订单详情 | ✅ | `/api/parent/orders?status=` + `/orders/:id` | e2e §4、page `/orders` |
 | 4.1.5 联系教员、取消、申请退款、确认完成 | ✅ | 对应 5 个订单接口 | e2e §13/§6 |
 | 4.1.5 上课前 1 小时推送提醒 | ✅ | `runLessonReminders()` 定时任务（阈值可配） | e2e §18 |
@@ -110,7 +110,7 @@
 | 4.2.2 数据概览：今日服务单量、本周课时、服务评分、当前等级 | ✅ | `dashboard.overview`（`todayLessons` / `weekLessons` / `ratingAvg` / `level`） | 实测接口返回、page `/` |
 | 4.2.2 附近订单按距离排序 + 一键抢单 | ✅ | `/api/teacher/nearby-demands`（按优先级降序）+ `/apply` | e2e §3、rules §1 |
 | 4.2.2 右上角服务管理入口 | ✅ | 首页头部 🗂 按钮 → `/services` | 浏览器实测 |
-| 4.2.3 服务列表（上架/下架）、编辑、上下架开关 | ✅ | `/api/teacher/services*` | page `/services` |
+| 4.2.3 服务列表（上架/下架）、编辑、上下架开关、**授课形式（上门 / 在教员家，P67）** | ✅ | `/api/teacher/services*`（`places` 数组）；家长预约按服务过滤，不支持则 400 `PLACE_NOT_SUPPORTED` | page `/services`、e2e §25 |
 | 4.2.4 五种订单状态、详情、联系家长 | ✅ | `/api/teacher/orders?status=` | e2e §6、page `/orders` |
 | 4.2.4 上门打卡校验定位，超阈值拦截 | ✅ | `checkin()` haversine ≤ 500m + 风控事件 | e2e §5 |
 | 4.2.4 家长到场打卡 + 双方确认开课（P66） | ✅ | `checkin()` 放开到家长（仅 `place=teacher_place`）：双方各打一次卡、都到齐才 `in_class`；定位阈值同 500m、超阈值写风控；家长端「📍 我到场了」（定位授权）、教员端「教学点打卡」+「家长已到场/待打卡」 | e2e §24（9 项）、`admin` 81、`mobile` 117 |

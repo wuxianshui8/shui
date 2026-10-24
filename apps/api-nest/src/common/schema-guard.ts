@@ -82,6 +82,12 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "INT DEFAULT NULL",
     why: "家长打卡点距上课地点的米数（超阈值照样写 risk_events）",
   },
+  {
+    table: "teacher_services",
+    column: "places",
+    ddl: "VARCHAR(64) NOT NULL DEFAULT 'home'",
+    why: "服务级授课形式（P67）：上门授课 home / 在教员家授课 teacher_place，可同时支持",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {

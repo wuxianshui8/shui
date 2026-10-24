@@ -152,16 +152,20 @@ async function upsertTeacher(phone, name, subjects, growth, level, lat, lng, reg
   );
   await conn.execute("INSERT IGNORE INTO `wallets` (`user_id`,`updated_at`) VALUES (?,?)", [uid, now]);
   // teacher_services 没有唯一索引，INSERT IGNORE 不会去重 → 先查后插，保证重复跑种子不会叠加演示服务
-  const svcTitle = subjects.split(",")[0] + " 一对一上门";
+  // P67：服务级授课形式——张老师/李思远支持「上门 + 在教员家」，其余只上门（演示两种配置）
+  const svcTitle = subjects.split(",")[0] + " 一对一";
+  const svcPlaces = name === "张老师" || name === "李思远" ? "home,teacher_place" : "home";
   const [svcHave] = await conn.query(
     "SELECT `id` FROM `teacher_services` WHERE `teacher_id` = ? AND `title` = ? LIMIT 1",
     [uid, svcTitle],
   );
   if (!svcHave.length) {
     await conn.execute(
-      "INSERT INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`description`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      [uid, svcTitle, subjects, "初中,高中", price, 5, "演示服务", "on", now, now],
+      "INSERT INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`description`,`places`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      [uid, svcTitle, subjects, "初中,高中", price, 5, "演示服务", svcPlaces, "on", now, now],
     );
+  } else {
+    await conn.execute("UPDATE `teacher_services` SET `places` = ? WHERE `id` = ?", [svcPlaces, svcHave[0].id]);
   }
   return uid;
 }

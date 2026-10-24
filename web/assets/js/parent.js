@@ -1204,9 +1204,10 @@ function openBooking(t, addrs, serviceId) {
     );
     return;
   }
-  // 授课方式（P65）：教员填了授课地址，家长才可以选「我到教员处」
-  const atTeacher = !!t.acceptAtTeacherPlace;
-  if (!atTeacher && !addrs.length) {
+  // 授课形式（P67）：由**所选服务**决定——服务声明了「在教员家授课」且教员填了授课地址，家长才看得到该选项
+  const svcPlaces = (svc) => (Array.isArray(svc && svc.places) && svc.places.length ? svc.places : ["home"]);
+  const canTeacherPlace = (svc) => !!t.acceptAtTeacherPlace && svcPlaces(svc).includes("teacher_place");
+  if (!canTeacherPlace(services[0]) && !addrs.length) {
     sheet(
       "预约 " + (t.nickname || ""),
       emptyHtml("您还没有保存上课地址", "📍") + '<p class="small muted center">上门授课需要先添加一个上课地址。</p>',
@@ -1221,24 +1222,34 @@ function openBooking(t, addrs, serviceId) {
     addressId: defAddr ? defAddr.id : null,
     lessonTime: "",
     remark: "",
-    // 没有家长地址但有教员授课地址时，默认就是「到教员处」
-    place: defAddr ? "home" : "teacher_place",
+    // 选中的服务支持在教员家、且没有家长地址时，默认就是「到教员处」
+    place: canTeacherPlace(first) && !defAddr ? "teacher_place" : "home",
   };
-  const placeHint = draft.place === "teacher_place"
-    ? "教员授课地址：" + esc(t.baseAddress || "")
-    : "教员到您选择的上课地址授课";
+  const placeHintFor = (svc, place) =>
+    place === "teacher_place" ? "教员授课地址：" + (t.baseAddress || "") : "教员到您选择的上课地址授课";
+  const placeBlock = (svc) => {
+    const opts = svcPlaces(svc);
+    const atHome = opts.includes("home");
+    const atTp = canTeacherPlace(svc);
+    if (!atHome && !atTp) return "";
+    // 只有一种可选时不必给选择器，直接说明
+    if (!(atHome && atTp)) {
+      return '<div class="field"><label>授课形式</label><div class="form-hint">' +
+        (atTp ? "该服务仅支持「在教员家授课」：教员授课地址 " + esc(t.baseAddress || "") : "该服务仅支持「上门授课」") +
+        "</div></div>";
+    }
+    return '<div class="field"><label>授课方式</label><div class="row" style="gap:6px">' +
+      '<button type="button" class="chip ' + (draft.place === "home" ? "on" : "") + '" data-bk="place" data-v="home">🏠 教员上门</button>' +
+      '<button type="button" class="chip ' + (draft.place === "teacher_place" ? "on" : "") + '" data-bk="place" data-v="teacher_place">📍 我到教员处</button>' +
+      '</div><div class="form-hint" data-bk-place-hint>' + placeHintFor(svc, draft.place) + "</div></div>";
+  };
   const html =
     '<div class="field"><label>选择服务</label><div class="col" style="gap:8px">' +
     services.map((s) =>
       '<button type="button" class="chip ' + (String(draft.serviceId) === String(s.id) ? "on" : "") + '" data-bk="service" data-id="' + s.id + '">' +
-      esc(s.title) + " · " + money(s.price) + "/课时</button>"
+      esc(s.title) + " · " + money(s.price) + "/课时" + (Array.isArray(s.places) && s.places.length > 1 ? "（可到老师家）" : "") + "</button>"
     ).join("") + "</div></div>" +
-    (atTeacher
-      ? '<div class="field"><label>授课方式</label><div class="row" style="gap:6px">' +
-        '<button type="button" class="chip ' + (draft.place === "home" ? "on" : "") + '" data-bk="place" data-v="home">🏠 教员上门</button>' +
-        '<button type="button" class="chip ' + (draft.place === "teacher_place" ? "on" : "") + '" data-bk="place" data-v="teacher_place">📍 我到教员处</button>' +
-        '</div><div class="form-hint" data-bk-place-hint>' + placeHint + "</div></div>"
-      : "") +
+    '<div data-bk-place-wrap>' + placeBlock(first) + "</div>" +
     '<div class="field" data-bk-addr-box' + (draft.place === "teacher_place" ? ' style="display:none"' : "") + '><label>上课地址</label>' +
     (addrs.length
       ? '<select class="select" data-bk="addr">' +
@@ -1272,25 +1283,35 @@ function openBooking(t, addrs, serviceId) {
 
   const s = sheet("预约 " + (t.nickname || ""), html, [{ label: "取消" }, { label: "提交预约", class: "btn-primary", onClick: submit }]);
   const el = s.el;
+  // 授课方式的 chip 要能随「换服务」重绘，所以单独抽一个绑定函数（P67）
+  const bindPlaceChips = () => {
+    $$('[data-bk="place"]', el).forEach((node) => {
+      node.onclick = () => {
+        draft.place = node.dataset.v === "teacher_place" ? "teacher_place" : "home";
+        $$('[data-bk="place"]', el).forEach((n) => n.classList.toggle("on", n === node));
+        const svc = services.find((x) => String(x.id) === String(draft.serviceId));
+        const hint = el.querySelector("[data-bk-place-hint]");
+        if (hint) hint.textContent = placeHintFor(svc, draft.place);
+        const box = el.querySelector("[data-bk-addr-box]");
+        if (box) box.style.display = draft.place === "teacher_place" ? "none" : "";
+      };
+    });
+  };
   $$("[data-bk]", el).forEach((node) => {
     const k = node.dataset.bk;
     if (k === "service") {
       node.addEventListener("click", () => {
         draft.serviceId = Number(node.dataset.id);
         $$('[data-bk="service"]', el).forEach((n) => n.classList.toggle("on", n === node));
-      });
-    } else if (k === "place") {
-      node.addEventListener("click", () => {
-        draft.place = node.dataset.v === "teacher_place" ? "teacher_place" : "home";
-        $$('[data-bk="place"]', el).forEach((n) => n.classList.toggle("on", n === node));
-        const hint = el.querySelector("[data-bk-place-hint]");
-        if (hint) {
-          hint.textContent = draft.place === "teacher_place"
-            ? "教员授课地址：" + (t.baseAddress || "")
-            : "教员到您选择的上课地址授课";
-        }
+        // 换服务后授课形式可能变（P67）：当前选择不被支持时回落到该服务支持的第一种
+        const svc = services.find((x) => String(x.id) === String(draft.serviceId));
+        const opts = svcPlaces(svc);
+        if (!opts.includes(draft.place)) draft.place = opts[0];
+        const wrap = el.querySelector("[data-bk-place-wrap]");
+        if (wrap) wrap.innerHTML = placeBlock(svc);
         const box = el.querySelector("[data-bk-addr-box]");
         if (box) box.style.display = draft.place === "teacher_place" ? "none" : "";
+        bindPlaceChips();
       });
     } else if (k === "addr") {
       node.addEventListener("change", () => { draft.addressId = Number(node.value); });
@@ -1300,6 +1321,7 @@ function openBooking(t, addrs, serviceId) {
       node.addEventListener("input", () => { draft.remark = node.value; });
     }
   });
+  bindPlaceChips();
 }
 
 function minLocalNow() {

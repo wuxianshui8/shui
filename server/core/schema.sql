@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS teacher_services (
   cover_radius_km REAL NOT NULL DEFAULT 5,
   schedule      TEXT,
   description   TEXT,
+  places        TEXT NOT NULL DEFAULT 'home',        -- 该服务支持的授课形式（逗号分隔）：home=上门 / teacher_place=教员家（P67）
   status        TEXT NOT NULL DEFAULT 'on',           -- on | off
   created_at    TEXT NOT NULL,
   updated_at    TEXT

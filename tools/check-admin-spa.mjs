@@ -322,6 +322,18 @@ assert(deny.status === 403, "后台接口对非管理员返回 403（" + deny.st
   assert(tc.status === 200 && tc.body.data.status === "in_class" && tc.body.data.bothArrived === true,
     "双方都打卡后自动进入上课中", tc.text);
 
+  // P67：服务级授课形式——服务只支持上门时不能按「到教员处」下单；支持两种时才可以
+  const svcOne = await api("PUT", "/teacher/services/" + svc.id, { token: tTok, body: { places: ["home"] } });
+  assert(svcOne.status === 200 && svcOne.body.data.placesText === "上门授课", "服务可设为「仅上门授课」", svcOne.text);
+  const deniedP = await api("POST", "/orders/from-service", {
+    token: parentLogin.body.data.token,
+    body: { serviceId: svc.id, lessonTime: new Date(Date.now() + 17 * 86400000).toISOString(), place: "teacher_place" },
+  });
+  assert(deniedP.status === 400 && deniedP.body.code === "PLACE_NOT_SUPPORTED",
+    "服务不支持在教员家授课时，选「到教员处」被拒（PLACE_NOT_SUPPORTED）", deniedP.text);
+  const svcTwo = await api("PUT", "/teacher/services/" + svc.id, { token: tTok, body: { places: ["home", "teacher_place"] } });
+  assert(svcTwo.status === 200 && svcTwo.body.data.places.length === 2, "服务可同时支持「上门 + 在教员家」", svcTwo.text);
+
   // 收尾：还原授课地址，避免影响其它门禁
   await api("PUT", "/teacher/profile", { token: tTok, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
 }

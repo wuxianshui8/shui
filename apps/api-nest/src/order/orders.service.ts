@@ -314,7 +314,13 @@ export class OrdersService {
       if (!tp) throw biz("BAD_STATUS", "该教员暂不可接单");
       if (!b.lessonTime) throw bad("请选择上课时间");
       // 授课地点（P65）：到教员处上课时不需要家长地址，地点/坐标/片区取教员的授课地址
+      // 服务级开关（P67）：选中的授课形式必须是该服务声明支持的形式之一
       const place = this.normalizePlace(b.place);
+      const supported = String(svc.places || "home").split(",").filter(Boolean);
+      if (!supported.includes(place)) {
+        throw biz("PLACE_NOT_SUPPORTED",
+          "该服务不支持" + (place === "teacher_place" ? "「到教员处上课」" : "「教员上门」") + "，请换一种授课形式或另选服务");
+      }
       let addr: any = null;
       let regionId = 0;
       if (place === "teacher_place") {

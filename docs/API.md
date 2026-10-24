@@ -84,8 +84,8 @@
 | GET | `/api/teacher/nearby-demands` | 附近订单（按派单优先级排序，含距离/加急/已报名状态） |
 | POST | `/api/demands/:id/apply` | 抢单报名（唯一索引防重复，返回优先级与距离） |
 | GET | `/api/teacher/orders?status=` | `awaiting`(待确认) / `pending`(待上门/上课中) / `completed` / `cancelled` |
-| GET/POST | `/api/teacher/services` | 服务列表 / 新增 `{title,subjects,stages,price,coverRadiusKm,description}` |
-| PUT/DELETE | `/api/teacher/services/:id` | 编辑 / 删除 |
+| GET/POST | `/api/teacher/services` | 服务列表 / 新增 `{title,subjects,stages,price,coverRadiusKm,description,places}`；`places` = 该服务支持的授课形式（`home` 上门 / `teacher_place` 在教员家，可多选），返回值为数组 + `placesText` |
+| PUT/DELETE | `/api/teacher/services/:id` | 编辑（含 `places`）/ 删除 |
 | POST | `/api/teacher/services/:id/toggle` | 上架 / 下架 |
 | GET | `/api/teacher/level` | 等级权益：当前等级、成长分、进度、抽佣、派单权重、等级表、成长流水、等级变更记录 |
 | GET | `/api/teacher/income` | 收入：钱包、本月收入、累计服务费、冻结订单、流水、结算规则 |

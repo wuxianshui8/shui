@@ -294,9 +294,32 @@ export class TeacherController {
   /* ---------------- 我的服务 ---------------- */
   @Get("services")
   async services(@Req() req: any) {
-    return ok(await this.ds.query(
+    const rows = await this.ds.query(
       "SELECT * FROM `teacher_services` WHERE `teacher_id` = ? ORDER BY `status` = 'on' DESC, `id` DESC", [Number(req.user.uid)],
-    ));
+    );
+    return ok(rows.map((s: any) => this.serviceView(s)));
+  }
+
+  /**
+   * 服务级授课形式（P67）：每个服务自己声明支持「上门授课 / 在教员家授课」。
+   * 入参可为数组或逗号串；去重后只留合法值；全空/非法时回落 "home"（老数据行为）。
+   */
+  private placesOf(v: any): string {
+    const list = Array.isArray(v) ? v : String(v || "").split(",");
+    const out = [...new Set(
+      list.map((x: any) => String(x).trim()).filter((x) => x === "home" || x === "teacher_place"),
+    )];
+    return out.length ? out.join(",") : "home";
+  }
+
+  private serviceView(s: any) {
+    if (!s) return s;
+    const list = String(s.places || "home").split(",").filter(Boolean);
+    return {
+      ...s,
+      places: list,
+      placesText: list.map((p: string) => (p === "teacher_place" ? "在教员家授课" : "上门授课")).join(" / "),
+    };
   }
 
   @Post("services")
@@ -306,12 +329,12 @@ export class TeacherController {
     if (!b?.title) throw bad("请填写服务标题");
     if (!(Number(b?.price) > 0)) throw bad("请填写课时价格");
     const r = await this.ds.query(
-      "INSERT INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`schedule`,`description`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO `teacher_services` (`teacher_id`,`title`,`subjects`,`stages`,`price`,`cover_radius_km`,`schedule`,`description`,`places`,`status`,`created_at`,`updated_at`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       [uid, b.title, b.subjects || "", b.stages || "", Math.round(Number(b.price)), Number(b.coverRadiusKm || 5),
-        JSON.stringify(b.schedule || []), b.description || "", "on", nowIso(), nowIso()],
+        JSON.stringify(b.schedule || []), b.description || "", this.placesOf(b.places), "on", nowIso(), nowIso()],
     );
-    await audit(this.ds, req, "teacher.service.create", "services:" + r.insertId);
-    return ok((await this.ds.query("SELECT * FROM `teacher_services` WHERE `id` = ?", [r.insertId]))[0]);
+    await audit(this.ds, req, "teacher.service.create", "services:" + r.insertId, { places: this.placesOf(b.places) });
+    return ok(this.serviceView((await this.ds.query("SELECT * FROM `teacher_services` WHERE `id` = ?", [r.insertId]))[0]));
   }
 
   private async ownService(uid: number, id: number) {
@@ -324,13 +347,16 @@ export class TeacherController {
   async updateService(@Param("id") id: string, @Body() b: any, @Req() req: any) {
     const s = await this.ownService(Number(req.user.uid), Number(id));
     await this.ds.query(
-      "UPDATE `teacher_services` SET `title` = ?, `subjects` = ?, `stages` = ?, `price` = ?, `cover_radius_km` = ?, `description` = ?, `status` = ?, `updated_at` = ? WHERE `id` = ?",
+      "UPDATE `teacher_services` SET `title` = ?, `subjects` = ?, `stages` = ?, `price` = ?, `cover_radius_km` = ?, `description` = ?, `places` = ?, `status` = ?, `updated_at` = ? WHERE `id` = ?",
       [b.title ?? s.title, b.subjects ?? s.subjects, b.stages ?? s.stages,
         b.price != null ? Math.round(Number(b.price)) : Number(s.price),
         b.coverRadiusKm != null ? Number(b.coverRadiusKm) : Number(s.cover_radius_km),
-        b.description ?? s.description, b.status ?? s.status, nowIso(), s.id],
+        b.description ?? s.description,
+        b.places !== undefined ? this.placesOf(b.places) : (s.places || "home"),
+        b.status ?? s.status, nowIso(), s.id],
     );
-    return ok((await this.ds.query("SELECT * FROM `teacher_services` WHERE `id` = ?", [s.id]))[0]);
+    await audit(this.ds, req, "teacher.service.update", "services:" + s.id, { places: b.places !== undefined ? this.placesOf(b.places) : undefined });
+    return ok(this.serviceView((await this.ds.query("SELECT * FROM `teacher_services` WHERE `id` = ?", [s.id]))[0]));
   }
 
   @Post("services/:id/toggle")

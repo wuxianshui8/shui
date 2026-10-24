@@ -75,7 +75,7 @@ node tools/switch-domain.mjs
 | 业务链路冒烟 | `npm run smoke:online` → **17/17 通过**：游客浏览 → 家长/教员/管理员登录 → 下单 → 担保支付 → 支付幂等 → 家长申请取消（不退款）→ 教员待处理列表 → 同意退款 → 后台可查 → 越权 403 |
 | 单元测试 | **173 用例 / 23 模块**，行覆盖 **99.40%**（`npm run test:unit`，覆盖率门槛默认即门禁） |
 | 接口契约 | **160 路由 / 18 控制器**（`npm run api:doc:check` 保证文档与代码不漂移） |
-| 前端产物契约 | 后台 **81** 项 / 移动 **117** 项 |
+| 前端产物契约 | 后台 **84** 项 / 移动 **120** 项 |
 | 集成门禁 | `npm run ci:full` **30 步全绿**（约 5 分钟） |
 | CI | GitHub Actions：`e002f97` 在 master 与 main 均 **success** |
 | 安全加固 | SSH 仅公钥（`passwordauthentication no` / `permitrootlogin no`）、ufw 只放 22/80/443、fail2ban 运行中、自动安全更新 enabled；外网探测 3306/6379/4300 **均 closed** |

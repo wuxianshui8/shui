@@ -34,18 +34,30 @@ const newAddr = reactive({ contact: "", phone: "", address: "", label: "家" });
 
 const services = computed(() => (teacher.value && teacher.value.services) || []);
 const chosenService = computed(() => services.value.find((s) => Number(s.id) === Number(draft.serviceId)) || services.value[0] || null);
-const atTeacher = computed(() => !!(teacher.value && teacher.value.acceptAtTeacherPlace));
-const canBook = computed(
-  () =>
-    (draft.place === "teacher_place" ? atTeacher.value : !!draft.addressId) &&
-    !!draft.date &&
-    !!draft.start &&
-    !!chosenService.value,
+// 授课形式（P67）：由**所选服务**决定它支持「上门授课 / 在教员家授课」
+const svcPlaces = computed(() => {
+  const s = chosenService.value;
+  return Array.isArray(s && s.places) && s.places.length ? s.places : ["home"];
+});
+const atTeacher = computed(
+  () => !!(teacher.value && teacher.value.acceptAtTeacherPlace) && svcPlaces.value.includes("teacher_place"),
 );
+const canBook = computed(() => {
+  if (!chosenService.value || !draft.date || !draft.start) return false;
+  if (draft.place === "teacher_place") return atTeacher.value;
+  return svcPlaces.value.includes("home") && !!draft.addressId;
+});
 
 onLoad((options) => {
   id.value = Number((options && options.id) || 0);
 });
+
+/** 换服务时把授课方式收敛到该服务支持的形式（P67） */
+function pickService(s) {
+  draft.serviceId = Number(s.id);
+  const opts = Array.isArray(s && s.places) && s.places.length ? s.places : ["home"];
+  if (!opts.includes(draft.place)) draft.place = opts[0];
+}
 
 // 每次进入/回到本页都重新读一次：登录回来后要立刻从「需登录」变成可预约，并把地址补上
 onShow(() => {
@@ -213,25 +225,30 @@ async function submit() {
             :key="s.id"
             class="tag"
             :style="{ background: Number(draft.serviceId) === Number(s.id) ? '#1f6feb' : '#eef4ff', color: Number(draft.serviceId) === Number(s.id) ? '#fff' : '#1f6feb' }"
-            @click="draft.serviceId = Number(s.id)"
-          >{{ s.title }} · {{ money(s.price) }}</view>
+            @click="pickService(s)"
+          >{{ s.title }} · {{ money(s.price) }}{{ Array.isArray(s.places) && s.places.length > 1 ? "（可到老师家）" : "" }}</view>
         </view>
 
-        <view v-if="atTeacher" class="muted" style="margin: 20rpx 0 10rpx">授课方式</view>
-        <view v-if="atTeacher" class="row" style="flex-wrap: wrap; gap: 12rpx; border-bottom: none">
+        <!-- 授课方式（P67）：由所选服务支持的形式决定给哪几个选项 -->
+        <view v-if="svcPlaces.length > 1" class="muted" style="margin: 20rpx 0 10rpx">授课方式</view>
+        <view v-if="svcPlaces.length > 1" class="row" style="flex-wrap: wrap; gap: 12rpx; border-bottom: none">
           <view
+            v-if="svcPlaces.includes('home')"
             class="tag"
             :style="{ background: draft.place === 'home' ? '#1f6feb' : '#eef4ff', color: draft.place === 'home' ? '#fff' : '#1f6feb' }"
             @click="draft.place = 'home'"
           >🏠 教员上门</view>
           <view
+            v-if="atTeacher"
             class="tag"
             :style="{ background: draft.place === 'teacher_place' ? '#1f6feb' : '#eef4ff', color: draft.place === 'teacher_place' ? '#fff' : '#1f6feb' }"
             @click="draft.place = 'teacher_place'"
           >📍 我到教员处</view>
         </view>
-        <view v-if="atTeacher" class="muted" style="margin-bottom: 12rpx; font-size: 24rpx">
-          {{ draft.place === 'teacher_place' ? '教员授课地址：' + (teacher.acceptAtTeacherPlace ? teacher.baseAddress || '' : '') : '教员到您选择的上课地址授课' }}
+        <view class="muted" style="margin-bottom: 12rpx; font-size: 24rpx">
+          {{ draft.place === 'teacher_place'
+            ? '教员授课地址：' + ((teacher && teacher.baseAddress) || '')
+            : (svcPlaces.includes('home') ? '教员到您选择的上课地址授课' : '该服务仅支持在教员家授课') }}
         </view>
 
         <template v-if="draft.place !== 'teacher_place'">

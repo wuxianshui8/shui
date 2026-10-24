@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 
 const dash = ref(null);
 const level = ref(null);
@@ -70,6 +70,57 @@ async function load() {
   unread.value = (msgs && msgs.unread) || 0;
   const mine = await req("GET", "/teacher/orders");
   orders.value = (mine && mine.list) || [];
+  await loadServices();
+}
+
+/* ---------------- 我的服务（P67）：服务级授课形式 ---------------- */
+const services = ref([]);
+const svcForm = reactive({ open: false, id: null, title: "", price: "", places: ["home"], description: "" });
+// money/toast 在本页后面已有定义（第 ~248 行的 money）：这里只补服务区用到的 helper，不重复声明
+
+async function loadServices() {
+  const list = await req("GET", "/teacher/services");
+  services.value = Array.isArray(list) ? list : [];
+}
+function openSvc(s) {
+  svcForm.open = true;
+  svcForm.id = s ? Number(s.id) : null;
+  svcForm.title = s ? s.title : "";
+  svcForm.price = s ? String(Number(s.price) / 100) : "";
+  svcForm.places = s && Array.isArray(s.places) && s.places.length ? [...s.places] : ["home"];
+  svcForm.description = s ? s.description || "" : "";
+}
+function toggleSvcPlace(v) {
+  svcForm.places = svcForm.places.includes(v)
+    ? svcForm.places.filter((x) => x !== v)
+    : [...svcForm.places, v];
+}
+async function saveSvc() {
+  if (!svcForm.title.trim()) return toast("请填写服务标题");
+  if (!(Number(svcForm.price) > 0)) return toast("请填写课时价");
+  if (!svcForm.places.length) return toast("请至少选择一种授课形式");
+  busy.value = "svc-save";
+  const body = {
+    title: svcForm.title.trim(),
+    price: Math.round(Number(svcForm.price) * 100),
+    places: svcForm.places,
+    description: String(svcForm.description || "").trim(),
+  };
+  const r = svcForm.id
+    ? await req("PUT", "/teacher/services/" + svcForm.id, body)
+    : await req("POST", "/teacher/services", body);
+  busy.value = "";
+  if (!r) return toast("保存失败，请检查标题与价格");
+  toast(svcForm.id ? "服务已更新" : "服务已上架");
+  svcForm.open = false;
+  await loadServices();
+}
+async function toggleSvc(s) {
+  busy.value = "svc-toggle" + s.id;
+  const r = await req("POST", "/teacher/services/" + s.id + "/toggle");
+  busy.value = "";
+  if (!r) return toast("操作失败");
+  await loadServices();
 }
 
 /** 手动重新定位（走到别处后点一下即可按新位置接单） */
@@ -269,6 +320,56 @@ function goMessages() {
       <view v-if="!orders.length" class="muted">暂无订单</view>
     </view>
 
+    <!-- 我的服务（P67）：上架的服务决定家长能怎么约——支持上门 / 在教员家授课 -->
+    <view class="card">
+      <view class="row">
+        <view class="card-title" style="margin: 0">我的服务（{{ services.length }}）</view>
+        <view class="tag" @click="openSvc(null)">＋ 新增</view>
+      </view>
+      <view v-for="s in services" :key="s.id" class="row" style="margin-top: 16rpx; align-items: flex-start">
+        <view style="flex: 1">
+          <view style="font-size: 26rpx">{{ s.title }}</view>
+          <view class="muted">{{ money(s.price) }} / 课时 · {{ s.status === "on" ? "上架中" : "已下架" }}</view>
+          <view class="muted">授课形式：{{ s.placesText || "上门授课" }}</view>
+        </view>
+        <view>
+          <view class="btn ghost" style="padding: 10rpx 20rpx; margin-bottom: 8rpx" @click="openSvc(s)">编辑</view>
+          <view class="btn ghost" style="padding: 10rpx 20rpx" @click="toggleSvc(s)">
+            {{ busy === "svc-toggle" + s.id ? "处理中…" : (s.status === "on" ? "下架" : "上架") }}
+          </view>
+        </view>
+      </view>
+      <view v-if="!services.length" class="muted" style="margin-top: 12rpx">还没有上架的服务，家长无法直接预约</view>
+
+      <view v-if="svcForm.open" style="margin-top: 20rpx; border-top: 1px solid #eef4ff; padding-top: 16rpx">
+        <view class="muted" style="margin-bottom: 8rpx">服务标题</view>
+        <input v-model="svcForm.title" class="input" placeholder="如 初中数学一对一辅导" />
+        <view class="muted" style="margin: 12rpx 0 8rpx">课时价（元）</view>
+        <input v-model="svcForm.price" class="input" type="digit" placeholder="如 200" />
+        <view class="muted" style="margin: 12rpx 0 8rpx">授课形式（可多选）</view>
+        <view class="row" style="gap: 12rpx; flex-wrap: wrap; border-bottom: none">
+          <view
+            class="tag"
+            :style="{ background: svcForm.places.includes('home') ? '#1f6feb' : '#eef4ff', color: svcForm.places.includes('home') ? '#fff' : '#1f6feb' }"
+            @click="toggleSvcPlace('home')"
+          >🏠 上门授课</view>
+          <view
+            class="tag"
+            :style="{ background: svcForm.places.includes('teacher_place') ? '#1f6feb' : '#eef4ff', color: svcForm.places.includes('teacher_place') ? '#fff' : '#1f6feb' }"
+            @click="toggleSvcPlace('teacher_place')"
+          >📍 在教员家授课</view>
+        </view>
+        <view class="muted" style="font-size: 22rpx; margin-top: 6rpx">
+          选「在教员家」前请先在入驻资料里填「授课地址」；家长预约时只能选该服务支持的形式。
+        </view>
+        <view class="muted" style="margin: 12rpx 0 8rpx">服务说明（可选）</view>
+        <input v-model="svcForm.description" class="input" placeholder="教学方式、提分计划等" />
+        <view class="row" style="gap: 12rpx; margin-top: 16rpx; border-bottom: none">
+          <view class="btn ghost" @click="svcForm.open = false">取消</view>
+          <view class="btn" @click="saveSvc">{{ busy === "svc-save" ? "保存中…" : "保存" }}</view>
+        </view>
+      </view>
+    </view>
     <view class="card">
       <view class="row">
         <view class="card-title" style="margin: 0">附近需求（{{ demands.length }}）</view>

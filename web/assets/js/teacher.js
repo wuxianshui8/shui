@@ -1068,10 +1068,17 @@ function serviceFormSheet(svc, dict, onSaved) {
     price: svc ? yuan(svc.price) : "",
     coverRadiusKm: svc ? svc.cover_radius_km : 5,
     description: svc ? svc.description || "" : "",
+    // 授课形式（P67）：一个服务可以只支持上门、只支持在教员家、或两者都支持
+    places: svc && Array.isArray(svc.places) && svc.places.length ? [...svc.places] : ["home"],
   };
+  const placeChip = (v, label) =>
+    '<span class="chip ' + (draft.places.includes(v) ? "on" : "") + '" data-svcplace="' + v + '">' + label + "</span>";
   const html =
     '<div class="field"><label>服务标题<span class="req">*</span></label>' +
-    '<input class="input" data-sv="title" value="' + esc(draft.title) + '" placeholder="如 初中数学一对一上门辅导"></div>' +
+    '<input class="input" data-sv="title" value="' + esc(draft.title) + '" placeholder="如 初中数学一对一辅导"></div>' +
+    '<div class="field"><label>授课形式<span class="req">*</span></label>' +
+    '<div class="row" style="gap:8px">' + placeChip("home", "🏠 上门授课") + placeChip("teacher_place", "📍 在教员家授课") + "</div>" +
+    '<div class="form-hint">可同时选；「在教员家」需要先在资料里填「授课地址」。家长预约时只能选该服务支持的形式。</div></div>' +
     '<div class="field"><label>擅长科目</label>' + chipPicker("svc-subjects", dict.subjects || [], draft.subjects) + "</div>" +
     '<div class="field"><label>适用学段</label>' + chipPicker("svc-stages", dict.stages || [], draft.stages) + "</div>" +
     '<div class="field-row"><div class="field"><label>课时价格（元）<span class="req">*</span></label>' +
@@ -1086,6 +1093,7 @@ function serviceFormSheet(svc, dict, onSaved) {
     if (!draft.title.trim()) return toastErr("请填写服务标题");
     if (!(Number(draft.price) > 0)) return toastErr("请填写课时价格");
     if (!draft.subjects.length) return toastErr("请至少选择一个科目");
+    if (!draft.places.length) return toastErr("请至少选择一种授课形式");
     const body = {
       title: draft.title.trim(),
       subjects: draft.subjects.join(","),
@@ -1093,6 +1101,7 @@ function serviceFormSheet(svc, dict, onSaved) {
       price: cents(draft.price),
       coverRadiusKm: Number(draft.coverRadiusKm) || 5,
       description: draft.description.trim(),
+      places: draft.places,
     };
     try {
       if (draft.id) await api.put("/api/teacher/services/" + draft.id, body);
@@ -1107,6 +1116,16 @@ function serviceFormSheet(svc, dict, onSaved) {
   const s = sheet(isNew ? "新增服务" : "编辑服务", html, [{ label: "取消" }, { label: "保存", class: "btn-primary", onClick: submit }]);
   bindPicker(s.el, "svc-subjects");
   bindPicker(s.el, "svc-stages");
+  // 授课形式（P67）：可多选，至少保留一种
+  s.el.querySelectorAll("[data-svcplace]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const v = el.dataset.svcplace;
+      draft.places = draft.places.includes(v)
+        ? draft.places.filter((x) => x !== v)
+        : [...draft.places, v];
+      el.classList.toggle("on", draft.places.includes(v));
+    });
+  });
   $$("[data-sv]", s.el).forEach((node) => {
     const k = node.dataset.sv;
     node.addEventListener("input", () => {
@@ -1153,6 +1172,7 @@ async function servicesView() {
     String(s.stages || "").split(",").filter(Boolean).map((x) => '<span class="tag">' + esc(x) + "</span>").join("") + "</div>" +
     (s.description ? '<div class="tiny faint mt8">' + esc(s.description) + "</div>" : "") +
     '<div class="tiny faint mt8">覆盖 ' + (s.cover_radius_km ?? "-") + " km</div></div>" +
+    '<div class="tiny faint mt8">授课形式：' + esc(s.placesText || (Array.isArray(s.places) ? s.places.map((p) => (p === "teacher_place" ? "在教员家授课" : "上门授课")).join(" / ") : "上门授课")) + "</div>" +
     '<div class="center"><div class="money" style="font-size:17px;color:var(--brand)">' + money(s.price) + '</div><div class="tiny faint">/课时</div></div></div>' +
     '<div class="btn-row mt12">' +
     '<button class="btn btn-outline btn-sm" data-act="toggle" data-id="' + s.id + '">' + (s.status === "on" ? "下架" : "上架") + "</button>" +

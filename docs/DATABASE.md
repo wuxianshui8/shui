@@ -106,7 +106,7 @@
 索引：`idx_tp_audit(audit_status,online)`
 
 ### teacher_services — 上架的授课服务
-`teacher_id, title, subjects, stages, price(分), cover_radius_km, schedule(JSON), description, status(on|off)`
+`teacher_id, title, subjects, stages, price(分), cover_radius_km, schedule(JSON), description, places(home,teacher_place 逗号分隔，P67), status(on|off)`——`places` 决定该服务支持哪种授课形式，下单时校验（不支持则 400 `PLACE_NOT_SUPPORTED`）
 
 ### growth_logs / level_logs — 成长分与等级变更流水
 `growth_logs(teacher_id, change, reason, balance_after, order_id)`

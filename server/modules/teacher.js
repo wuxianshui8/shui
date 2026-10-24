@@ -7,7 +7,7 @@ import { rule } from "../core/config.js";
 import { dispatchPriority, levelByScore, levelInfo, resolveRegion } from "../core/rules.js";
 import { haversineKm } from "../core/geo.js";
 import { distanceFactor } from "../core/geo.js";
-import { orderView, orderViews, reviewsOfTeacher, teacherPrivate } from "../core/present.js";
+import { orderView, orderViews, placesOf, reviewsOfTeacher, serviceView, teacherPrivate } from "../core/present.js";
 import { teacherApproveCancel, teacherRejectCancel } from "./orders.js";
 import { walletSnapshot } from "../core/ledger.js";
 import { checkIdCardMatch, maskIdCard, recognizeIdCardFront, uploadPath } from "../core/ocr.js";
@@ -205,7 +205,7 @@ export function register(router) {
 
   /* ---------------- 我的服务 ---------------- */
   router.get("/api/teacher/services", (ctx) => {
-    ok(ctx.res, all("SELECT * FROM teacher_services WHERE teacher_id = ? ORDER BY status = 'on' DESC, id DESC", ctx.user.id));
+    ok(ctx.res, all("SELECT * FROM teacher_services WHERE teacher_id = ? ORDER BY status = 'on' DESC, id DESC", ctx.user.id).map(serviceView));
   }, { roles: ["teacher"] });
 
   router.post("/api/teacher/services", (ctx) => {
@@ -213,12 +213,13 @@ export function register(router) {
     if (!b.title) throw Err.bad("请填写服务标题");
     if (!(Number(b.price) > 0)) throw Err.bad("请填写课时价格");
     const r = run(
-      "INSERT INTO teacher_services (teacher_id, title, subjects, stages, price, cover_radius_km, schedule, description, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO teacher_services (teacher_id, title, subjects, stages, price, cover_radius_km, schedule, description, places, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       ctx.user.id, b.title, b.subjects || "", b.stages || "", Math.round(Number(b.price)),
-      Number(b.coverRadiusKm || 5), JSON.stringify(b.schedule || []), b.description || "", "on", nowIso(), nowIso()
+      Number(b.coverRadiusKm || 5), JSON.stringify(b.schedule || []), b.description || "",
+      placesOf(b.places), "on", nowIso(), nowIso()
     );
-    audit(ctx, "teacher.service.create", "services:" + r.id);
-    ok(ctx.res, get("SELECT * FROM teacher_services WHERE id = ?", r.id));
+    audit(ctx, "teacher.service.create", "services:" + r.id, { places: placesOf(b.places) });
+    ok(ctx.res, serviceView(get("SELECT * FROM teacher_services WHERE id = ?", r.id)));
   }, { roles: ["teacher"] });
 
   router.put("/api/teacher/services/:id", (ctx) => {
@@ -226,13 +227,16 @@ export function register(router) {
     if (!s) throw Err.notFound("服务不存在");
     const b = ctx.body;
     run(
-      "UPDATE teacher_services SET title = ?, subjects = ?, stages = ?, price = ?, cover_radius_km = ?, description = ?, status = ?, updated_at = ? WHERE id = ?",
+      "UPDATE teacher_services SET title = ?, subjects = ?, stages = ?, price = ?, cover_radius_km = ?, description = ?, places = ?, status = ?, updated_at = ? WHERE id = ?",
       b.title ?? s.title, b.subjects ?? s.subjects, b.stages ?? s.stages,
       b.price != null ? Math.round(Number(b.price)) : s.price,
       b.coverRadiusKm != null ? Number(b.coverRadiusKm) : s.cover_radius_km,
-      b.description ?? s.description, b.status ?? s.status, nowIso(), s.id
+      b.description ?? s.description,
+      b.places !== undefined ? placesOf(b.places) : (s.places || "home"),
+      b.status ?? s.status, nowIso(), s.id
     );
-    ok(ctx.res, get("SELECT * FROM teacher_services WHERE id = ?", s.id));
+    audit(ctx, "teacher.service.update", "services:" + s.id, { places: b.places !== undefined ? placesOf(b.places) : undefined });
+    ok(ctx.res, serviceView(get("SELECT * FROM teacher_services WHERE id = ?", s.id)));
   }, { roles: ["teacher"] });
 
   router.post("/api/teacher/services/:id/toggle", (ctx) => {

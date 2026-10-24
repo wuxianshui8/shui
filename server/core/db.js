@@ -79,6 +79,8 @@ export function migrate() {
   ensureColumn("orders", "parent_checkin_at", "TEXT");
   ensureColumn("orders", "parent_checkin_lat", "REAL");
   ensureColumn("orders", "parent_checkin_lng", "REAL");
+  // 服务级授课形式（P67）：上门授课 / 在教员家授课，可同时支持
+  ensureColumn("teacher_services", "places", "TEXT NOT NULL DEFAULT 'home'");
   ensureColumn("orders", "parent_checkin_distance", "INTEGER");
 }
 export { DATA_DIR, DB_FILE, ROOT };

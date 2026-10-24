@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS `teacher_services` (
   `schedule`        TEXT,
   `description`     TEXT,
   `status`          VARCHAR(255) NOT NULL DEFAULT 'on',
+  `places`          VARCHAR(64) NOT NULL DEFAULT 'home',   -- 支持的授课形式（逗号分隔）：home=上门 / teacher_place=教员家（P67）
   `created_at`      VARCHAR(255) NOT NULL,
   `updated_at`      VARCHAR(255),
   KEY `idx_svc_teacher` (`teacher_id`, `status`)

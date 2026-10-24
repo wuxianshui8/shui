@@ -158,6 +158,10 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("getLocation"), "打卡走 uni.getLocation 取真实定位（需授权）");
   assert(bundle.includes("双方已到齐") || bundle.includes("双方都打卡"), "订单详情展示双方到场状态");
   assert(bundle.includes("教学点打卡"), "教员端到教员处上课时按钮文案为「教学点打卡」");
+  // 服务级授课形式（P67）：教员「我的服务」里的两个选项 + 家长预约按服务过滤
+  assert(bundle.includes("上门授课") && bundle.includes("在教员家授课"), "H5 产物含「上门授课 / 在教员家授课」两个选项");
+  assert(bundle.includes("授课形式"), "教员服务列表展示每个服务的授课形式");
+  assert(bundle.includes("可到老师家"), "家长预约页对支持两种形式的服务给出标注");
   assert(bundle.includes("授课地址"), "教员入驻页含「授课地址」字段");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {

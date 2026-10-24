@@ -127,10 +127,19 @@ export class ParentService {
     card.distanceKm = Number(
       haversineKm(lat, lng, card.baseLat ?? 30.2741, card.baseLng ?? 120.1551).toFixed(2),
     );
-    card.services = await this.ds.query(
+    const svcRows: any[] = await this.ds.query(
       "SELECT * FROM `teacher_services` WHERE `teacher_id` = ? AND `status` = 'on'",
       [id],
     );
+    // 服务级授课形式（P67）：places 逗号串 → 数组 + 中文标签，家长预约页据此只给该服务支持的选项
+    card.services = svcRows.map((s: any) => {
+      const list = String(s.places || "home").split(",").filter(Boolean);
+      return {
+        ...s,
+        places: list,
+        placesText: list.map((p: string) => (p === "teacher_place" ? "在教员家授课" : "上门授课")).join(" / "),
+      };
+    });
     const reviews = await this.ds.query(
       "SELECT r.*, u.nickname AS parentName, u.avatar AS parentAvatar FROM `reviews` r JOIN `users` u ON u.id = r.parent_id WHERE r.teacher_id = ? AND r.status = 'public' ORDER BY r.created_at DESC LIMIT 20",
       [id],

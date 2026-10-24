@@ -287,3 +287,26 @@ export function reviewsOfTeacher(teacherId, limit = 20) {
     appealStatus: r.appeal_status,
   }));
 }
+
+/**
+ * 服务级授课形式（P67）：一个服务可以只支持上门、只支持在教员家、或两者都支持。
+ * 入参可以是数组或逗号串；只保留合法值去重；全非法时回落 "home"（保持老数据行为）。
+ */
+export function placesOf(v) {
+  const list = Array.isArray(v) ? v : String(v || "").split(",");
+  const out = [...new Set(
+    list.map((x) => String(x).trim()).filter((x) => x === "home" || x === "teacher_place")
+  )];
+  return out.length ? out.join(",") : "home";
+}
+
+/** 服务视图：把 places 从逗号串展开成数组，并给一个中文标签，前端直接渲染 */
+export function serviceView(s) {
+  if (!s) return s;
+  const list = String(s.places || "home").split(",").filter(Boolean);
+  return {
+    ...s,
+    places: list,
+    placesText: list.map((p) => (p === "teacher_place" ? "在教员家授课" : "上门授课")).join(" / "),
+  };
+}

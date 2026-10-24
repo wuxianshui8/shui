@@ -1205,6 +1205,49 @@ async function loginPassword(phone) {
     await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
   }
 
+  /* ---------- 25. 服务级授课形式（P67） ---------- */
+  section("25. 服务级授课形式（上门 / 在教员家）");
+  {
+    const before = (await api("GET", "/api/teacher/services", { token: teacherToken })).body.data;
+    const t0 = before[0];
+    assert(Array.isArray(t0.places) && t0.places.includes("home") && typeof t0.placesText === "string",
+      "服务列表下发 places 数组与中文标签（" + t0.placesText + "）", JSON.stringify(t0.places));
+
+    // 只支持上门时：家长选「到教员处」被拒
+    const onlyHome = await api("PUT", "/api/teacher/services/" + t0.id, { token: teacherToken, body: { places: ["home"] } });
+    assert(onlyHome.status === 200 && onlyHome.body.data.places.join() === "home" && onlyHome.body.data.placesText === "上门授课",
+      "服务可设为「仅上门授课」");
+    await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "西湖区文三路 100 号 3 幢 501（P67）", lat: 30.2741, lng: 120.1551 } });
+    const denied = await api("POST", "/api/orders/from-service", {
+      token: parentToken, body: { serviceId: t0.id, lessonTime: new Date(Date.now() + 14 * 86400000).toISOString(), place: "teacher_place" },
+    });
+    assert(denied.status === 400 && denied.body.code === "PLACE_NOT_SUPPORTED",
+      "该服务不支持在教员家授课时，选「到教员处」被拒（PLACE_NOT_SUPPORTED）", denied.text);
+
+    // 改成两种都支持：家长可下「到教员处」单
+    const both = await api("PUT", "/api/teacher/services/" + t0.id, { token: teacherToken, body: { places: ["home", "teacher_place"] } });
+    assert(both.status === 200 && both.body.data.places.length === 2 && /在教员家授课/.test(both.body.data.placesText),
+      "服务可设为「上门 + 在教员家」两种（" + both.body.data.placesText + "）");
+    const ok = await api("POST", "/api/orders/from-service", {
+      token: parentToken, body: { serviceId: t0.id, lessonTime: new Date(Date.now() + 15 * 86400000).toISOString(), place: "teacher_place", remark: "e2e P67" },
+    });
+    assert(ok.status === 200 && ok.body.data.place === "teacher_place", "两种都支持后，到教员处下单成功", ok.text);
+
+    // 只支持在教员家：家长选「上门」被拒
+    await api("PUT", "/api/teacher/services/" + t0.id, { token: teacherToken, body: { places: ["teacher_place"] } });
+    const noHome = await api("POST", "/api/orders/from-service", {
+      token: parentToken, body: { serviceId: t0.id, lessonTime: new Date(Date.now() + 16 * 86400000).toISOString(), place: "home" },
+    });
+    assert(noHome.status === 400 && noHome.body.code === "PLACE_NOT_SUPPORTED", "仅「在教员家」的服务，选上门被拒", noHome.text);
+    const fromList = (await api("GET", "/api/parent/teachers/" + teacherId, { token: parentToken })).body.data.services[0];
+    assert(Array.isArray(fromList.places) && fromList.places.length === 1 && fromList.places[0] === "teacher_place",
+      "家长侧教员详情也下发服务的授课形式（预约页据此只给可选项）");
+
+    // 收尾：恢复成两种都支持（与服务演示数据一致）
+    await api("PUT", "/api/teacher/services/" + t0.id, { token: teacherToken, body: { places: ["home", "teacher_place"] } });
+    await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);
