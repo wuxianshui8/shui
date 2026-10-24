@@ -75,7 +75,7 @@ node tools/switch-domain.mjs
 | 业务链路冒烟 | `npm run smoke:online` → **17/17 通过**：游客浏览 → 家长/教员/管理员登录 → 下单 → 担保支付 → 支付幂等 → 家长申请取消（不退款）→ 教员待处理列表 → 同意退款 → 后台可查 → 越权 403 |
 | 单元测试 | **173 用例 / 23 模块**，行覆盖 **99.40%**（`npm run test:unit`，覆盖率门槛默认即门禁） |
 | 接口契约 | **160 路由 / 18 控制器**（`npm run api:doc:check` 保证文档与代码不漂移） |
-| 前端产物契约 | 后台 **84** 项 / 移动 **120** 项 |
+| 前端产物契约 | 后台 **84** 项 / 移动 **135** 项 |
 | 集成门禁 | `npm run ci:full` **30 步全绿**（约 5 分钟） |
 | CI | GitHub Actions：`e002f97` 在 master 与 main 均 **success** |
 | 安全加固 | SSH 仅公钥（`passwordauthentication no` / `permitrootlogin no`）、ufw 只放 22/80/443、fail2ban 运行中、自动安全更新 enabled；外网探测 3306/6379/4300 **均 closed** |
@@ -144,7 +144,7 @@ MySQL 8（容器，卷持久化）    Redis 7（容器）
 | --- | --- | --- |
 | 短信（A1） | 腾讯云通道代码就绪 + 单测覆盖，mock 可跑 | `SecretId`/`SecretKey`/`SdkAppId`/已备案签名/模板 ID |
 | 微信支付（A2） | 通道 + 服务端接线完成（预支付/回调幂等/退款/超时关单/对账骨架） | 商户号 8 项 + 公网 HTTPS 回调地址；**前端唤起**（`requestPayment`/`WeixinJSBridge`）待接 |
-| 小程序上架（A5） | `mp-weixin` 14 页产物 + `jscode2session` 登录 | `WECHAT_APPID/SECRET`、审核发布、手机号快速验证、订阅消息模板 |
+| 小程序上架（A5） | `mp-weixin` 16 页产物 + `jscode2session` 登录 | `WECHAT_APPID/SECRET`、审核发布、手机号快速验证、订阅消息模板 |
 | 证件识别（A6） | 腾讯云 OCR 通道就绪 | `TENCENT_SECRET_ID/KEY` + 开通 OCR |
 | 打款出款 | 后台确认（状态置 `paid`）可用，钱仍需线下转 | 代付通道资质（或明确长期线下 + SLA） |
 

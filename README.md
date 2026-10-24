@@ -111,7 +111,7 @@ npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生�
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
 npm run web:admin:check     # PC 后台（Vue3+Element Plus，20 页，含区域管理地图与自助改密、订单授课方式）→ 84/84
-npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，14 页；含游客浏览、微信一键登录、立即预约与订单详情、授课地点、到场打卡、服务授课形式）→ 120/120
+npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，14 页；含游客浏览、微信一键登录、立即预约与订单详情、授课地点、到场打卡、服务授课形式、家长端 5 入口）→ 135/135
 ```
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：
@@ -131,7 +131,7 @@ npm run web:mobile:build:mp                              # → apps/web-mobile/d
 npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（142 路由 / 16 控制器）
 npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期）
 npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（143/160 覆盖）
-npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 20 页 + 移动 14 页）
+npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 20 页 + 移动 16 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
 npm run test:unit      # 单元测试 + 覆盖率门禁（172 用例、23 个模块，行覆盖率 ≥ 90% 否则失败·约 7 秒）

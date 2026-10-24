@@ -170,6 +170,15 @@ function goMessages() {
 function goLoginNow() {
   goLogin("");
 }
+
+/** 我的需求（P68）：发布后的闭环入口，游客先登录 */
+function goDemands() {
+  if (guest.value) {
+    goLogin("/pages/parent/demands/index");
+    return;
+  }
+  uni.navigateTo({ url: "/pages/parent/demands/index" });
+}
 </script>
 
 <template>
@@ -190,6 +199,7 @@ function goLoginNow() {
       <view class="muted" v-if="home" style="margin-top: 16rpx">当前片区：{{ home.region ? home.region.name : "未定位" }}（未登录也能看到，登录后按您的地址推荐）</view>
       <view class="btn" style="margin-top: 20rpx" @click="goPublish">发布家教需求</view>
       <view class="btn ghost" style="margin-top: 12rpx" @click="goTeachers">找附近教员 · 立即预约</view>
+      <view class="btn ghost" style="margin-top: 12rpx" @click="goDemands">我的需求（看报名 / 确认教员）</view>
       <view class="muted" v-if="guest" style="margin-top: 16rpx">
         不用登录就能填表；点「发布需求」时再登录，登录后自动发布。
       </view>

@@ -74,6 +74,113 @@ async function parentCheckin() {
   }
 }
 
+/* ---------------- P68：申请退款 / 投诉 / 发票 / 紧急求助 ----------------
+ * 这四个能力后端早就有（orders/:id/refund、complaints、invoices、orders/:id/sos），
+ * 但移动端一直没有入口——家长出纠纷只能「取消」，也开不了票、提交不了工单。
+ */
+const PAID = ["pending_class", "in_class", "awaiting_parent_confirm", "completed", "settled"];
+const canRefund = computed(() => o.value && ["pending_class", "in_class", "awaiting_parent_confirm"].includes(o.value.status));
+const canComplaint = computed(() => o.value && PAID.includes(o.value.status));
+const canInvoice = computed(() => o.value && PAID.includes(o.value.status));
+const canSos = computed(() => o.value && ["pending_class", "in_class"].includes(o.value.status));
+
+const refundDraft = reactive({ open: false, reason: "" });
+const complaintDraft = reactive({ open: false, title: "", content: "" });
+const invoiceDraft = reactive({ open: false, titleType: "personal", title: "", taxNo: "", email: "" });
+
+async function submitRefund() {
+  if (!refundDraft.reason.trim()) return uni.showToast({ title: "请填写退款原因", icon: "none" });
+  busy.value = "refund";
+  try {
+    await request("POST", "/orders/" + o.value.id + "/refund", { reason: refundDraft.reason.trim() });
+    uni.showToast({ title: "退款申请已提交，客服 24 小时内处理", icon: "none" });
+    refundDraft.open = false;
+    refundDraft.reason = "";
+    await load();
+  } catch (e) {
+    uni.showToast({ title: e.message || "提交失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
+}
+
+async function submitComplaint() {
+  if (!complaintDraft.title.trim()) return uni.showToast({ title: "请填写工单标题", icon: "none" });
+  if (!complaintDraft.content.trim()) return uni.showToast({ title: "请描述遇到的问题", icon: "none" });
+  busy.value = "complaint";
+  try {
+    await request("POST", "/complaints", {
+      orderId: o.value.id,
+      type: "complaint",
+      title: complaintDraft.title.trim(),
+      content: complaintDraft.content.trim(),
+    });
+    uni.showToast({ title: "投诉已提交，平台会尽快联系您", icon: "none" });
+    complaintDraft.open = false;
+    complaintDraft.title = "";
+    complaintDraft.content = "";
+  } catch (e) {
+    uni.showToast({ title: e.message || "提交失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
+}
+
+async function submitInvoice() {
+  if (!invoiceDraft.title.trim()) return uni.showToast({ title: "请填写发票抬头", icon: "none" });
+  busy.value = "invoice";
+  try {
+    const r = await request("POST", "/invoices", {
+      orderId: o.value.id,
+      titleType: invoiceDraft.titleType,
+      title: invoiceDraft.title.trim(),
+      taxNo: invoiceDraft.taxNo.trim(),
+      email: invoiceDraft.email.trim(),
+    });
+    uni.showToast({ title: "开票申请已提交（" + (r && r.invoice_no ? r.invoice_no : "已受理") + "）", icon: "none" });
+    invoiceDraft.open = false;
+  } catch (e) {
+    uni.showToast({ title: e.message || "提交失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
+}
+
+/** 紧急求助：带定位上报（拿不到定位也照样能提交，note 里说明情况） */
+async function raiseSos() {
+  const confirm = await new Promise((resolve) => {
+    uni.showModal({
+      title: "紧急求助",
+      content: "将立即通知平台客服与片区负责人介入。确认发起？",
+      confirmText: "立即求助",
+      success: (r) => resolve(!!r.confirm),
+      fail: () => resolve(false),
+    });
+  });
+  if (!confirm) return;
+  busy.value = "sos";
+  try {
+    const pos = await new Promise((resolve) => {
+      uni.getLocation({
+        type: "gcj02",
+        isHighAccuracy: true,
+        success: (r) => resolve({ lat: r.latitude, lng: r.longitude }),
+        fail: () => resolve(null),
+      });
+    });
+    const res = await request("POST", "/orders/" + o.value.id + "/sos", {
+      lat: pos ? pos.lat : undefined,
+      lng: pos ? pos.lng : undefined,
+      note: pos ? "" : "家长端定位不可用",
+    });
+    uni.showToast({ title: (res && res.message) || "求助已提交", icon: "none" });
+  } catch (e) {
+    uni.showToast({ title: e.message || "提交失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
+}
+
 async function pay() {
   busy.value = "pay";
   const r = await new Promise((resolve) => {
@@ -198,6 +305,73 @@ async function submitReview() {
           到了教学点后点下面按钮，会读取您的定位（需授权）；您和教员都打卡后课程自动开始。
         </view>
         <view class="btn" @click="parentCheckin">{{ busy === "checkin" ? "定位中…" : "📍 我到场了" }}</view>
+      </view>
+
+      <!-- 服务与保障（P68）：申请退款 / 投诉 / 开票 / 紧急求助——后端接口早已就绪，这里是移动端入口 -->
+      <view class="card">
+        <view class="card-title">服务与保障</view>
+
+        <!-- 紧急求助：安全优先，放在最上面 -->
+        <view v-if="canSos" class="btn" style="background: #c02a2a; margin-bottom: 14rpx" @click="raiseSos">
+          {{ busy === "sos" ? "提交中…" : "🚨 紧急求助（立即通知客服与片区负责人）" }}
+        </view>
+
+        <view class="row" style="gap: 12rpx; flex-wrap: wrap; border-bottom: none">
+          <view v-if="canRefund" class="btn ghost" style="padding: 12rpx 24rpx" @click="refundDraft.open = true">申请退款</view>
+          <view v-if="canComplaint" class="btn ghost" style="padding: 12rpx 24rpx" @click="complaintDraft.open = true">投诉 / 反馈</view>
+          <view v-if="canInvoice" class="btn ghost" style="padding: 12rpx 24rpx" @click="invoiceDraft.open = true">申请开票</view>
+        </view>
+
+        <!-- 申请退款 -->
+        <view v-if="refundDraft.open" style="margin-top: 16rpx; border-top: 1px solid #eef4ff; padding-top: 14rpx">
+          <view class="muted" style="margin-bottom: 8rpx">退款原因（会同步给教员与客服）</view>
+          <input v-model="refundDraft.reason" class="input" placeholder="如：教员临时无法上课、教学与描述不符" />
+          <view class="muted" style="font-size: 22rpx; margin-top: 8rpx">提交后订单转「退款中」，客服 24 小时内审核；规则内的违约金与退款额由平台按时间窗计算。</view>
+          <view class="row" style="gap: 12rpx; margin-top: 12rpx; border-bottom: none">
+            <view class="btn ghost" @click="refundDraft.open = false">取消</view>
+            <view class="btn" @click="submitRefund">{{ busy === "refund" ? "提交中…" : "提交退款申请" }}</view>
+          </view>
+        </view>
+
+        <!-- 投诉 / 反馈 -->
+        <view v-if="complaintDraft.open" style="margin-top: 16rpx; border-top: 1px solid #eef4ff; padding-top: 14rpx">
+          <view class="muted" style="margin-bottom: 8rpx">工单标题</view>
+          <input v-model="complaintDraft.title" class="input" placeholder="如：教员未按约定时间上课" />
+          <view class="muted" style="margin: 12rpx 0 8rpx">问题描述</view>
+          <textarea v-model="complaintDraft.content" class="input" style="height: 140rpx" placeholder="时间、经过、您的诉求" />
+          <view class="row" style="gap: 12rpx; margin-top: 12rpx; border-bottom: none">
+            <view class="btn ghost" @click="complaintDraft.open = false">取消</view>
+            <view class="btn" @click="submitComplaint">{{ busy === "complaint" ? "提交中…" : "提交投诉" }}</view>
+          </view>
+        </view>
+
+        <!-- 申请开票 -->
+        <view v-if="invoiceDraft.open" style="margin-top: 16rpx; border-top: 1px solid #eef4ff; padding-top: 14rpx">
+          <view class="row" style="gap: 12rpx; border-bottom: none">
+            <view
+              class="tag"
+              :style="{ background: invoiceDraft.titleType === 'personal' ? '#1f6feb' : '#eef4ff', color: invoiceDraft.titleType === 'personal' ? '#fff' : '#1f6feb' }"
+              @click="invoiceDraft.titleType = 'personal'"
+            >个人</view>
+            <view
+              class="tag"
+              :style="{ background: invoiceDraft.titleType === 'company' ? '#1f6feb' : '#eef4ff', color: invoiceDraft.titleType === 'company' ? '#fff' : '#1f6feb' }"
+              @click="invoiceDraft.titleType = 'company'"
+            >企业</view>
+          </view>
+          <view class="muted" style="margin: 12rpx 0 8rpx">发票抬头</view>
+          <input v-model="invoiceDraft.title" class="input" :placeholder="invoiceDraft.titleType === 'company' ? '公司全称' : '个人姓名'" />
+          <view v-if="invoiceDraft.titleType === 'company'">
+            <view class="muted" style="margin: 12rpx 0 8rpx">纳税人识别号</view>
+            <input v-model="invoiceDraft.taxNo" class="input" placeholder="15-20 位税号" />
+          </view>
+          <view class="muted" style="margin: 12rpx 0 8rpx">接收邮箱（可选）</view>
+          <input v-model="invoiceDraft.email" class="input" placeholder="用于接收电子发票" />
+          <view class="row" style="gap: 12rpx; margin-top: 12rpx; border-bottom: none">
+            <view class="btn ghost" @click="invoiceDraft.open = false">取消</view>
+            <view class="btn" @click="submitInvoice">{{ busy === "invoice" ? "提交中…" : "提交开票申请" }}</view>
+          </view>
+        </view>
       </view>
 
       <view class="card">

@@ -70,7 +70,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
+for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/demands/index", "我的需求页"], ["/m/pages/parent/demand/index", "需求详情（确认教员）页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -122,6 +122,53 @@ const wallet = await api("GET", "/wallet", { token: teacher.body.data.token });
 assert(wallet.status === 200 && wallet.body.data.wallet && Array.isArray(wallet.body.data.txns),
   "教员钱包页：钱包快照含余额 ¥" + ((wallet.body.data?.wallet?.balance || 0) / 100).toFixed(2) + " 与流水 " + (wallet.body.data?.txns?.length || 0) + " 条");
 
+/* P68：家长端 5 个入口的接口闭环——发需求 → 教员报名 → 家长确认成单 → 退款/投诉/开票/求助 */
+const mine = await api("GET", "/demands/mine", { token: parent.body.data.token });
+assert(mine.status === 200 && Array.isArray(mine.body.data) && mine.body.data.some((d) => d.id === demand.body.data.id),
+  "我的需求页：GET /demands/mine 能列出刚发布的需求（含报名数 applyCount）");
+const detail = await api("GET", "/demands/" + demand.body.data.id, { token: parent.body.data.token });
+assert(detail.status === 200 && (detail.body.data.applications || []).some((a) => a.id === grab.body.data.applicationId),
+  "需求详情页：能看到教员报名（" + (detail.body.data?.applications || []).length + " 条，含实时优先级）");
+const confirmed = await api("POST", "/demands/" + demand.body.data.id + "/confirm", {
+  token: parent.body.data.token,
+  body: { applicationId: grab.body.data.applicationId },
+});
+assert(confirmed.status === 200 && confirmed.body.data.id > 0,
+  "需求详情页：确认教员 → 生成订单（订单 " + confirmed.body.data?.orderNo + "）");
+const orderId = confirmed.body.data.id;
+
+// 先付款（订单才可开票/退款），按「没有副作用的先做」排序：开票 → 投诉 → 求助 → 退款（退款会把状态改成 refunding）
+await api("POST", "/orders/" + orderId + "/pay", { token: parent.body.data.token, idem: "mob-p68-" + orderId });
+
+// 发票申请（退款中/已退款不可开票，所以必须在申请退款之前验）
+const invoice = await api("POST", "/invoices", {
+  token: parent.body.data.token,
+  body: { orderId, titleType: "personal", title: "周女士", email: "p68@example.com" },
+});
+assert(invoice.status === 200 && !!invoice.body.data?.invoice_no,
+  "订单详情：可申请开票 POST /invoices（" + (invoice.body.data?.invoice_no || invoice.body.message || "") + "）", invoice.text);
+
+// 投诉工单
+const complaint = await api("POST", "/complaints", {
+  token: parent.body.data.token,
+  body: { orderId, type: "complaint", title: "验收投诉", content: "移动端投诉入口验收" },
+});
+assert(complaint.status === 200, "订单详情：可提交投诉工单 POST /complaints", complaint.text);
+
+// 紧急求助（同一订单 10 分钟内不重复建单，属于预期）
+const sos = await api("POST", "/orders/" + orderId + "/sos", {
+  token: parent.body.data.token,
+  body: { lat: 30.262, lng: 120.133, note: "移动端验收求助" },
+});
+assert(sos.status === 200 && !!sos.body.data?.message, "订单详情：紧急求助已受理（" + (sos.body.data?.message || "") + "）", sos.text);
+
+// 申请退款（最后做，会把订单状态改成 refunding）
+const refund = await api("POST", "/orders/" + orderId + "/refund", {
+  token: parent.body.data.token,
+  body: { reason: "移动端验收：临时有事" },
+});
+assert(refund.status === 200, "订单详情：申请退款走 POST /orders/:id/refund（状态 " + (refund.body.data?.status || refund.status) + "）", refund.text);
+
 console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
 // H5 产物里要能看到游客优先的痕迹：「微信一键登录」按钮、公开首页接口、登录后自动发布的草稿键
 // 注意：页面 chunk 是路由懒加载的，不在 index.html 的资源列表里，必须直接扫 dist 目录
@@ -163,6 +210,13 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
   assert(bundle.includes("授课形式"), "教员服务列表展示每个服务的授课形式");
   assert(bundle.includes("可到老师家"), "家长预约页对支持两种形式的服务给出标注");
   assert(bundle.includes("授课地址"), "教员入驻页含「授课地址」字段");
+  // P68：家长端补齐 5 个入口——我的需求/确认教员、申请退款、投诉、开票、紧急求助
+  assert(bundle.includes("我的需求") && bundle.includes("/demands/mine"), "H5 产物含「我的需求」列表页（GET /demands/mine）");
+  assert(bundle.includes("确认这位教员") && bundle.includes("/confirm"), "需求详情可确认教员成单（POST /demands/:id/confirm）");
+  assert(bundle.includes("申请退款") && bundle.includes("/refund"), "订单详情含「申请退款」（POST /orders/:id/refund）");
+  assert(bundle.includes("投诉") && bundle.includes("/complaints"), "订单详情可提交投诉工单（POST /complaints）");
+  assert(bundle.includes("申请开票") && bundle.includes("/invoices"), "订单详情可申请开票（POST /invoices）");
+  assert(bundle.includes("紧急求助") && bundle.includes("/sos"), "订单详情含「紧急求助」（POST /orders/:id/sos）");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {
     const { readFileSync } = await import("node:fs");

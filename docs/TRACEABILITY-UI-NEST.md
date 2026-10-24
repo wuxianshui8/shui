@@ -4,7 +4,7 @@
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
 - **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：20**
-- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：14**（家长 5 页含「附近教员 / 教员详情·立即预约 / 订单详情」，另教员 3 页含入驻认证、业务员 2 页、代理 2 页、登录与消息各 1 页）
+- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：16**（家长 7 页含「我的需求 / 需求详情·确认教员 / 附近教员 / 教员详情·立即预约 / 订单详情」，另教员 3 页含入驻认证、业务员 2 页、代理 2 页、登录与消息各 1 页）
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
 > 引用的后台路由都在 `router.js` 注册、侧栏菜单与路由自洽、声明的页面数与实际一致（漏写/写错即失败）。
@@ -25,6 +25,7 @@
 | 第 3 章 入驻认证（资质材料） | `pages/teacher/apply/index` | `pages/teacher/apply/index.vue` | 身份类型、真实姓名/身份证号、**「资质材料」卡排在提交按钮之上**：身份证正反面必传；第三张按身份只显示一张——在职教师→教师资格证、在校大学生→学生证、社会兼职→技能证书（`certSlot` + `certHint`）；上传后图片用背景图 `background-size: cover` 在框内自适应（`<image :src>` 在本版 H5 不落 DOM）；人像面即调 `/api/teacher/ocr-idcard` 回显「识别到：姓名 · 脱敏号码」与是否一致；提交走 `/api/teacher/apply`（姓名/号码与证件不一致会被服务端拒） |
 | 第 2 章 授课地点（教员上门 / 家长到教员处） | `pages/parent/teacher`、`pages/parent/publish`、`pages/parent/order`、`pages/teacher/apply` | `pages/parent/teacher/index.vue`、`pages/parent/publish/index.vue`、`pages/parent/order/index.vue`、`pages/teacher/apply/index.vue` | **P65**：教员在入驻/资料里填「授课地址」后，家长预约页出现「🏠 教员上门 / 📍 我到教员处」两个选项（选后者隐藏家长地址选择、显示教员地址），发布需求也能选上课形式；订单详情显示「授课方式」与「教员授课地址」；下单带 `place`，到教员处时后端自动把订单地点换成教员授课地址，无需家长地址 |
 | 第 3 章 到场打卡 + 双方确认（P66） | `pages/parent/order`、`pages/teacher/index` | `pages/parent/order/index.vue`、`pages/teacher/index.vue` | **P66**：到教员处上课的订单要**双方各打一次卡**——家长在订单详情点「📍 我到场了」（`uni.getLocation` 取 gcj02 高精度定位，拒绝授权时明确提示、不静默放行），教员在订单列表点「教学点打卡」；两边都打卡后订单自动转「上课中」，界面上随时能看到「家长 ✅/⏳ ／教员 ✅/⏳ · 双方已到齐」；教员上门订单仍由教员一次打卡即开课 |
+| 第 2 章 我的需求 + 确认教员（P68） | `pages/parent/demands/index`、`pages/parent/demand/index` | `pages/parent/demands/index.vue`、`pages/parent/demand/index.vue` | 本人需求列表（学段科目 / 地址 / 预算 / **授课形式** / 报名人数 / 状态）→ 可暂停接单 / 恢复 / 撤销；进详情看**报名教员列表**（距离 / 实时优先级 / 状态，已确认排最前）→「确认这位教员」生成订单并跳去支付。补上了「发完需求就看不到报名」的断链 |
 | （UI 说明书未单列业务员端） | `pages/sales/index` | `pages/sales/index.vue` | 按同规范扩展：本月注册/成交/GMV/待结奖励、双通道推广码、客户 |
 | （同上）奖励明细 | `pages/sales/rewards/index` | `pages/sales/rewards/index.vue` | 六类奖励按类型汇总与筛选、结算状态、钱包可用 |
 | 第 4 章 区域代理端界面（大盘/订单） | `pages/agent/index` | `pages/agent/index.vue` | 片区 GMV/订单/业务员、考核完成度、片区订单 |
