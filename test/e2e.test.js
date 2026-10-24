@@ -1003,6 +1003,73 @@ async function loginPassword(phone) {
     assert(tjs2.includes("cancel-approve") && tjs2.includes("cancel-reject") && tjs2.includes("待处理取消"),
       "教员端界面有「同意退款 / 驳回」与「待处理取消」入口");
   }
+  /* ---------- 22. 管理员自助改密 + 删除管理员（P64，与正式实现同口径） ---------- */
+  section("22. 管理员自助改密与删除管理员");
+  const tmpPhone = "13900008881";
+  const blankPhone = "13900008882";
+  const mkAdmin = await api("POST", "/api/admin/admins", {
+    token: adminToken, body: { nickname: "E2E 临时管理员", phone: tmpPhone, password: "Tmp12345x" },
+  });
+  assert(mkAdmin.status === 200 && mkAdmin.body.data.id > 0, "后台可新建管理员（创建动作写审计）");
+  const tmpId = mkAdmin.body.data.id;
+  const tmpLogin = await api("POST", "/api/auth/login-password", { body: { phone: tmpPhone, password: "Tmp12345x" } });
+  assert(tmpLogin.status === 200 && tmpLogin.body.data.token, "新管理员可用初始口令登录");
+  const tmpToken = tmpLogin.body.data.token;
+
+  const weak = await api("POST", "/api/auth/change-password", { token: tmpToken, body: { oldPassword: "Tmp12345x", newPassword: "abc123" } });
+  assert(weak.status === 400 && /8 位/.test(weak.body.message), "改密：新口令不足 8 位被拒（400）", weak.text);
+  const noDigit = await api("POST", "/api/auth/change-password", { token: tmpToken, body: { oldPassword: "Tmp12345x", newPassword: "abcdefgh" } });
+  assert(noDigit.status === 400, "改密：新口令缺数字被拒（400）");
+  const wrongOld = await api("POST", "/api/auth/change-password", { token: tmpToken, body: { oldPassword: "Wrong1234", newPassword: "NewPass123" } });
+  assert(wrongOld.status === 400 && /原口令/.test(wrongOld.body.message), "改密：旧口令错误被拒（400）", wrongOld.text);
+  const same = await api("POST", "/api/auth/change-password", { token: tmpToken, body: { oldPassword: "Tmp12345x", newPassword: "Tmp12345x" } });
+  assert(same.status === 400 && /相同/.test(same.body.message), "改密：新旧口令相同被拒（400）");
+
+  const changed = await api("POST", "/api/auth/change-password", { token: tmpToken, body: { oldPassword: "Tmp12345x", newPassword: "NewPass123" } });
+  assert(changed.status === 200 && !!changed.body.data.token && changed.body.data.mustChangePassword === false,
+    "改密成功：返回新令牌（mustChangePassword=false）", changed.text);
+  const oldPwLogin = await api("POST", "/api/auth/login-password", { body: { phone: tmpPhone, password: "Tmp12345x" } });
+  assert(oldPwLogin.status === 400 && oldPwLogin.body.code === "BAD_CREDENTIALS", "改密后旧口令不能再登录");
+  const newPwLogin = await api("POST", "/api/auth/login-password", { body: { phone: tmpPhone, password: "NewPass123" } });
+  assert(newPwLogin.status === 200 && newPwLogin.body.data.token, "改密后新口令可登录");
+
+  // 删除：有痕迹 → 软删除并匿名化
+  const delSoft = await api("DELETE", "/api/admin/admins/" + tmpId, { token: adminToken });
+  assert(delSoft.status === 200 && delSoft.body.data.mode === "soft" && (delSoft.body.data.kept || []).length > 0,
+    "删除有操作痕迹的管理员 → 软删除（保留历史可追溯：" + ((delSoft.body.data && delSoft.body.data.kept) || []).join("、") + "）", delSoft.text);
+  const softLogin = await api("POST", "/api/auth/login-password", { body: { phone: tmpPhone, password: "NewPass123" } });
+  assert(softLogin.status === 400 && softLogin.body.code === "BAD_CREDENTIALS", "软删除后手机号已清空，原账号无法登录");
+  const delAgain = await api("DELETE", "/api/admin/admins/" + tmpId, { token: adminToken });
+  assert(delAgain.status === 404, "重复删除同一管理员返回 404");
+
+  // 删除：完全空白 → 物理删除
+  const blank = await api("POST", "/api/admin/admins", {
+    token: adminToken, body: { nickname: "E2E 空白管理员", phone: blankPhone, password: "Tmp12345x" },
+  });
+  const blankId = blank.body.data.id;
+  const delHard = await api("DELETE", "/api/admin/admins/" + blankId, { token: adminToken });
+  assert(delHard.status === 200 && delHard.body.data.mode === "hard" && (delHard.body.data.kept || []).length === 0,
+    "删除零痕迹管理员 → 物理删除", delHard.text);
+  const listAfter = await api("GET", "/api/admin/admins", { token: adminToken });
+  const ids = (listAfter.body.data || []).map((a) => a.id);
+  assert(!ids.includes(tmpId) && !ids.includes(blankId), "管理员列表不再显示已删除账号");
+
+  // 护栏
+  const me = await api("GET", "/api/auth/me", { token: adminToken });
+  const myId = me.body.data.user.id;
+  const delSelf = await api("DELETE", "/api/admin/admins/" + myId, { token: adminToken });
+  assert(delSelf.status === 403, "不能删除当前登录的管理员账号（403）");
+  const delNotExist = await api("DELETE", "/api/admin/admins/999999", { token: adminToken });
+  assert(delNotExist.status === 404, "删除不存在的管理员返回 404");
+  const delAsParent = await api("DELETE", "/api/admin/admins/" + myId, { token: parentToken });
+  assert(delAsParent.status === 403, "非管理员无权删除管理员账号（403）");
+
+  // 界面入口（参考实现是零构建原生 JS，断言产物里确实有入口与请求路径）
+  const ajs = await (await fetch(BASE + "/assets/js/admin.js")).text();
+  assert(ajs.includes('data-top="password"') && ajs.includes("changeOwnPassword") && ajs.includes("/api/auth/change-password"),
+    "后台顶栏有「修改口令」入口并调用 /api/auth/change-password");
+  assert(ajs.includes('data-act="del-admin"') && ajs.includes("/api/admin/admins/"),
+    "管理员账号列表有「删除」按钮并调用 DELETE /api/admin/admins/:id");
 
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");

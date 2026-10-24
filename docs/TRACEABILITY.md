@@ -166,6 +166,7 @@
 | 4.5.7 投诉工单终审、违规账号处罚 | ✅ | `/complaints/:id/close`、`/risks/:id/handle{punish}` | e2e §12 |
 | 4.5.8 优惠券、活动、Banner、公告、协议文案 | ✅ | 运营工具四页签（增删改 + 停用） | e2e §15 |
 | 4.5.9 管理员账号、操作日志、基础参数配置 | ✅ | `/api/admin/admins`、`/audit-logs`、`platforms` 规则 | e2e §16、sec §6 |
+| 4.5.9 管理员账号：新建 / 自助改口令 / 删除 | ✅ | `POST`、`POST /api/auth/change-password`、`DELETE /api/admin/admins/:id`；后台顶栏「🔑 修改口令」+ 列表行内「删除」（软删除保留台账 / 零痕迹物理删除，不能删自己） | e2e §22（19 项） |
 | 4.5.9 角色权限分配（细粒度权限矩阵） | ⚠️ | 采用内置六角色 RBAC，未提供逐权限勾选（见 §3） | sec §1 |
 
 ## 第 5 章 核心业务规则引擎

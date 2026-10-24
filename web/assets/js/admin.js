@@ -325,6 +325,7 @@ function topHtml(meta) {
     '<div class="top-user">' + avatar(u.nickname || "管", u.avatar) +
     '<div><div class="small bold">' + esc(u.nickname || "管理员") + '</div><div class="tiny faint">' +
     esc(ROLE[u.role] || "管理员") + " · " + esc(u.phone || "") + "</div></div></div>" +
+    '<button class="btn btn-sm btn-outline" data-top="password">🔑 修改口令</button>' +
     '<button class="btn btn-sm btn-outline" data-top="logout">退出</button>'
   );
 }
@@ -344,12 +345,50 @@ function bindTop(top) {
       });
     } else if (act === "settle") {
       await runSettle(btn);
+    } else if (act === "password") {
+      await changeOwnPassword(btn);
     } else if (act === "logout") {
       const ok = await confirmDialog("退出登录", "退出后需要重新输入管理员账号与口令。", "退出");
       if (!ok) return;
       session.clear();
 
       showLogin();
+    }
+  });
+}
+
+/**
+ * 修改本管理员登录口令（与正式实现 POST /api/auth/change-password 同契约）：
+ * 先校验旧口令，再要求新口令 ≥8 位且含字母与数字、不得与原口令相同。
+ * 成功后服务端返回新令牌——参考实现没有 token_version，所以其它设备上的旧令牌仍有效；
+ * 这一点已在 docs/MIGRATION P64 记为与正式实现的差异。
+ */
+async function changeOwnPassword(btn) {
+  const vals = await formDialog(
+    "修改登录口令",
+    [
+      { key: "oldPassword", label: "当前口令", type: "password", placeholder: "输入正在使用的登录口令" },
+      { key: "newPassword", label: "新口令", type: "password", placeholder: "至少 8 位，需同时包含字母与数字" },
+      { key: "confirmPassword", label: "确认新口令", type: "password", placeholder: "再输入一次新口令" },
+    ],
+    "保存新口令"
+  );
+  if (!vals) return;
+  const oldPassword = String(vals.oldPassword || "");
+  const newPassword = String(vals.newPassword || "");
+  if (!oldPassword) return toastErr("请先填写当前口令");
+  if (newPassword.length < 8) return toastErr("新口令至少 8 位");
+  if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) return toastErr("新口令需同时包含字母与数字");
+  if (newPassword === oldPassword) return toastErr("新口令不能与当前口令相同");
+  if (newPassword !== String(vals.confirmPassword || "")) return toastErr("两次输入的新口令不一致");
+  await busy(btn, async () => {
+    try {
+      const r = await api.post("/api/auth/change-password", { oldPassword, newPassword });
+      if (r.token) session.save(r.token, session.user);
+      toastOk("口令已更新，下次请用新口令登录");
+    } catch (err) {
+      if (err?.status === 401) return handle401();
+      toastErr(err?.message || "修改口令失败");
     }
   });
 }
@@ -3068,6 +3107,27 @@ async function viewSystem(root) {
     </div>`);
 
   const adminEl = box.querySelector("[data-admins]");
+
+  // 删除管理员：有审计/审批痕迹 → 服务端软删并匿名化；完全空白 → 物理删。口径与正式实现一致。
+  bindActions(box, {
+    "del-admin": async (btn) => {
+      const name = btn.dataset.name || "该管理员";
+      const sure = await confirmDialog(
+        "删除管理员",
+        "将删除后台账号「" + name + "」。若该账号产生过操作日志 / 提现审批 / 发票受理，则改为禁用并清空手机号等个人信息（历史记录里显示为「已删除管理员」）；完全没留下痕迹的账号直接物理删除。此操作不可恢复，也不影响家长、教员等业务账号。",
+        "删除",
+        true
+      );
+      if (!sure) return;
+      await busy(btn, async () => {
+        const r = await api.del("/api/admin/admins/" + btn.dataset.id);
+        const kept = (r.kept || []).join("、");
+        toastOk(r.mode === "hard" ? "已彻底删除该管理员账号" : "已删除并匿名化（保留下辖记录：" + kept + "）");
+        await loadAdmins();
+      });
+    },
+  });
+
   const logEl = box.querySelector("[data-logs]");
   let logs = [];
 
@@ -3103,13 +3163,17 @@ async function viewSystem(root) {
       (list) => {
         box.querySelector("[data-admin-count]").textContent = "共 " + num(list.length) + " 位";
         return tableHtml(
-          ["ID", "姓名", "手机号", "状态", "创建时间"],
+          ["ID", "姓名", "手机号", "状态", "创建时间", "操作"],
           list.map((a) => [
             '<span class="faint num">#' + a.id + "</span>",
             "<b>" + esc(a.nickname) + "</b>",
             '<span class="mono">' + esc(or(a.phone)) + "</span>",
             statusBadge(a.status, a.status === "active" ? "正常" : "已禁用"),
             '<span class="small faint nowrap">' + fmtDate(a.created_at, "date") + "</span>",
+            Number(a.id) === Number(session.user?.id)
+              ? '<span class="tiny faint nowrap">当前账号</span>'
+              : '<button class="btn btn-sm btn-outline" data-act="del-admin" data-id="' + a.id +
+                '" data-name="' + esc(a.nickname) + '">删除</button>',
           ])
         );
       },

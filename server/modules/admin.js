@@ -1084,7 +1084,7 @@ export function register(router) {
 
   router.get("/api/admin/admins", (ctx) => {
     adminOnly(ctx);
-    ok(ctx.res, all("SELECT id, nickname, phone, status, created_at FROM users WHERE role = 'admin'"));
+    ok(ctx.res, all("SELECT id, nickname, phone, status, created_at FROM users WHERE role = 'admin' AND deleted_at IS NULL"));
   });
 
   router.post("/api/admin/admins", (ctx) => {
@@ -1096,5 +1096,47 @@ export function register(router) {
       b.phone, hashPassword(b.password || DEMO_PASSWORD), b.nickname, "admin", "active", nowIso());
     audit(ctx, "admin.admin.create", "users:" + r.id);
     ok(ctx.res, { id: r.id });
+  });
+
+  /**
+   * 删除管理员（与正式实现 DELETE /api/admin/admins/:id 同口径）：
+   * 有审计/审批痕迹 → 软删除（打 deleted_at + 匿名化，保留 id 供追溯）；完全空白 → 物理删除。
+   * 护栏：不能删自己；至少保留一个启用状态的管理员。
+   */
+  router.del("/api/admin/admins/:id", (ctx) => {
+    adminOnly(ctx);
+    const id = Number(ctx.params.id);
+    const target = get("SELECT * FROM users WHERE id = ?", id);
+    if (!target || target.role !== "admin" || target.deleted_at) throw Err.notFound("管理员账号不存在");
+    if (Number(ctx.user.id) === id) throw Err.forbidden("不能删除当前登录的管理员账号");
+    const activeOthers = get(
+      "SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND status = 'active' AND deleted_at IS NULL AND id <> ?",
+      id
+    ).c;
+    if (target.status === "active" && Number(activeOthers) === 0) {
+      throw Err.biz("LAST_ADMIN", "至少保留一个启用状态的管理员");
+    }
+
+    const kept = [];
+    const add = (n, label) => { if (Number(n)) kept.push(label.replace("{n}", String(n))); };
+    add(get("SELECT COUNT(*) AS c FROM audit_logs WHERE actor_id = ?", id).c, "{n} 条操作日志");
+    add(get("SELECT COUNT(*) AS c FROM withdrawals WHERE reviewed_by = ?", id).c, "{n} 笔提现审批");
+    add(get("SELECT COUNT(*) AS c FROM invoices WHERE handled_by = ?", id).c, "{n} 笔发票受理");
+
+    if (kept.length) {
+      // 软删除：账号立即不可用、个人信息清空，但 id 留在库里，历史审计与审批仍可追溯
+      run(
+        "UPDATE users SET status = 'disabled', deleted_at = ?, phone = NULL, wx_openid = NULL, nickname = ?, " +
+          "avatar = NULL, real_name = NULL, id_card = NULL, password_hash = NULL, device_fp = NULL, reg_ip = NULL WHERE id = ?",
+        nowIso(), "已删除管理员#" + id, id
+      );
+      audit(ctx, "admin.admin.delete", "users:" + id, { mode: "soft", kept });
+      return ok(ctx.res, { id, mode: "soft", kept });
+    }
+
+    run("DELETE FROM wallets WHERE user_id = ?", id);
+    run("DELETE FROM users WHERE id = ? AND role = 'admin'", id);
+    audit(ctx, "admin.admin.delete", "users:" + id, { mode: "hard", kept: [] });
+    ok(ctx.res, { id, mode: "hard", kept: [] });
   });
 }

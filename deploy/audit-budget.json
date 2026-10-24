@@ -1,12 +1,12 @@
 {
   "$comment": "依赖漏洞预算（D3）。工具：tools/check-audit.mjs（npm run audit:check，已纳入 npm run ci 静态门禁）。规则：对每个 workspace 跑 `npm audit --omit=dev --json`，block 列出的级别一旦超过 budget 即失败；count 低于 budget 只告警（提醒收紧配置）；expires 到期即失败（强制重审，防止「允许清单永不过期」。）",
-  "updated": "2026-10-22",
+  "updated": "2026-10-24",
   "workspaces": [
     {
       "dir": "apps/api-nest",
       "block": ["high", "critical"],
-      "budget": { "high": 2, "critical": 0 },
-      "reason": "2 个 high 全部来自 multer（经 @nestjs/platform-express，8 条 DoS 公告）：全仓检索无 FileInterceptor / @UploadedFile / multer / FormData 引用，没有任何文件上传端点，该中间件不可达；官方修复只出现在 @nestjs/platform-express 12.x → 需 Nest 10→12 大版本迁移，不在本轮范围。moderate（@nestjs/common、@nestjs/core、@nestjs/typeorm、qs、file-type、uuid）仅报告不阻断。",
+      "budget": { "high": 3, "critical": 0 },
+      "reason": "3 个 high：multer（经 @nestjs/platform-express，DoS 公告）、body-parser（GHSA-v422-hmwv-36x6 / GHSA-27r3-jxmh-p828，经 @nestjs/platform-express 带入的旧版解析链）、@nestjs/platform-express 自身（依赖了上述两者）。2026-10-24 复跑时 high 由 2 涨到 3——上游新增公告，非本项目依赖变更，按预算制把上限 2→3 并留痕。实际暴露面：全仓无 FileInterceptor / @UploadedFile 的实际引用（只有 uploads.service.ts 注释解释为何不用 multipart），`POST /api/upload` 走 base64 JSON（自研 2MB + 类型白名单），multer 不可达；body-parser 的 Range/qs 公告需构造特定畸形请求头，`main.ts` 限流 + 2MB 体积上限已收窄。官方修复都在 @nestjs/platform-express 12.x → 需 Nest 11→12 大版本迁移，不在 P64 范围，另开任务。moderate（@nestjs/common、@nestjs/core、qs、file-type、uuid 等）仅报告不阻断。",
       "expires": "2027-03-31"
     },
     {

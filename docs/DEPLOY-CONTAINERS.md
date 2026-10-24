@@ -201,8 +201,9 @@ $env:AUDIT_ALLOW_SKIP=1; npm run audit:check               # 离线/受限网络
 
 - 数据来源 `npm audit --omit=dev --json`；预算写在 `deploy/audit-budget.json`：每个 workspace 声明
   `block`（阻断级别）、`budget`（可接受条数，多 1 条即失败）、`expires`（到期即失败，强制重审）。
-- 实测：`apps/api-nest` low 1 / moderate 6 / **high 2** / critical 0（2 个 high 均来自 `multer`，
-  经 `@nestjs/platform-express`；全仓无文件上传端点 → 不可达，修复需 Nest 10→12 大版本升级，预算内放行）；
+- 实测（2026-10-24）：`apps/api-nest` moderate 6 / **high 3** / critical 0（`multer` + `body-parser` +
+  `@nestjs/platform-express`，同一条 platform-express 12 的修复链；全仓无文件上传中间件的实际引用 →
+  multer 不可达，修复需 Nest 11→12 大版本升级，预算内放行并由 `audit-budget.json` 的 `reason` 留痕）；
   `apps/web-admin` 全 0；`apps/web-mobile` moderate 8 / **high 27**（全部是 uni-app 构建链与构建期工具，
   H5 产物为静态资源），故该 workspace 只阻断 critical。
 - 负向验证：预算收紧到 `high:0` → 退出码 1 并点名 `multer` 的 8 条公告；到期日设为过去 → 退出码 1；

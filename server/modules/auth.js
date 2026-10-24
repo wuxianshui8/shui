@@ -305,6 +305,26 @@ export function register(router) {
     ok(ctx.res, { ok: true });
   });
 
+  /**
+   * 改口令（与正式实现 POST /api/auth/change-password 同契约）：
+   *   旧口令校验 + 强度（≥8 位且含字母与数字）+ 不得与原口令相同，成功后返回新令牌。
+   * ⚠️ 参考实现没有 token_version（每次请求回查 status），所以改密**不会**吊销旧令牌；
+   *    正式实现有 token_version 会立即吊销。该差异已在 docs/MIGRATION P64 记录。
+   */
+  router.post("/api/auth/change-password", (ctx) => {
+    const u = loadUser(ctx.user.id);
+    if (!u) throw Err.unauthorized();
+    const oldPassword = String(ctx.body?.oldPassword || "");
+    const newPassword = String(ctx.body?.newPassword || "");
+    if (u.password_hash && !verifyPassword(oldPassword, u.password_hash)) throw Err.bad("原口令错误");
+    if (newPassword.length < 8) throw Err.bad("新口令至少 8 位");
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) throw Err.bad("新口令需同时包含字母与数字");
+    if (u.password_hash && verifyPassword(newPassword, u.password_hash)) throw Err.bad("新口令不能与原口令相同");
+    run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(newPassword), ctx.user.id);
+    audit(ctx, "auth.changePassword", "users:" + ctx.user.id);
+    ok(ctx.res, { ok: true, token: signToken(u.id, u.role), mustChangePassword: false });
+  });
+
   /* ---------------- 账号注销（需求第 8 章：用户可注销账号）---------------- */
   router.post("/api/auth/deactivate", (ctx) => {
     const u = loadUser(ctx.user.id);

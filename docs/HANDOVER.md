@@ -14,7 +14,7 @@
 
 | 目录 | 角色 | 技术 |
 | --- | --- | --- |
-| `server/` + `web/` | **参考实现**（最先交付、7 套件 329 断言） | Node 22 原生 http + SQLite + 零构建 ESM 前端 |
+| `server/` + `web/` | **参考实现**（最先交付、四套断言 371 项：e2e 243 / rules 51 / security 55 / concurrency 22） | Node 22 原生 http + SQLite + 零构建 ESM 前端 |
 | `apps/api-nest/` + `apps/web-admin/` + `apps/web-mobile/` | **正式实现**（按需求书 6.1 选型） | NestJS + MySQL 8 + Redis + Vue3/Element Plus + uni-app |
 
 ## 2. 三种启动方式（任选其一）
@@ -65,11 +65,11 @@ npm start                      # → http://localhost:4173
 
 | 层面 | 命令 | 结果 |
 | --- | --- | --- |
-| 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **329 断言**全绿 |
+| 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **371 断言**全绿（e2e 243 + rules 51 + security 55 + concurrency 22；其余三套为脚本级检查） |
 | 正式实现全量门禁 | `npm run ci:full` | **30 步**（静态 16 + 业务 14），约 5 分钟 |
 | 静态门禁 | `npm run ci` | **16 步**，约 40 秒（含单元测试 172 用例 + 依赖审计 + 电子围栏 72 项 + 门禁自检 10 用例） |
 | 单元测试与覆盖率 | `npm run test:unit` | **172 用例**，23 个模块行覆盖 ≥ 99%（门禁阈值 90%） |
-| 依赖漏洞审计 | `npm run audit:check` | 预算制 3 个 workspace：api-nest high 2（multer 不可达）/ web-admin 0 / web-mobile high 27（构建链，只阻断 critical） |
+| 依赖漏洞审计 | `npm run audit:check` | 预算制 3 个 workspace：api-nest high 3（multer / body-parser / platform-express 同一条修复链，无上传中间件实际引用 → 不可达）/ web-admin 0 / web-mobile high 21（构建链，只阻断 critical） |
 | 托管 Runner | push 到 `main` 自动跑 | **6 次全绿**（static 13s / integration 206~210s，484 断言/次） |
 | 容器栈功能验收 | `npm run verify:docker` | **9 套件 282 断言** |
 | 容器栈性能基线 | `docs/PERF.md §6` | 读接口 p95 ≤ 73.5ms、错误 0；抢单并发 成功 1 / 被拒 49 |
