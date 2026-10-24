@@ -134,7 +134,14 @@ async function checkin(o) {
   const here = await checkinLocation(o);
   const r = await req("POST", "/orders/" + o.id + "/checkin", here);
   busy.value = "";
-  toast(r ? "打卡成功（距上课地点 " + r.checkinDistance + " 米）" : "打卡失败：超出阈值或状态不符");
+  // 到教员处上课：双方都打完卡才开课（P66）
+  toast(
+    r
+      ? o.place === "teacher_place" && !r.bothArrived
+        ? "打卡成功，等家长到场打卡后自动开课"
+        : "打卡成功（距上课地点 " + r.checkinDistance + " 米）"
+      : "打卡失败：超出阈值或状态不符",
+  );
   load();
 }
 
@@ -248,10 +255,14 @@ function goMessages() {
             </view>
           </template>
           <view v-else-if="o.status === 'pending_class'" class="btn" style="padding: 10rpx 20rpx" @click="checkin(o)">
-            {{ busy === "checkin" + o.id ? "打卡中…" : "上门打卡" }}
+            {{ busy === "checkin" + o.id ? "打卡中…" : (o.place === "teacher_place" ? "教学点打卡" : "上门打卡") }}
           </view>
-          <view v-else-if="o.status === 'in_class'" class="btn" style="padding: 10rpx 20rpx" @click="finish(o)">
+          <view v-if="o.status === 'in_class'" class="btn" style="padding: 10rpx 20rpx" @click="finish(o)">
             {{ busy === "finish" + o.id ? "提交中…" : "结束授课" }}
+          </view>
+          <!-- 到教员处上课：显示家长是否已到场（P66，双方都打卡后自动开课） -->
+          <view v-if="o.status === 'pending_class' && o.place === 'teacher_place'" class="muted" style="font-size: 22rpx">
+            家长 {{ o.parentArrived ? "已到场 ✅" : "待打卡 ⏳" }}
           </view>
         </view>
       </view>

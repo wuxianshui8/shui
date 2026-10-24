@@ -1113,11 +1113,15 @@ async function loginPassword(phone) {
     assert(homeOrder.status === 200 && homeOrder.body.data.place === "home" && homeOrder.body.data.placeText === "教员上门",
       "不传 place 时默认仍为「教员上门」（老行为不变）");
 
-    // 5) 到教员处的订单也能正常打卡（打卡点就是教员自己的位置）
+    // 5) 到教员处的订单：双方打卡后才开课（P66 起家长也要打卡，详见 §24）
     await api("POST", "/api/orders/" + atOrder.id + "/pay", { token: parentToken, idem: "pay-atteacher-" + atOrder.id });
-    const ci = await api("POST", "/api/orders/" + atOrder.id + "/checkin", { token: teacherToken, body: { lat: 30.2741, lng: 120.1551 } });
-    assert(ci.status === 200 && ci.body.data.status === "in_class", "到教员处的订单打卡通过（上课地点=教员处）", ci.text);
-    assert(ci.body.data.statusText === "上课中", "到教员处订单状态文案正常（不进「待上门」）");
+    const ciT = await api("POST", "/api/orders/" + atOrder.id + "/checkin", { token: teacherToken, body: { lat: 30.2741, lng: 120.1551 } });
+    assert(ciT.status === 200 && ciT.body.data.status === "pending_class" && ciT.body.data.teacherArrived === true,
+      "到教员处的订单：教员打卡后仍在等家长（不直接开课）", ciT.text);
+    assert(ciT.body.data.statusText === "待家长到", "教员端文案为「待家长到」而不是「待上门」");
+    const ciP = await api("POST", "/api/orders/" + atOrder.id + "/checkin", { token: parentToken, body: { lat: 30.2742, lng: 120.1552 } });
+    assert(ciP.status === 200 && ciP.body.data.status === "in_class" && ciP.body.data.bothArrived === true,
+      "家长也打卡后双方到齐 → 进入上课中", ciP.text);
 
     // 6) 需求发布可选上课形式，确认后订单沿用
     const atDemand = await api("POST", "/api/demands", {
@@ -1146,6 +1150,59 @@ async function loginPassword(phone) {
     await api("PUT", "/api/teacher/profile", {
       token: teacherToken, body: { baseAddress: addr0 || "", lat: 30.2741, lng: 120.1551 },
     });
+  }
+
+  /* ---------- 24. 家长到场打卡 + 双方确认（P66） ---------- */
+  section("24. 家长到场打卡与双方确认");
+  {
+    const addr = "西湖区文三路 100 号 3 幢 501（P66 双打卡）";
+    await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: addr, lat: 30.2741, lng: 120.1551 } });
+    const svc = (await api("GET", "/api/parent/teachers/" + teacherId, { token: parentToken })).body.data.services[0];
+    const mk = async (place, offsetDays) => {
+      const r = await api("POST", "/api/orders/from-service", {
+        token: parentToken,
+        body: { serviceId: svc.id, lessonTime: new Date(Date.now() + offsetDays * 86400000).toISOString(), place, remark: "e2e 双打卡" },
+      });
+      await api("POST", "/api/orders/" + r.body.data.id + "/pay", { token: parentToken, idem: "pay-p66-" + r.body.data.id });
+      return r.body.data;
+    };
+
+    // 教员上门订单：家长打卡没有意义 → 明确拒绝
+    const homeOrder = await mk("home", 12);
+    const homeParent = await api("POST", "/api/orders/" + homeOrder.id + "/checkin", { token: parentToken, body: { lat: 30.2741, lng: 120.1551 } });
+    assert(homeParent.status === 400 && homeParent.body.code === "NOT_TEACHER_PLACE",
+      "教员上门订单：家长打卡被拒（NOT_TEACHER_PLACE）", homeParent.text);
+
+    const o = await mk("teacher_place", 13);
+    // 家长定位太远 → 拒 + 风控留痕
+    const far = await api("POST", "/api/orders/" + o.id + "/checkin", { token: parentToken, body: { lat: 30.35, lng: 120.25 } });
+    assert(far.status === 400 && far.body.code === "CHECKIN_TOO_FAR", "家长定位离教学点过远 → 打卡被拒", far.text);
+    // 只有家长打卡：还不开课，等教员
+    const p1 = await api("POST", "/api/orders/" + o.id + "/checkin", { token: parentToken, body: { lat: 30.2742, lng: 120.1552 } });
+    assert(p1.status === 200 && p1.body.data.parentArrived === true && p1.body.data.status === "pending_class",
+      "家长打卡成功：记录到场但课程未开始（等教员）", p1.text);
+    assert(p1.body.data.bothArrived === false && p1.body.data.teacherArrived === false, "视图如实反映「只有一方到场」");
+    const dup = await api("POST", "/api/orders/" + o.id + "/checkin", { token: parentToken, body: { lat: 30.2742, lng: 120.1552 } });
+    assert(dup.status === 400 && dup.body.code === "ALREADY_CHECKED_IN", "同一方重复打卡被拒");
+    // 教员打卡 → 双方齐 → 自动开课
+    const t1 = await api("POST", "/api/orders/" + o.id + "/checkin", { token: teacherToken, body: { lat: 30.2741, lng: 120.1551 } });
+    assert(t1.status === 200 && t1.body.data.status === "in_class" && t1.body.data.bothArrived === true,
+      "双方都打卡后自动进入上课中（双方确认到场）", t1.text);
+    assert(t1.body.data.parentCheckinDistance != null && t1.body.data.checkinDistance != null,
+      "双方打卡距离都被记录（家长 " + t1.body.data.parentCheckinDistance + "m / 教员 " + t1.body.data.checkinDistance + "m）");
+    // 开课后不能再打卡
+    const after = await api("POST", "/api/orders/" + o.id + "/checkin", { token: teacherToken, body: { lat: 30.2741, lng: 120.1551 } });
+    assert(after.status === 400 && after.body.code === "BAD_STATUS", "开课后不可再打卡");
+    // 家长订单视图能看到双方到场状态
+    const pv = await api("GET", "/api/orders/" + o.id, { token: parentToken });
+    assert(pv.body.data.parentArrived === true && pv.body.data.teacherArrived === true && pv.body.data.bothArrived === true,
+      "家长订单详情显示双方均已到场");
+    // 教员上门订单仍是一次打卡即开课（老行为不变）；打卡点用该订单自己的上课坐标
+    const h2 = await api("POST", "/api/orders/" + homeOrder.id + "/checkin", {
+      token: teacherToken, body: { lat: Number(homeOrder.lat), lng: Number(homeOrder.lng) },
+    });
+    assert(h2.status === 200 && h2.body.data.status === "in_class", "教员上门订单仍是「教员打卡即开课」（老行为不变）", h2.text);
+    await api("PUT", "/api/teacher/profile", { token: teacherToken, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
   }
 
   /* ---------- 汇总 ---------- */

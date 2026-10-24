@@ -194,6 +194,10 @@ CREATE TABLE IF NOT EXISTS orders (
   checkin_lat   REAL,
   checkin_lng   REAL,
   checkin_distance INTEGER,
+  parent_checkin_at  TEXT,                            -- 家长到场打卡时间（P66：仅「到教员处上课」的订单需要）
+  parent_checkin_lat REAL,
+  parent_checkin_lng REAL,
+  parent_checkin_distance INTEGER,                    -- 家长打卡点距上课地点的距离（米）
   finished_at   TEXT,
   confirm_at    TEXT,
   settle_at     TEXT,

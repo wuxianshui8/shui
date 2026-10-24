@@ -75,5 +75,10 @@ export function migrate() {
   // 授课地点：家长到教员处上课（P65）
   ensureColumn("teacher_profiles", "base_address", "TEXT");
   ensureColumn("orders", "place", "TEXT NOT NULL DEFAULT 'home'");
+  // 家长到场打卡（P66：家长到教员处上课时，双方各自打卡确认到场）
+  ensureColumn("orders", "parent_checkin_at", "TEXT");
+  ensureColumn("orders", "parent_checkin_lat", "REAL");
+  ensureColumn("orders", "parent_checkin_lng", "REAL");
+  ensureColumn("orders", "parent_checkin_distance", "INTEGER");
 }
 export { DATA_DIR, DB_FILE, ROOT };

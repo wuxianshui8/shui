@@ -44,6 +44,35 @@ const canPay = computed(() => o.value && o.value.status === "awaiting_payment");
 const canCancel = computed(() => o.value && ["pending_class", "awaiting_parent_confirm"].includes(o.value.status) && !o.value.cancelRequested);
 const canConfirm = computed(() => o.value && o.value.status === "awaiting_parent_confirm");
 const canReview = computed(() => o.value && o.value.status === "completed" && !o.value.hasReview);
+/** 家长到场打卡（P66）：仅「到教员处上课」且尚未打卡、订单待上课时可点 */
+const canParentCheckin = computed(
+  () => o.value && o.value.place === "teacher_place" && o.value.status === "pending_class" && !o.value.parentArrived,
+);
+
+async function parentCheckin() {
+  busy.value = "checkin";
+  try {
+    const pos = await new Promise((resolve) => {
+      uni.getLocation({
+        type: "gcj02",
+        isHighAccuracy: true,
+        success: (res) => resolve({ lat: res.latitude, lng: res.longitude }),
+        // 定位被拒/超时：这里不静默放行，打卡必须带真实坐标
+        fail: () => resolve(null),
+      });
+    });
+    if (!pos) {
+      return uni.showToast({ title: "需要授权位置信息才能打卡", icon: "none" });
+    }
+    const res = await request("POST", "/orders/" + o.value.id + "/checkin", { lat: pos.lat, lng: pos.lng });
+    o.value = res;
+    uni.showToast({ title: res.bothArrived ? "双方已到场，课程开始" : "已记录到场，等教员打卡开课", icon: "none" });
+  } catch (e) {
+    uni.showToast({ title: e.message || "打卡失败", icon: "none" });
+  } finally {
+    busy.value = "";
+  }
+}
 
 async function pay() {
   busy.value = "pay";
@@ -148,10 +177,27 @@ async function submitReview() {
         <view class="row"><text>上课时间</text><text>{{ fmt(o.lessonTime) }}</text></view>
         <view class="row"><text>{{ o.place === "teacher_place" ? "教员授课地址" : "上课地址" }}</text><text style="max-width: 60%; text-align: right">{{ o.address }}</text></view>
         <view class="row" v-if="o.remark"><text>备注</text><text style="max-width: 60%; text-align: right">{{ o.remark }}</text></view>
+        <view class="row" v-if="o.place === 'teacher_place'">
+          <text>到场打卡</text>
+          <text style="max-width: 62%; text-align: right; font-size: 24rpx">
+            家长 {{ o.parentArrived ? "✅ " + fmt(o.parentCheckinAt) : "⏳ 未打卡" }}
+            ／教员 {{ o.teacherArrived ? "✅ " + fmt(o.checkinAt) : "⏳ 未打卡" }}
+            <text v-if="o.bothArrived"> · 双方已到齐</text>
+          </text>
+        </view>
         <view class="row"><text>课时费</text><text>{{ money(o.amount) }}</text></view>
         <view class="row" v-if="o.urgentFee"><text>加急费</text><text>{{ money(o.urgentFee) }}</text></view>
         <view class="row" v-if="o.serviceFee != null"><text>平台服务费</text><text>{{ money(o.serviceFee) }}</text></view>
         <view class="row" v-if="o.refundAmount"><text>已退款</text><text>{{ money(o.refundAmount) }}</text></view>
+      </view>
+
+      <!-- 家长到场打卡（P66）：双方都打完卡才开课 -->
+      <view class="card" v-if="canParentCheckin">
+        <view class="card-title">到场打卡</view>
+        <view class="muted" style="margin-bottom: 14rpx">
+          到了教学点后点下面按钮，会读取您的定位（需授权）；您和教员都打卡后课程自动开始。
+        </view>
+        <view class="btn" @click="parentCheckin">{{ busy === "checkin" ? "定位中…" : "📍 我到场了" }}</view>
       </view>
 
       <view class="card">

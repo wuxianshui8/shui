@@ -142,7 +142,7 @@
 | 归属 | `region_id, sales_id, agent_id`（收益归属按需求地址片区） |
 | 金额 | `amount(实付), urgent_fee, commission_rate, service_fee, teacher_income, agent_share, sales_commission, platform_revenue` |
 | 状态 | `status`（见状态机） |
-| 打卡 | `checkin_at, checkin_lat, checkin_lng, checkin_distance` |
+| 打卡 | `checkin_at, checkin_lat, checkin_lng, checkin_distance`（教员到场）／`parent_checkin_at, parent_checkin_lat, parent_checkin_lng, parent_checkin_distance`（家长到场，P66：`place=teacher_place` 时双方各打一次卡，都到齐才 `in_class`） |
 | 履约 | `paid_at, finished_at, confirm_at, settle_at, remind_sent`（上课提醒是否已推送，保证不重复） |
 | 取消 | `cancel_by, cancel_reason, penalty, refund_amount` |
 

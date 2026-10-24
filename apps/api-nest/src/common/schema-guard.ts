@@ -58,6 +58,30 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     ddl: "VARCHAR(32) NOT NULL DEFAULT 'home'",
     why: "授课地点：home=教员上门到家长地址 / teacher_place=家长到教员授课地址（P65）",
   },
+  {
+    table: "orders",
+    column: "parent_checkin_at",
+    ddl: "VARCHAR(255) DEFAULT NULL",
+    why: "家长到场打卡时间（P66：家长到教员处上课时双方各打卡确认到场）",
+  },
+  {
+    table: "orders",
+    column: "parent_checkin_lat",
+    ddl: "DOUBLE DEFAULT NULL",
+    why: "家长打卡纬度（定位授权后上报，用于距离校验与风控取证）",
+  },
+  {
+    table: "orders",
+    column: "parent_checkin_lng",
+    ddl: "DOUBLE DEFAULT NULL",
+    why: "家长打卡经度",
+  },
+  {
+    table: "orders",
+    column: "parent_checkin_distance",
+    ddl: "INT DEFAULT NULL",
+    why: "家长打卡点距上课地点的米数（超阈值照样写 risk_events）",
+  },
 ];
 
 export async function ensureSchemaColumns(ds: DataSource): Promise<string[]> {

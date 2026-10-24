@@ -189,12 +189,26 @@ export function payOrder(ctx, orderId) {
   });
 }
 
-/* ---------- 教员上门打卡 ---------- */
+/* ---------- 到场打卡 ----------
+ * 教员上门（place=home）：只由**教员**打卡，一次打卡即开课（历史行为，保持不变）。
+ * 家长到教员处（place=teacher_place）：**双方各自打卡**确认到场——
+ *   家长打卡证明「带着孩子到了教学点」，教员打卡确认「我在这里开课」，
+ *   两边都打完才转 in_class（少一方就一直是 pending_class，页面上能看到在等谁）。
+ * 定位校验同口径：都用规则 checkin.max_distance_m，超阈值照样写 risk_events 取证。
+ */
 export function checkin(ctx, orderId, lat, lng) {
   const order = get("SELECT * FROM orders WHERE id = ?", orderId);
   if (!order) throw Err.notFound("订单不存在");
-  if (order.teacher_id !== ctx.user.id) throw Err.forbidden();
-  if (order.status !== "pending_class") throw Err.biz("BAD_STATUS", "当前状态不可打卡（" + orderStatusText(order.status, "teacher") + "）");
+  const isTeacher = order.teacher_id === ctx.user.id;
+  const isParent = order.parent_id === ctx.user.id;
+  if (!isTeacher && !isParent) throw Err.forbidden();
+  if (order.status !== "pending_class") {
+    throw Err.biz("BAD_STATUS", "当前状态不可打卡（" + orderStatusText(order.status, isTeacher ? "teacher" : "parent", order.place) + "）");
+  }
+  // 教员上门的订单家长无需打卡（人在自己家，打卡没有意义）
+  if (isParent && order.place !== "teacher_place") {
+    throw Err.biz("NOT_TEACHER_PLACE", "教员上门订单由教员打卡，家长无需打卡");
+  }
   if (lat == null || lng == null) throw Err.bad("请开启定位后再打卡");
 
   const threshold = rule("checkin").max_distance_m ?? 500;
@@ -203,17 +217,49 @@ export function checkin(ctx, orderId, lat, lng) {
     run(
       "INSERT INTO risk_events (order_id, user_id, region_id, type, level, reason, status, created_at) VALUES (?,?,?,?,?,?,?,?)",
       order.id, ctx.user.id, order.region_id, "abnormal_location", distance > threshold * 3 ? "high" : "mid",
-      "打卡定位距离 " + distance + " 米，超出阈值 " + threshold + " 米", "open", nowIso()
+      (isParent ? "家长" : "教员") + "打卡定位距离 " + distance + " 米，超出阈值 " + threshold + " 米", "open", nowIso()
     );
     throw Err.biz("CHECKIN_TOO_FAR", "当前位置距离上课地点 " + distance + " 米，超出 " + threshold + " 米阈值，无法打卡");
   }
 
-  run(
-    "UPDATE orders SET status = 'in_class', checkin_at = ?, checkin_lat = ?, checkin_lng = ?, checkin_distance = ?, updated_at = ? WHERE id = ?",
-    nowIso(), Number(lat), Number(lng), distance, nowIso(), order.id
-  );
-  notify(order.parent_id, "教员已到达", "教员已在距上课地点 " + distance + " 米处打卡，课程开始", "order", "/order/" + order.id);
-  audit(ctx, "order.checkin", "orders:" + order.id, { distance });
+  if (isParent) {
+    if (order.parent_checkin_at) throw Err.biz("ALREADY_CHECKED_IN", "您已打过卡了");
+    run(
+      "UPDATE orders SET parent_checkin_at = ?, parent_checkin_lat = ?, parent_checkin_lng = ?, parent_checkin_distance = ?, updated_at = ? WHERE id = ?",
+      nowIso(), Number(lat), Number(lng), distance, nowIso(), order.id
+    );
+  } else {
+    if (order.checkin_at) throw Err.biz("ALREADY_CHECKED_IN", "您已打过卡了");
+    run(
+      "UPDATE orders SET checkin_at = ?, checkin_lat = ?, checkin_lng = ?, checkin_distance = ?, updated_at = ? WHERE id = ?",
+      nowIso(), Number(lat), Number(lng), distance, nowIso(), order.id
+    );
+  }
+
+  // 到教员处的订单要双方都打完卡才开课；教员上门的订单教员打完就开课
+  const fresh = get("SELECT * FROM orders WHERE id = ?", order.id);
+  const bothArrived = fresh.place === "teacher_place"
+    ? !!fresh.checkin_at && !!fresh.parent_checkin_at
+    : !!fresh.checkin_at;
+  if (bothArrived) {
+    run("UPDATE orders SET status = 'in_class', updated_at = ? WHERE id = ? AND status = 'pending_class'", nowIso(), order.id);
+    notify(
+      isParent ? order.teacher_id : order.parent_id,
+      "双方已到场，课程开始",
+      "「" + (isParent ? "家长" : "教员") + "」已完成到场打卡，双方到齐，订单进入上课中",
+      "order",
+      "/order/" + order.id
+    );
+  } else {
+    notify(
+      isParent ? order.teacher_id : order.parent_id,
+      isParent ? "家长已到场" : "教员已到教学点",
+      (isParent ? "家长已在距上课地点 " : "教员已在距上课地点 ") + distance + " 米处打卡，等待您打卡后开始上课",
+      "order",
+      "/order/" + order.id
+    );
+  }
+  audit(ctx, isParent ? "order.checkinParent" : "order.checkin", "orders:" + order.id, { distance, bothArrived });
   return get("SELECT * FROM orders WHERE id = ?", order.id);
 }
 
@@ -652,10 +698,12 @@ export function register(router) {
     ok(ctx.res, orderView(order, "parent"));
   }, { idem: true });
 
+  // 到场打卡：教员上门由教员打；家长到教员处由双方各打一次（P66）
   router.post("/api/orders/:id/checkin", (ctx) => {
     const order = checkin(ctx, ctx.params.id, ctx.body.lat, ctx.body.lng);
-    ok(ctx.res, orderView(order, "teacher"));
-  });
+    const role = order.parent_id === ctx.user.id ? "parent" : "teacher";
+    ok(ctx.res, orderView(order, role));
+  }, { roles: ["teacher", "parent"] });
 
   router.post("/api/orders/:id/finish", (ctx) => {
     const order = finish(ctx, ctx.params.id);

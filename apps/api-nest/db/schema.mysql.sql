@@ -190,6 +190,10 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `checkin_lat`     DOUBLE,
   `checkin_lng`     DOUBLE,
   `checkin_distance` INT,
+  `parent_checkin_at`       VARCHAR(255),               -- 家长到场打卡时间（P66：仅「到教员处上课」）
+  `parent_checkin_lat`      DOUBLE,
+  `parent_checkin_lng`      DOUBLE,
+  `parent_checkin_distance` INT,
   `finished_at`     VARCHAR(255),
   `confirm_at`      VARCHAR(255),
   `settle_at`       VARCHAR(255),

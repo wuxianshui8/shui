@@ -43,6 +43,7 @@
 | 4.2.2 附近需求（派单优先级降序）+ 一键抢单 | `GET /api/teacher/nearby-demands`（可带 `?lat=&lng=` 实时定位）、`POST /api/demands/:id/apply`（body 带当前位置） | e2e §3（含定位接单 4 条：`origin.source=current`/回落 `profile`/半径外不出现/远处抢单 `TOO_FAR`）、e2e §14、`conc`（100 并发无重复接单）、`rules` §派单、`mobile`（含 `?lat&lng` 契约） |
 | 4.2.3 服务管理（上下架/编辑/删除） | `GET|POST /api/teacher/services`、`PUT|DELETE /api/teacher/services/:id`、`POST /api/teacher/services/:id/toggle` | e2e §6、`mobile` |
 | 4.2.4 订单列表与详情、上门打卡（500m）、结束授课 | `GET /api/teacher/orders`、`POST /api/orders/:id/checkin`、`POST /api/orders/:id/finish` | e2e §5（超距拦截 + 风控事件）、e2e §6 |
+| 4.2.4 到场打卡的双方确认（P66） | `POST /api/orders/:id/checkin`（家长/教员都可调）：`place=teacher_place` 时**双方各打一次卡**、都到齐才转 `in_class`；`home` 订单仍由教员一次打卡开课 | e2e §5、§6、§24（双打卡链路）、`admin`（81 项含家长打卡）、`mobile`（117 项） |
 | 4.2.5 等级权益（成长分/等级/抽佣/派单权重/变更记录） | `GET /api/teacher/level` | e2e §7、`rules` §等级 |
 | 4.2.6 收入明细、钱包、冻结、提现（幂等、最低额与手续费规则） | `GET /api/teacher/income`、`GET /api/wallet`、`GET /api/withdrawals`、`POST /api/withdrawals` | e2e §8、`races`（双花/重复驳回）、`priv`（提现规则） |
 | 4.2.7 排课日历与时间冲突校验 | `GET /api/teacher/calendar`（下单时校验同教员同时间冲突） | e2e §6、`mobile` |
@@ -116,8 +117,8 @@
 | 6.1 后端 NestJS | `apps/api-nest/`（46 个 TS 文件、模块化 controller/service、全局 Guard/Filter） | `verify-nest` 15 项、`tsc` 0 错误 |
 | 6.1 数据库 MySQL 8 | `db/schema.mysql.sql`（37 表）+ 原生参数化 SQL（`DataSource.query`） | `nest:gate:p9`（37 表行数一致、6 项汇总一致）、`hc` |
 | 6.1 缓存 Redis | 规则读缓存（TTL 300s）、抢单分布式锁、担保台账命名锁 | `verify-nest`（cache.ok）、`conc` |
-| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员/订单授课方式列） | `admin` 77 项 |
-| 6.1 移动端 uni-app | `apps/web-mobile/`（14 页，H5 + 微信小程序双产物，含入驻认证/授课地址、定位接单、附近教员/立即预约（上门或到教员处）/订单详情） | `mobile` 113 项 |
+| 6.1 PC 后台 Vue3 + Element Plus | `apps/web-admin/`（20 页，含需求池/管理员账号/权限矩阵/区域管理地图/自助改密/删除管理员/订单授课方式列） | `admin` 81 项 |
+| 6.1 移动端 uni-app | `apps/web-mobile/`（14 页，H5 + 微信小程序双产物，含入驻认证/授课地址、定位接单、附近教员/立即预约（上门或到教员处）/订单详情/家长到场打卡） | `mobile` 117 项 |
 | 6.2 并发一致性 | 行锁 `FOR UPDATE` + 条件更新 + 唯一索引 + 幂等键 | `conc` 23 项、`races` 27 项 |
 
 ## 第 7 章 非功能需求

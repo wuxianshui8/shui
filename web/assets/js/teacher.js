@@ -631,25 +631,34 @@ async function ordersView({ query }) {
 
 /* ---------------- 路由：订单详情（含打卡 / 结束授课） ---------------- */
 function checkinSheet(o) {
+  const atTeacherPlace = o.place === "teacher_place";
   const doCheckin = async (lat, lng, label) => {
     try {
-      await api.post("/api/orders/" + o.id + "/checkin", { lat, lng });
-      toastOk("打卡成功，" + label + "已开始上课");
+      const res = await api.post("/api/orders/" + o.id + "/checkin", { lat, lng });
+      // 到教员处上课：双方都打完卡才开课（P66）
+      toastOk(atTeacherPlace && !res.bothArrived
+        ? "打卡成功，等家长到场打卡后自动开始上课"
+        : "打卡成功，" + label + "已开始上课");
       ROUTER.render();
     } catch (err) {
       onError(err);
     }
   };
   sheet(
-    "上门打卡",
-    '<div class="card flat tight"><div class="small bold">上课地点</div>' +
+    atTeacherPlace ? "到场打卡（教学点）" : "上门打卡",
+    '<div class="card flat tight"><div class="small bold">' + (atTeacherPlace ? "教学点地址" : "上课地点") + "</div>" +
     '<div class="tiny faint mt8">' + esc(o.address) + "</div>" +
     '<div class="tiny faint mt8">坐标 ' + o.lat + ", " + o.lng + ' · 允许误差 500 米</div></div>' +
-    '<p class="small muted mt12" style="line-height:1.75">请在到达学生住址后打卡。系统会校验定位与上课地点的距离，超出阈值将无法打卡并计入风控。</p>' +
+    '<p class="small muted mt12" style="line-height:1.75">' +
+    (atTeacherPlace
+      ? "家长会带孩子到您的教学点：您在这里打卡、家长在其端打卡，<b>双方都完成后课程自动开始</b>；当前家长" +
+        (o.parentArrived ? "已到场 ✅" : "尚未打卡 ⏳") + "。"
+      : "请在到达学生住址后打卡。系统会校验定位与上课地点的距离，超出阈值将无法打卡并计入风控。") +
+    "</p>" +
     '<button type="button" class="btn btn-sm btn-outline btn-block mt12" data-ci="sim">模拟异常定位（偏移 3 公里）</button>',
     [
       { label: "取消" },
-      { label: "正常定位打卡", class: "btn-primary", onClick: () => doCheckin(o.lat, o.lng, "本次课程") },
+      { label: atTeacherPlace ? "我在教学点打卡" : "正常定位打卡", class: "btn-primary", onClick: () => doCheckin(o.lat, o.lng, "本次课程") },
     ]
   );
   const mask = shellEl().querySelector(".mask:last-child");
@@ -679,7 +688,10 @@ function teacherBar(o) {
     return contact +
       '<button class="btn btn-outline btn-sm" data-act="sos" data-id="' + o.id + '" data-no="' + esc(o.orderNo) + '">🚨 求助</button>' +
       '<button class="btn btn-outline btn-sm" data-act="cancel" data-id="' + o.id + '">取消</button>' +
-      '<button class="btn btn-primary" data-act="checkin" data-id="' + o.id + '">上门打卡</button>';
+      (o.checkinAt
+        ? '<button class="btn btn-primary" disabled>' + (o.place === "teacher_place" ? "等家长打卡" : "已打卡") + "</button>"
+        : '<button class="btn btn-primary" data-act="checkin" data-id="' + o.id + '">' +
+          (o.place === "teacher_place" ? "教学点打卡" : "上门打卡") + "</button>");
   }
   if (o.status === "in_class") {
     return contact +

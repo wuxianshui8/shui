@@ -102,7 +102,7 @@
 | --- | --- | --- | --- |
 | GET | `/api/orders/:id` | 相关方/运营 | 订单详情（按角色返回状态文案与脱敏） |
 | POST | `/api/orders/:id/pay` | 家长 | 担保支付（幂等）。进入 `pending_class` 并生成分账 |
-| POST | `/api/orders/:id/checkin` | 教员 | `{lat,lng}` 上门打卡，超出阈值拦截并写风控事件 |
+| POST | `/api/orders/:id/checkin` | 教员 / 家长 | `{lat,lng}` 到场打卡，超出阈值（规则 `checkin.max_distance_m`，默认 500m）拦截并写风控事件。`place=home`：仅教员打卡，打完即 `in_class`；`place=teacher_place`：**双方各打一次卡**（家长证明带孩子到了教学点、教员确认在此开课），都到齐才 `in_class`，家长打卡会记 `parent_checkin_*`；`home` 订单家长打卡返回 400 `NOT_TEACHER_PLACE`，同一方重复打卡 400 `ALREADY_CHECKED_IN` |
 | POST | `/api/orders/:id/finish` | 教员 | 结束授课 → `awaiting_parent_confirm` |
 | POST | `/api/orders/:id/confirm` | 家长 | 确认完成 → `completed`，课时费进入冻结 |
 | POST | `/api/orders/:id/cancel` | 家长/教员/管理员 | `{reason}` 取消（按时间窗计算违约金与信用扣分） |

@@ -14,7 +14,7 @@
 
 | 目录 | 角色 | 技术 |
 | --- | --- | --- |
-| `server/` + `web/` | **参考实现**（最先交付、四套断言 383 项：e2e 255 / rules 51 / security 55 / concurrency 22） | Node 22 原生 http + SQLite + 零构建 ESM 前端 |
+| `server/` + `web/` | **参考实现**（最先交付、四套断言 394 项：e2e 266 / rules 51 / security 55 / concurrency 22） | Node 22 原生 http + SQLite + 零构建 ESM 前端 |
 | `apps/api-nest/` + `apps/web-admin/` + `apps/web-mobile/` | **正式实现**（按需求书 6.1 选型） | NestJS + MySQL 8 + Redis + Vue3/Element Plus + uni-app |
 
 ## 2. 三种启动方式（任选其一）
@@ -65,7 +65,7 @@ npm start                      # → http://localhost:4173
 
 | 层面 | 命令 | 结果 |
 | --- | --- | --- |
-| 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **383 断言**全绿（e2e 255 + rules 51 + security 55 + concurrency 22；其余三套为脚本级检查） |
+| 参考实现 7 套件 | `npm test` / `test:rules` / `test:security` / `test:concurrency` / `bench` / `check:browser` / `healthcheck` | **394 断言**全绿（e2e 266 + rules 51 + security 55 + concurrency 22；其余三套为脚本级检查） |
 | 正式实现全量门禁 | `npm run ci:full` | **30 步**（静态 16 + 业务 14），约 5 分钟 |
 | 静态门禁 | `npm run ci` | **16 步**，约 40 秒（含单元测试 172 用例 + 依赖审计 + 电子围栏 72 项 + 门禁自检 10 用例） |
 | 单元测试与覆盖率 | `npm run test:unit` | **172 用例**，23 个模块行覆盖 ≥ 99%（门禁阈值 90%） |

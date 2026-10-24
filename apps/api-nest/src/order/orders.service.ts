@@ -93,6 +93,14 @@ export class OrdersService {
       paidAt: o.paid_at,
       checkinAt: o.checkin_at,
       checkinDistance: o.checkin_distance == null ? null : Number(o.checkin_distance),
+      // 双方到场打卡（P66）：家长到教员处上课时两边各打一次，都到齐才开课
+      parentCheckinAt: o.parent_checkin_at || null,
+      parentCheckinDistance: o.parent_checkin_distance == null ? null : Number(o.parent_checkin_distance),
+      teacherArrived: !!o.checkin_at,
+      parentArrived: !!o.parent_checkin_at,
+      bothArrived: o.place === "teacher_place" ? (!!o.checkin_at && !!o.parent_checkin_at) : !!o.checkin_at,
+      myCheckinAt: role === "parent" ? (o.parent_checkin_at || null) : (o.checkin_at || null),
+      needParentCheckin: o.place === "teacher_place" && o.status === "pending_class",
       finishedAt: o.finished_at,
       confirmAt: o.confirm_at,
       settleAt: o.settle_at,
@@ -598,12 +606,25 @@ export class OrdersService {
     return { closed, timeoutMinutes: minutes };
   }
 
-  /* ---------------- 上门打卡（默认 500 米阈值，可配置）---------------- */
-  async checkin(teacherId: number, orderId: number, lat: number, lng: number) {
+  /* ---------------- 到场打卡（默认 500 米阈值，可配置）----------------
+   * 教员上门（place=home）：只由教员打卡，一次打卡即开课（历史行为不变）。
+   * 家长到教员处（place=teacher_place）：双方各打一次卡确认到场，
+   *   两边都打完才转 in_class（少一方就停在 pending_class，前端能看到在等谁）。
+   */
+  async checkin(actorId: number, orderId: number, lat: number, lng: number, actorRole?: string) {
     const o = await this.get(orderId);
     if (!o) throw notFound("订单不存在");
-    if (Number(o.teacher_id) !== teacherId) throw forbidden();
-    if (o.status !== "pending_class") throw biz("BAD_STATUS", "当前状态不可打卡（" + (STATUS_TEXT[o.status]?.teacher || o.status) + "）");
+    const isTeacher = Number(o.teacher_id) === Number(actorId);
+    const isParent = Number(o.parent_id) === Number(actorId);
+    if (!isTeacher && !isParent) throw forbidden();
+    if (o.status !== "pending_class") {
+      const map: any = STATUS_TEXT[o.status] || {};
+      throw biz("BAD_STATUS", "当前状态不可打卡（" + (map[isTeacher ? "teacher" : "parent"] || o.status) + "）");
+    }
+    // 教员上门的订单家长无需打卡（人在自己家，打卡没有意义）
+    if (isParent && o.place !== "teacher_place") {
+      throw biz("NOT_TEACHER_PLACE", "教员上门订单由教员打卡，家长无需打卡");
+    }
     if (lat == null || lng == null) throw bad("请开启定位后再打卡");
 
     const cfg = (await this.rules.get("checkin")) as any;
@@ -612,19 +633,48 @@ export class OrdersService {
     if (distance > threshold) {
       await this.ds.query(
         "INSERT INTO `risk_events` (`order_id`,`user_id`,`region_id`,`type`,`level`,`reason`,`status`,`created_at`) VALUES (?,?,?,?,?,?,?,?)",
-        [o.id, teacherId, o.region_id, "abnormal_location", distance > threshold * 3 ? "high" : "mid",
-          "打卡定位距离 " + distance + " 米，超出阈值 " + threshold + " 米", "open", nowIso()],
+        [o.id, actorId, o.region_id, "abnormal_location", distance > threshold * 3 ? "high" : "mid",
+          (isParent ? "家长" : "教员") + "打卡定位距离 " + distance + " 米，超出阈值 " + threshold + " 米", "open", nowIso()],
       );
       throw biz("CHECKIN_TOO_FAR", "当前位置距离上课地点 " + distance + " 米，超出 " + threshold + " 米阈值，无法打卡");
     }
-    const upd = await this.ds.query(
-      "UPDATE `orders` SET `status` = 'in_class', `checkin_at` = ?, `checkin_lat` = ?, `checkin_lng` = ?, `checkin_distance` = ?, `updated_at` = ? WHERE `id` = ? AND `status` = 'pending_class'",
-      [nowIso(), Number(lat), Number(lng), distance, nowIso(), o.id],
-    );
-    if (!Number(upd?.affectedRows ?? 1)) throw biz("BAD_STATUS", "订单状态已变更，无法打卡");
-    await notify(this.ds, Number(o.parent_id), "教员已到达", "教员已在距上课地点 " + distance + " 米处打卡，课程开始", "order", "/order/" + o.id);
-    await audit(this.ds, { user: { uid: teacherId, role: "teacher" } }, "order.checkin", "orders:" + o.id, { distance });
-    return this.view(await this.get(o.id), "teacher");
+
+    if (isParent) {
+      if (o.parent_checkin_at) throw biz("ALREADY_CHECKED_IN", "您已打过卡了");
+      await this.ds.query(
+        "UPDATE `orders` SET `parent_checkin_at` = ?, `parent_checkin_lat` = ?, `parent_checkin_lng` = ?, `parent_checkin_distance` = ?, `updated_at` = ? WHERE `id` = ?",
+        [nowIso(), Number(lat), Number(lng), distance, nowIso(), o.id],
+      );
+    } else {
+      if (o.checkin_at) throw biz("ALREADY_CHECKED_IN", "您已打过卡了");
+      await this.ds.query(
+        "UPDATE `orders` SET `checkin_at` = ?, `checkin_lat` = ?, `checkin_lng` = ?, `checkin_distance` = ?, `updated_at` = ? WHERE `id` = ?",
+        [nowIso(), Number(lat), Number(lng), distance, nowIso(), o.id],
+      );
+    }
+
+    // 到教员处的订单要双方都打完卡才开课；教员上门的订单教员打完就开课
+    const fresh: any = await this.get(o.id);
+    const bothArrived = fresh.place === "teacher_place"
+      ? !!fresh.checkin_at && !!fresh.parent_checkin_at
+      : !!fresh.checkin_at;
+    if (bothArrived) {
+      const upd = await this.ds.query(
+        "UPDATE `orders` SET `status` = 'in_class', `updated_at` = ? WHERE `id` = ? AND `status` = 'pending_class'",
+        [nowIso(), o.id],
+      );
+      if (!Number(upd?.affectedRows ?? 1)) throw biz("BAD_STATUS", "订单状态已变更，无法打卡");
+      await notify(this.ds, Number(isParent ? o.teacher_id : o.parent_id), "双方已到场，课程开始",
+        "「" + (isParent ? "家长" : "教员") + "」已完成到场打卡，双方到齐，订单进入上课中", "order", "/order/" + o.id);
+    } else {
+      await notify(this.ds, Number(isParent ? o.teacher_id : o.parent_id),
+        isParent ? "家长已到场" : "教员已到教学点",
+        (isParent ? "家长已在距上课地点 " : "教员已在距上课地点 ") + distance + " 米处打卡，等待您打卡后开始上课",
+        "order", "/order/" + o.id);
+    }
+    await audit(this.ds, { user: { uid: actorId, role: isParent ? "parent" : "teacher" } },
+      isParent ? "order.checkinParent" : "order.checkin", "orders:" + o.id, { distance, bothArrived });
+    return this.view(await this.get(o.id), isParent ? "parent" : "teacher");
   }
 
   async finish(teacherId: number, orderId: number) {

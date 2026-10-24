@@ -153,6 +153,11 @@ console.log("\n== 4. 游客浏览 + 微信一键登录（P55） ==");
     "H5 产物含「教员上门 / 我到教员处」授课方式选择");
   assert(bundle.includes("teacher_place"), "H5 产物使用 teacher_place 作为授课地点取值");
   assert(bundle.includes("授课方式") && bundle.includes("教员授课地址"), "订单详情展示授课方式与教员授课地址");
+  // 家长到场打卡（P66）：产物里要有打卡入口、定位调用与「双方到场」文案
+  assert(bundle.includes("我到场了") && bundle.includes("到场打卡"), "H5 产物含家长「📍 我到场了」打卡入口");
+  assert(bundle.includes("getLocation"), "打卡走 uni.getLocation 取真实定位（需授权）");
+  assert(bundle.includes("双方已到齐") || bundle.includes("双方都打卡"), "订单详情展示双方到场状态");
+  assert(bundle.includes("教学点打卡"), "教员端到教员处上课时按钮文案为「教学点打卡」");
   assert(bundle.includes("授课地址"), "教员入驻页含「授课地址」字段");
   // 排版口径（用户反馈）：登录页里「微信一键登录」排在「登录 / 注册」下面，不是压在最上面
   {

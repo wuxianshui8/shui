@@ -29,12 +29,12 @@ export class OrdersController {
     return ok(await this.svc.pay(Number(req.user.uid), Number(id), idem, body?.channel, body?.openId));
   }
 
-  /* ---------------- 上门打卡 ---------------- */
+  /* ---------------- 到场打卡（教员上门=教员打；家长到教员处=双方各打一次，P66） ---------------- */
   @Post("orders/:id/checkin")
   @HttpCode(200)
-  @Roles("teacher")
+  @Roles("teacher", "parent")
   async checkin(@Param("id") id: string, @Body() body: any, @Req() req: any) {
-    return ok(await this.svc.checkin(Number(req.user.uid), Number(id), body?.lat, body?.lng));
+    return ok(await this.svc.checkin(Number(req.user.uid), Number(id), body?.lat, body?.lng, req.user.role));
   }
 
   /* ---------------- 结束授课 ---------------- */

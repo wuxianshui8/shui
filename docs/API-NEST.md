@@ -227,7 +227,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | --- | --- | --- | --- |
 | GET | `/api/orders/:id` | 登录用户 |  |
 | POST | `/api/orders/:id/cancel` | 登录用户 | 200 |
-| POST | `/api/orders/:id/checkin` | teacher | 200 |
+| POST | `/api/orders/:id/checkin` | teacher / parent | 200 |
 | POST | `/api/orders/:id/confirm` | parent | 200 |
 | POST | `/api/orders/:id/finish` | teacher | 200 |
 | POST | `/api/orders/:id/pay` | parent | 200 |

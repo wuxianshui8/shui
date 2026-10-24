@@ -299,6 +299,29 @@ assert(deny.status === 403, "后台接口对非管理员返回 403（" + deny.st
   });
   assert(homeOrder.status === 200 && homeOrder.body.data.place === "home", "不传 place 时默认仍为「教员上门」");
 
+  await api("POST", "/orders/" + homeOrder.body.data.id + "/pay", { token: parentLogin.body.data.token, idem: "pay-p66-home-" + homeOrder.body.data.id });
+  // P66：到教员处上课 = 双方各打卡一次，都到齐才开课；教员上门订单家长不打卡
+  await api("POST", "/orders/" + at.body.data.id + "/pay", { token: parentLogin.body.data.token, idem: "pay-p66-" + at.body.data.id });
+  const homeDeny = await api("POST", "/orders/" + homeOrder.body.data.id + "/checkin", {
+    token: parentLogin.body.data.token, body: { lat: 30.2741, lng: 120.1551 },
+  });
+  assert(homeDeny.status === 400 && homeDeny.body.code === "NOT_TEACHER_PLACE",
+    "教员上门订单：家长打卡被拒（NOT_TEACHER_PLACE）", homeDeny.text);
+  const far = await api("POST", "/orders/" + at.body.data.id + "/checkin", {
+    token: parentLogin.body.data.token, body: { lat: 30.35, lng: 120.25 },
+  });
+  assert(far.status === 400 && far.body.code === "CHECKIN_TOO_FAR", "家长离教学点过远 → 打卡被拒", far.text);
+  const pc = await api("POST", "/orders/" + at.body.data.id + "/checkin", {
+    token: parentLogin.body.data.token, body: { lat: 30.2742, lng: 120.1552 },
+  });
+  assert(pc.status === 200 && pc.body.data.parentArrived === true && pc.body.data.status === "pending_class",
+    "家长打卡记录到场，但课程要等教员也打卡（双方确认）", pc.text);
+  const tc = await api("POST", "/orders/" + at.body.data.id + "/checkin", {
+    token: tTok, body: { lat: 30.2741, lng: 120.1551 },
+  });
+  assert(tc.status === 200 && tc.body.data.status === "in_class" && tc.body.data.bothArrived === true,
+    "双方都打卡后自动进入上课中", tc.text);
+
   // 收尾：还原授课地址，避免影响其它门禁
   await api("PUT", "/teacher/profile", { token: tTok, body: { baseAddress: "", lat: 30.2741, lng: 120.1551 } });
 }

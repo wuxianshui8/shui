@@ -91,6 +91,43 @@ function locate() {
   });
 }
 
+/**
+ * 打卡用的定位（P66）：和首页自动定位不同——打卡必须拿到**当前位置**，
+ * 不能复用缓存值（否则家长可能用旧坐标「假装到场」），因此单独走一次高精度定位。
+ * 被拒绝/超时返回 null，调用方提示「请开启定位权限」。
+ */
+const CHECKIN_GEO_TIMEOUT_MS = 10000;
+function askPosition() {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      toastErr("当前浏览器不支持定位，无法打卡");
+      return resolve(null);
+    }
+    const finish = (v) => {
+      if (!v) toastErr("需要授权位置信息才能打卡（请在浏览器/系统设置里允许定位）");
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(null), CHECKIN_GEO_TIMEOUT_MS);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          clearTimeout(timer);
+          finish({ lat: Number(pos.coords.latitude.toFixed(6)), lng: Number(pos.coords.longitude.toFixed(6)) });
+        },
+        (err) => {
+          clearTimeout(timer);
+          finish(null);
+          if (err && err.code === 1) toastErr("定位权限被拒绝：打卡需要您的位置");
+        },
+        { timeout: CHECKIN_GEO_TIMEOUT_MS, maximumAge: 0, enableHighAccuracy: true }
+      );
+    } catch {
+      clearTimeout(timer);
+      finish(null);
+    }
+  });
+}
+
 /* ---------------- 通用数据 ---------------- */
 async function getDict() {
   if (!state.dict) state.dict = await api.get("/api/meta/dictionary");
@@ -776,6 +813,21 @@ function orderActions() {
       await api.post("/api/orders/" + id + "/confirm", {});
       toastOk("已确认完成，感谢您的信任");
       ROUTER.render();
+    },
+    // 家长到场打卡（P66）：到教员处上课时，家长点「我到场了」→ 浏览器定位 → 上报坐标
+    pcheckin: async (el) => {
+      const id = el.dataset.id;
+      const pos = await askPosition();
+      if (!pos) return;
+      try {
+        await busy(el, async () => {
+          const order = await api.post("/api/orders/" + id + "/checkin", { lat: pos.lat, lng: pos.lng });
+          toastOk(order.bothArrived ? "双方已到场，课程开始" : "已记录到场，等待教员打卡开课");
+          ROUTER.render();
+        });
+      } catch (err) {
+        onError(err);
+      }
     },
     review: (el) => {
       location.hash = "#/review/" + el.dataset.id;
@@ -1471,10 +1523,18 @@ function orderDetailHtml(o) {
 
     '<div class="card"><div class="card-title"><h3>上课信息</h3></div>' +
     kv("科目 / 学段", esc(o.subject) + " · " + esc(o.stage)) +
+    kv("授课方式", esc(o.placeText || "教员上门")) +
     kv("上课时间", lessonTimeText(o)) +
-    kv("详细地址", esc(o.address)) +
+    kv(o.place === "teacher_place" ? "教员授课地址" : "详细地址", esc(o.address)) +
     kv("课时单价", money(o.amount)) +
     (o.remark ? kv("备注", esc(o.remark)) : "") +
+    // 双方到场打卡（P66）：到教员处上课时，两边各打一次卡，都到齐才开课
+    (o.place === "teacher_place"
+      ? kv("到场打卡",
+        '<span class="tiny">家长 ' + (o.parentArrived ? "✅ " + fmtDate(o.parentCheckinAt, "time") : "⏳ 未打卡") +
+        "　/　教员 " + (o.teacherArrived ? "✅ " + fmtDate(o.checkinAt, "time") : "⏳ 未打卡") +
+        (o.bothArrived ? "　·　双方已到齐" : "") + "</span>")
+      : "") +
     (o.checkinAt ? kv("打卡记录", fmtDate(o.checkinAt, "time") + " / 距上课地点 " + (o.checkinDistance ?? "-") + " 米") : "") +
     "</div>" +
 
@@ -1502,9 +1562,17 @@ function orderBar(o) {
       '<button class="btn btn-primary wide" data-act="pay" data-id="' + o.id + '" data-amount="' + paid + '">去支付 ' + money(paid) + "</button>";
   }
   if (o.status === "pending_class") {
+    // 家长到教员处上课：家长要自己打卡（双方都打完才开课，P66）
+    const needCheckin = o.place === "teacher_place" && !o.parentArrived;
+    const checkinBtn = o.place === "teacher_place"
+      ? (o.parentArrived
+        ? '<button class="btn btn-outline btn-sm" disabled>家长已到场</button>'
+        : '<button class="btn btn-primary" data-act="pcheckin" data-id="' + o.id + '">📍 我到场了</button>')
+      : "";
     return '<button class="btn btn-outline btn-sm" data-act="cancel" data-id="' + o.id + '" data-paid="' + paid + '">取消</button>' +
       '<button class="btn btn-outline btn-sm" data-act="sos" data-id="' + o.id + '" data-no="' + esc(o.orderNo) + '">🚨 求助</button>' +
-      '<button class="btn btn-outline" data-act="refund" data-id="' + o.id + '">申请退款</button>' +
+      checkinBtn +
+      (needCheckin ? "" : '<button class="btn btn-outline" data-act="refund" data-id="' + o.id + '">申请退款</button>') +
       '<button class="btn btn-primary" data-act="contact" data-id="' + o.id + '">联系老师</button>';
   }
   if (o.status === "in_class") {

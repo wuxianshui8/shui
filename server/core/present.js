@@ -205,6 +205,15 @@ function composeOrderView(o, viewerRole, parts, { mask = false } = {}) {
     paidAt: o.paid_at,
     checkinAt: o.checkin_at,
     checkinDistance: o.checkin_distance,
+    // 双方到场打卡（P66）：家长到教员处上课时两边各打一次卡，都到齐才开课
+    parentCheckinAt: o.parent_checkin_at || null,
+    parentCheckinDistance: o.parent_checkin_distance ?? null,
+    teacherArrived: !!o.checkin_at,
+    parentArrived: !!o.parent_checkin_at,
+    bothArrived: o.place === "teacher_place" ? (!!o.checkin_at && !!o.parent_checkin_at) : !!o.checkin_at,
+    // 前端据此决定是否显示「到场打卡」按钮（按视角区分）
+    myCheckinAt: viewerRole === "parent" ? (o.parent_checkin_at || null) : (o.checkin_at || null),
+    needParentCheckin: o.place === "teacher_place" && o.status === "pending_class",
     finishedAt: o.finished_at,
     confirmAt: o.confirm_at,
     settleAt: o.settle_at,

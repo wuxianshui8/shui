@@ -113,6 +113,7 @@
 | 4.2.3 服务列表（上架/下架）、编辑、上下架开关 | ✅ | `/api/teacher/services*` | page `/services` |
 | 4.2.4 五种订单状态、详情、联系家长 | ✅ | `/api/teacher/orders?status=` | e2e §6、page `/orders` |
 | 4.2.4 上门打卡校验定位，超阈值拦截 | ✅ | `checkin()` haversine ≤ 500m + 风控事件 | e2e §5 |
+| 4.2.4 家长到场打卡 + 双方确认开课（P66） | ✅ | `checkin()` 放开到家长（仅 `place=teacher_place`）：双方各打一次卡、都到齐才 `in_class`；定位阈值同 500m、超阈值写风控；家长端「📍 我到场了」（定位授权）、教员端「教学点打卡」+「家长已到场/待打卡」 | e2e §24（9 项）、`admin` 81、`mobile` 117 |
 | 4.2.4 结束授课，等待家长确认 | ✅ | `POST /orders/:id/finish` | e2e §6 |
 | 4.2.5 等级权益页（徽章/成长分/进度/抽佣/派单权重/规则表/变更记录） | ✅ | `GET /api/teacher/level` | e2e §7、page `/level` |
 | 4.2.6 收入明细（课时费/服务费/实收）、余额、冻结、提现 | ✅ | `GET /api/teacher/income` + `/api/withdrawals` | e2e §8 |
