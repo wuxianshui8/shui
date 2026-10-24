@@ -142,6 +142,9 @@ const tar = spawnSync("tar", [
   "-C", ROOT,
   "deploy/docker-compose.prod.yml",
   "deploy/nginx-jiajiao.conf.example",
+  "deploy/backup-db.sh",
+  "deploy/backup-notify.sh",
+  "deploy/install-backup.sh",
   "apps/api-nest/db/schema.mysql.sql",
   "apps/api-nest/db/seed-min.mjs",
 ], { encoding: "utf8" });
@@ -204,6 +207,12 @@ set -e
 docker load -i /tmp/jiajiao-app.tar
 mkdir -p ${DIR}
 tar xzf /tmp/jiajiao-src.tgz -C ${DIR}
+# 运维脚本同步到 ${DIR}/bin（此前只上传 compose/schema，导致备份脚本在服务器上是旧版）
+mkdir -p ${DIR}/bin
+for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh; do
+  [ -f "$f" ] || continue
+  install -m 755 "$f" "${DIR}/bin/$(basename "$f")"
+done
 install -m 600 /tmp/jiajiao.env ${DIR}/deploy/.env
 rm -f /tmp/jiajiao-app.tar /tmp/jiajiao-src.tgz /tmp/jiajiao.env
 cd ${DIR}/deploy

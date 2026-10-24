@@ -16,9 +16,9 @@
 //   jiajiao_withdrawals_pending               待审提现
 //   jiajiao_backup_last_success_timestamp     备份最近成功时间（读 LAST_STATUS，读不到则为 0）
 //
-// 访问控制：默认只允许本机（127.0.0.1/::1）抓取——生产上由宿主机 cron 或 Prometheus 直连 127.0.0.1:4300，
-// 走 nginx 进来的外部请求 req.ip 是真实客户端地址，会被 403。若要跨机抓取，配 METRICS_TOKEN 后带
-// `?token=xxx` 或 `Authorization: Bearer xxx`。
+// 访问控制：直连（无 X-Forwarded-For）或来自回环地址才允许；经 nginx 的外部请求一律 403
+//   —— nginx 模板对所有 location 都设了 X-Forwarded-For，所以「有 XFF」就说明是从公网侧转发进来的。
+//   跨机抓取（如独立 Prometheus）配 METRICS_TOKEN 后带 `?token=xxx` 或 `Authorization: Bearer xxx`。
 // ============================================================
 import { Controller, Get, Query, Req, Inject, Header } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
@@ -44,15 +44,17 @@ export class MetricsController {
   @Get("metrics")
   @Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
   async metrics(@Req() req: any, @Query("token") token?: string) {
-    // 访问控制：本机直连 / 配了 METRICS_TOKEN 且令牌匹配
+    // 访问控制：令牌 / 回环 / 直连（无 XFF）三者满足其一
     const ip = String(req.ip || req.socket?.remoteAddress || "");
+    const hasXff = !!(req.headers && req.headers["x-forwarded-for"]);
     const authed = config.metricsToken
       ? token === config.metricsToken ||
         String(req.headers?.authorization || "") === "Bearer " + config.metricsToken
       : false;
-    if (!LOOPBACK.has(ip) && !authed) {
-      if (config.metricsToken && !authed) throw unauthorized("metrics 需要令牌");
-      throw forbidden("/api/metrics 只允许本机抓取（跨机请配置 METRICS_TOKEN）");
+    const direct = !hasXff || LOOPBACK.has(ip);
+    if (!authed && !direct) {
+      if (config.metricsToken) throw unauthorized("metrics 需要令牌");
+      throw forbidden("/api/metrics 只允许内网直连抓取（跨机请配置 METRICS_TOKEN）");
     }
 
     const lines: string[] = [];
