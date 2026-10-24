@@ -439,6 +439,9 @@ CREATE TABLE IF NOT EXISTS banners (
   link      TEXT,
   sort      INTEGER NOT NULL DEFAULT 0,
   status    TEXT NOT NULL DEFAULT 'on',
+  transition TEXT NOT NULL DEFAULT 'slide',
+  autoplay  INTEGER NOT NULL DEFAULT 1,
+  interval_seconds INTEGER NOT NULL DEFAULT 4,
   created_at TEXT NOT NULL
 );
 

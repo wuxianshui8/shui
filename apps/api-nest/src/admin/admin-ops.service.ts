@@ -950,9 +950,13 @@ export class AdminOpsService {
   async createBanner(ctx: any, b: any) {
     if (!String(b?.title || "").trim()) throw bad("请填写标题");
     const status = BANNER_STATUS.includes(b?.status) ? b.status : "on";
+    const transition = normalizeTransition(b?.transition);
+    const autoplay = b?.autoplay === undefined ? 1 : b.autoplay ? 1 : 0;
+    const interval = normalizeInterval(b?.intervalSeconds);
     const r = await this.ds.query(
-      "INSERT INTO `banners` (`title`,`image`,`link`,`sort`,`status`,`created_at`) VALUES (?,?,?,?,?,?)",
-      [String(b.title).trim(), b.image || "", b.link || "", Number(b.sort || 0), status, nowIso()],
+      "INSERT INTO `banners` (`title`,`image`,`link`,`sort`,`status`,`transition`,`autoplay`,`interval_seconds`,`created_at`) " +
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+      [String(b.title).trim(), b.image || "", b.link || "", Number(b.sort || 0), status, transition, autoplay, interval, nowIso()],
     );
     await audit(this.ds, ctx, "admin.banner.create", "banners:" + r.insertId);
     return this.one("SELECT * FROM `banners` WHERE `id` = ?", [r.insertId]);
@@ -964,12 +968,17 @@ export class AdminOpsService {
     if (b?.title !== undefined && !String(b.title).trim()) throw bad("标题不能为空");
     if (b?.status !== undefined && !BANNER_STATUS.includes(b.status)) throw bad("状态只能为 on / off");
     await this.ds.query(
-      "UPDATE `banners` SET `title` = ?, `image` = ?, `link` = ?, `sort` = ?, `status` = ? WHERE `id` = ?",
+      "UPDATE `banners` SET `title` = ?, `image` = ?, `link` = ?, `sort` = ?, `status` = ?, " +
+        "`transition` = ?, `autoplay` = ?, `interval_seconds` = ? WHERE `id` = ?",
       [b?.title !== undefined ? String(b.title).trim() : row.title,
         b?.image !== undefined ? b.image : row.image,
         b?.link !== undefined ? b.link : row.link,
         b?.sort !== undefined ? Number(b.sort) : row.sort,
-        b?.status !== undefined ? b.status : row.status, row.id],
+        b?.status !== undefined ? b.status : row.status,
+        b?.transition !== undefined ? normalizeTransition(b.transition) : row.transition,
+        b?.autoplay !== undefined ? (b.autoplay ? 1 : 0) : Number(row.autoplay),
+        b?.intervalSeconds !== undefined ? normalizeInterval(b.intervalSeconds) : Number(row.interval_seconds),
+        row.id],
     );
     await audit(this.ds, ctx, "admin.banner.update", "banners:" + row.id, { before: row, after: b });
     return this.one("SELECT * FROM `banners` WHERE `id` = ?", [row.id]);
@@ -1191,4 +1200,19 @@ export class AdminOpsService {
     const row = await this.one("SELECT * FROM `regions` WHERE `id` = ?", [r.insertId]);
     return { ...row, ...this.decorateRegion(row) };
   }
+}
+
+/** Banner 轮播方式白名单（P76）：slide=横向滑动 / fade=淡入淡出 / none=不轮播 */
+const BANNER_TRANSITIONS = ["slide", "fade", "none"];
+
+function normalizeTransition(v: any): string {
+  const s = String(v || "").toLowerCase();
+  return BANNER_TRANSITIONS.includes(s) ? s : "slide";
+}
+
+/** 自动切换间隔（秒）：非数字或越界时回落到 4 秒，限制在 1–15 秒 */
+function normalizeInterval(v: any): number {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 1) return 4;
+  return Math.min(15, n);
 }

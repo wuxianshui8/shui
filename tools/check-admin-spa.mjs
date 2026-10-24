@@ -472,6 +472,40 @@ assert(restore.status === 200, "权限矩阵页：可恢复默认矩阵");
   assert(bEdit.status === 200 && Number(bEdit.body.data.sort) === 7, "Banner 排序可改");
   await api("DELETE", "/admin/banners/" + b.body.data.id, { token });
 
+  /* ---------- P76 Banner 上传图片 + 轮播方式 ---------- */
+  // ① 上传接口：base64 图片 → /uploads/xxx.png（后台「上传图片」按钮走的就是这条）
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AF+2wFQAAAAAElFTkSuQmCC";
+  const up = await api("POST", "/upload", { token, body: { dataUrl: png, filename: "banner-p76.png" } });
+  assert(up.status === 200 && /^\/uploads\/[\w.-]+\.png$/.test(up.body.data.url || ""),
+    "Banner 图可上传并拿到站内地址（/upload → /uploads/xxx.png）", up.body?.data?.url);
+
+  // ② 三种轮播方式都能存下来并回读
+  for (const [mode, interval, autoplay] of [["slide", 5, true], ["fade", 3, true], ["none", 8, false]]) {
+    const created = await api("POST", "/admin/banners", {
+      token,
+      body: { title: "P76 轮播 " + mode, image: up.body.data.url, link: "/m/pages/parent/index", status: "on", transition: mode, autoplay, intervalSeconds: interval },
+    });
+    assert(created.status === 200 && created.body.data.transition === mode &&
+      Number(created.body.data.interval_seconds) === interval && Number(created.body.data.autoplay) === (autoplay ? 1 : 0),
+      "轮播方式可保存：" + mode + "（间隔 " + interval + "s / 自动 " + (autoplay ? "开" : "关") + "）",
+      JSON.stringify({ t: created.body.data?.transition, i: created.body.data?.interval_seconds }));
+    const edited = await api("PUT", "/admin/banners/" + created.body.data.id, { token, body: { transition: "fade", intervalSeconds: 6, autoplay: true } });
+    assert(edited.status === 200 && edited.body.data.transition === "fade" && Number(edited.body.data.interval_seconds) === 6,
+      "轮播方式可改（切到 fade / 6s）");
+    await api("DELETE", "/admin/banners/" + created.body.data.id, { token });
+  }
+  // ③ 非法值回落而不是报错（避免运营填错就 500）
+  const fallback = await api("POST", "/admin/banners", { token, body: { title: "P76 非法值", transition: "zoom", intervalSeconds: 999 } });
+  assert(fallback.status === 200 && fallback.body.data.transition === "slide" && Number(fallback.body.data.interval_seconds) === 15,
+    "非法轮播值回落（zoom→slide、999s→15s）");
+  await api("DELETE", "/admin/banners/" + fallback.body.data.id, { token });
+
+  // ④ 家长首页下发的 banners 带轮播配置（移动端据此渲染）
+  const homeB = await api("GET", "/public/home?lat=30.262&lng=120.133");
+  const bl = (homeB.body.data && homeB.body.data.banners) || [];
+  assert(homeB.status === 200 && bl.every((x) => ["slide", "fade", "none"].includes(x.transition)),
+    "首页下发的 Banner 都带 transition（移动端按此选轮播方式）", "共 " + bl.length + " 张");
+
   const a = await api("POST", "/admin/announcements", {
     token, body: { title: "P72 公告", content: "正文内容：国庆期间客服轮班", audience: "all", status: "on" },
   });

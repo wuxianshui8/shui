@@ -407,13 +407,57 @@ async function startApp() {
 }
 
 /* ---------------- 通用片段 ---------------- */
+/**
+ * 首页 Banner（P76）：有图用图（background-image + cover，不变形），无图回落文字卡。
+ * 轮播方式按第一张的配置（slide=横向滚动 / fade=淡入淡出 / none=静态），与正式实现同口径。
+ */
 function bannerHtml(banners) {
   if (!banners || !banners.length) return "";
-  return '<div class="banner-scroll">' + banners.map((b) =>
-    '<div class="banner-card"><div class="bt">' + esc(b.title) + "</div>" +
-    '<div class="bp">' + esc(b.content || "平台担保交易，教员资质人工核验") + "</div>" +
-    '<span class="em" aria-hidden="true">📚</span></div>'
-  ).join("") + "</div>";
+  const first = banners[0] || {};
+  const mode = ["slide", "fade", "none"].includes(first.transition) ? first.transition : "slide";
+  const autoplay = first.autoplay === undefined ? true : !!Number(first.autoplay);
+  const interval = Math.max(1, Number(first.interval_seconds) || 4);
+  const one = (b) => String(b.image || "").trim()
+    ? '<div class="banner-card banner-img" style="background-image:url(' + esc(b.image) + ')" role="img" aria-label="' +
+      esc(b.title) + '"><div class="banner-mask">' + esc(b.title) + "</div></div>"
+    : '<div class="banner-card"><div class="bt">' + esc(b.title) + "</div>" +
+      '<div class="bp">' + esc(b.content || "平台担保交易，教员资质人工核验") + "</div>" +
+      '<span class="em" aria-hidden="true">📚</span></div>';
+  const wrap = (inner, attrs) => '<div class="banner-scroll" data-mode="' + mode + '"' + attrs + ">" + inner + "</div>";
+  const styled = banners.map(one).join("");
+  let slides = wrap(one(first), "");
+  // 启动自动轮播（P76）：页面渲染后由 startBannerAuto 读取这两个属性
+  const auto = autoplay ? ' data-autoplay="1" data-interval="' + interval + '"' : "";
+  if (mode === "slide" && banners.length > 1) slides = wrap(styled, auto);
+  else if (mode === "fade" && banners.length > 1) {
+    slides = wrap(
+      banners.map((b, i) => one(b).replace('class="banner-card', 'class="banner-card banner-fade' + (i === 0 ? " on" : ""))).join(""),
+      auto,
+    );
+  }
+  return slides;
+}
+
+/** 横向滚动 / 淡入淡出的自动播放（P76）：页面渲染后调一次，重复调用会先清理旧定时器 */
+let bannerTimer = null;
+function startBannerAuto() {
+  if (bannerTimer) clearInterval(bannerTimer);
+  bannerTimer = null;
+  const box = document.querySelector('.banner-scroll[data-autoplay="1"]');
+  if (!box) return;
+  const cards = [...box.querySelectorAll(".banner-card")];
+  if (cards.length < 2) return;
+  const interval = Math.max(1, Number(box.dataset.interval) || 4) * 1000;
+  const mode = box.dataset.mode;
+  let i = 0;
+  bannerTimer = setInterval(() => {
+    i = (i + 1) % cards.length;
+    if (mode === "fade") {
+      cards.forEach((c, idx) => c.classList.toggle("on", idx === i));
+    } else {
+      box.scrollTo({ left: cards[i].offsetLeft - box.offsetLeft, behavior: "smooth" });
+    }
+  }, interval);
 }
 
 function noticesHtml(notices) {
@@ -977,6 +1021,7 @@ async function homeView({ query }) {
         '<button class="btn btn-ghost btn-sm" data-go="/demand">发布需求等抢单</button></div></div>');
 
   setBody(bannerHtml(data.banners) + tabSwitch + (tab === "form" ? formTab : nearTab));
+  startBannerAuto();
 
   if (tab === "form") {
     bindDemandForm(bodyEl(), {

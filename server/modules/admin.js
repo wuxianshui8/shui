@@ -895,6 +895,14 @@ export function register(router) {
 
   /* ---------------- 运营工具 ---------------- */
   const BANNER_STATUS = ["on", "off"];
+  // Banner 轮播（P76）：slide=横向滑动 / fade=淡入淡出 / none=不轮播
+  const normalizeBannerTransition = (v) => ["slide", "fade", "none"].includes(String(v || "").toLowerCase())
+    ? String(v).toLowerCase() : "slide";
+  const normalizeBannerInterval = (v) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n) || n < 1) return 4;
+    return Math.min(15, n);
+  };
   const ANNOUNCE_AUDIENCE = ["all", "parent", "teacher", "sales", "agent"];
 
   router.get("/api/admin/banners", (ctx) => { adminOnly(ctx); ok(ctx.res, all("SELECT * FROM banners ORDER BY sort")); });
@@ -903,8 +911,12 @@ export function register(router) {
     const b = ctx.body;
     if (!b.title) throw Err.bad("请填写标题");
     const status = BANNER_STATUS.includes(b.status) ? b.status : "on";
-    const r = run("INSERT INTO banners (title, image, link, sort, status, created_at) VALUES (?,?,?,?,?,?)",
-      b.title, b.image || "", b.link || "", Number(b.sort || 0), status, nowIso());
+    const transition = normalizeBannerTransition(b.transition);
+    const autoplay = b.autoplay === undefined ? 1 : b.autoplay ? 1 : 0;
+    const interval = normalizeBannerInterval(b.intervalSeconds);
+    const r = run(
+      "INSERT INTO banners (title, image, link, sort, status, transition, autoplay, interval_seconds, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+      b.title, b.image || "", b.link || "", Number(b.sort || 0), status, transition, autoplay, interval, nowIso());
     audit(ctx, "admin.banner.create", "banners:" + r.id);
     ok(ctx.res, get("SELECT * FROM banners WHERE id = ?", r.id));
   });
@@ -916,12 +928,15 @@ export function register(router) {
     if (b.title !== undefined && !String(b.title).trim()) throw Err.bad("标题不能为空");
     if (b.status !== undefined && !BANNER_STATUS.includes(b.status)) throw Err.bad("状态只能为 on / off");
     run(
-      "UPDATE banners SET title = ?, image = ?, link = ?, sort = ?, status = ? WHERE id = ?",
+      "UPDATE banners SET title = ?, image = ?, link = ?, sort = ?, status = ?, transition = ?, autoplay = ?, interval_seconds = ? WHERE id = ?",
       b.title !== undefined ? String(b.title).trim() : row.title,
       b.image !== undefined ? b.image : row.image,
       b.link !== undefined ? b.link : row.link,
       b.sort !== undefined ? Number(b.sort) : row.sort,
       b.status !== undefined ? b.status : row.status,
+      b.transition !== undefined ? normalizeBannerTransition(b.transition) : row.transition,
+      b.autoplay !== undefined ? (b.autoplay ? 1 : 0) : Number(row.autoplay),
+      b.intervalSeconds !== undefined ? normalizeBannerInterval(b.intervalSeconds) : Number(row.interval_seconds),
       row.id
     );
     audit(ctx, "admin.banner.update", "banners:" + row.id, { before: row, after: b });

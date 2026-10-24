@@ -1,5 +1,5 @@
 <script setup>
-import { onShow } from "@dcloudio/uni-app";
+import { onShow, onUnload } from "@dcloudio/uni-app";
 import { ref } from "vue";
 import { currentUser, goLogin, isLogin, request } from "../../auth.js";
 import { invokePay, payOrder, waitPaid } from "../../pay.js";
@@ -14,6 +14,49 @@ const guest = ref(!isLogin());
 /** 家长头像：有就用图片，没有就用昵称首字 */
 const avatar = ref(currentUser().avatar || "");
 const avatarBusy = ref(false);
+
+/* ---------------- 首页 Banner 轮播（P76：横向滑动 / 淡入淡出 / 不轮播） ---------------- */
+const banners = ref([]);
+const fadeIndex = ref(0);
+let fadeTimer = null;
+const bannerCfg = ref({ transition: "slide", autoplay: true, interval: 4 });
+
+function bannerStyle(b) {
+  const img = String(b.image || "");
+  return img ? { backgroundImage: "url(" + img + ")" } : {};
+}
+
+function stopFade() {
+  if (fadeTimer) {
+    clearInterval(fadeTimer);
+    fadeTimer = null;
+  }
+}
+
+/** 淡入淡出：把当前索引逐张推进（用 CSS opacity 过渡，不依赖 swiper 的滑动） */
+function startFade() {
+  stopFade();
+  if (bannerCfg.value.transition !== "fade" || !bannerCfg.value.autoplay) return;
+  if (banners.value.length < 2) return;
+  fadeTimer = setInterval(() => {
+    fadeIndex.value = (fadeIndex.value + 1) % banners.value.length;
+  }, Math.max(1, Number(bannerCfg.value.interval) || 4) * 1000);
+}
+
+function goBanner(b) {
+  const link = String(b.link || "").trim();
+  if (!link) return;
+  if (link.startsWith("/m/")) {
+    uni.navigateTo({ url: link.replace(/^\/m/, "") });
+    return;
+  }
+  if (link.startsWith("http")) {
+    uni.showToast({ title: "外链请在浏览器打开", icon: "none" });
+    return;
+  }
+  // 旧 5 端路径（/parent 等）在新前端没有对应页面，明确提示而不是静默无反应
+  uni.showToast({ title: "该活动页仅旧版可用", icon: "none" });
+}
 
 /** 选图（压缩优先；超过 2MB 直接拦，与后端上限一致） */
 function chooseImage() {
@@ -102,8 +145,20 @@ async function load() {
     unread.value = 0;
     orders.value = [];
   }
+  // 首页 Banner（P76）：几张图共用同一套轮播配置（取第一张的配置，后台按活动统一设置）
+  const list = (home.value && home.value.banners) || [];
+  banners.value = list.filter((b) => String(b.image || "").trim() || String(b.title || "").trim());
+  const first = banners.value[0] || {};
+  bannerCfg.value = {
+    transition: first.transition || "slide",
+    autoplay: first.autoplay === undefined ? true : !!Number(first.autoplay),
+    interval: Number(first.interval_seconds || 4) || 4,
+  };
+  fadeIndex.value = 0;
+  startFade();
 }
 onShow(load);
+onUnload(stopFade);
 
 /**
  * 支付（P69）：mock 通道后端直接入账；真实通道返回 prepay → 唤起收银台 → 轮询订单状态。
@@ -205,6 +260,55 @@ function goAgreement(key) {
 
 <template>
   <view class="wrap">
+    <!-- 首页 Banner 轮播（P76）：方式由后台配置 —— 横向滑动 / 淡入淡出 / 不轮播 -->
+    <view v-if="banners.length" class="banner-wrap">
+      <!-- 横向滑动：普通多张则用 swiper，单张退化为静态卡 -->
+      <swiper
+        v-if="bannerCfg.transition === 'slide' && banners.length > 1"
+        class="banner-swiper"
+        :autoplay="bannerCfg.autoplay"
+        :interval="bannerCfg.interval * 1000"
+        :duration="400"
+        circular
+      >
+        <swiper-item v-for="b in banners" :key="b.id" @click="goBanner(b)">
+          <view class="banner-item" :style="bannerStyle(b)">
+            <view v-if="!b.image" class="banner-text">{{ b.title }}</view>
+            <view v-else class="banner-mask">{{ b.title }}</view>
+          </view>
+        </swiper-item>
+      </swiper>
+
+      <!-- 淡入淡出：绝对定位叠层 + opacity 过渡 -->
+      <view v-else-if="bannerCfg.transition === 'fade'" class="banner-fade">
+        <view
+          v-for="(b, i) in banners"
+          :key="b.id"
+          class="banner-layer"
+          :style="{ ...bannerStyle(b), opacity: i === fadeIndex ? 1 : 0 }"
+          @click="goBanner(b)"
+        >
+          <view v-if="!b.image" class="banner-text">{{ b.title }}</view>
+          <view v-else class="banner-mask">{{ b.title }}</view>
+        </view>
+        <view v-if="banners.length > 1" class="banner-dots">
+          <view
+            v-for="(b, i) in banners"
+            :key="'d' + b.id"
+            class="dot"
+            :class="{ on: i === fadeIndex }"
+            @click.stop="fadeIndex = i"
+          />
+        </view>
+      </view>
+
+      <!-- 不轮播：只显示首张 -->
+      <view v-else class="banner-item banner-static" :style="bannerStyle(banners[0])" @click="goBanner(banners[0])">
+        <view v-if="!banners[0].image" class="banner-text">{{ banners[0].title }}</view>
+        <view v-else class="banner-mask">{{ banners[0].title }}</view>
+      </view>
+    </view>
+
     <view class="card">
       <view class="row" style="gap: 20rpx; align-items: center">
         <!-- 头像：有图就铺满头像框（background-size: cover 等比裁切，不变形），没图显示昵称首字 -->
@@ -278,6 +382,76 @@ function goAgreement(key) {
 </template>
 
 <style>
+/* 首页 Banner 轮播（P76）：三种方式共用同一套外观 —— 圆角卡 + cover 背景 + 标题遮罩 */
+.banner-wrap {
+  margin: 0 0 20rpx;
+}
+.banner-swiper {
+  height: 260rpx;
+  border-radius: 20rpx;
+  overflow: hidden;
+}
+.banner-item,
+.banner-layer {
+  position: relative;
+  height: 260rpx;
+  border-radius: 20rpx;
+  background-color: #e8eefc;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+}
+.banner-static {
+  height: 260rpx;
+}
+.banner-fade {
+  position: relative;
+  height: 260rpx;
+}
+.banner-layer {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.6s ease;
+}
+.banner-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12rpx 20rpx;
+  font-size: 24rpx;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55));
+}
+.banner-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f6feb;
+}
+.banner-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12rpx;
+  display: flex;
+  justify-content: center;
+  gap: 10rpx;
+}
+.banner-dots .dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.55);
+}
+.banner-dots .dot.on {
+  width: 28rpx;
+  background: #fff;
+}
 /* 家长头像框：固定方形圆角，图片 aspectFill 等比铺满（不变形、不留白边） */
 .my-avatar {
   position: relative;

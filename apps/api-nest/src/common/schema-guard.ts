@@ -53,6 +53,24 @@ const REQUIRED_COLUMNS: { table: string; column: string; ddl: string; why: strin
     why: "教员授课地址（家长「到教员处上课」时的实际上课地点，P65）",
   },
   {
+    table: "banners",
+    column: "transition",
+    ddl: "VARCHAR(16) NOT NULL DEFAULT 'slide'",
+    why: "Banner 轮播方式：slide=横向滑动 / fade=淡入淡出 / none=不轮播（P76）",
+  },
+  {
+    table: "banners",
+    column: "autoplay",
+    ddl: "INT NOT NULL DEFAULT 1",
+    why: "Banner 是否自动播放（P76；transition=none 时不生效）",
+  },
+  {
+    table: "banners",
+    column: "interval_seconds",
+    ddl: "INT NOT NULL DEFAULT 4",
+    why: "Banner 自动切换间隔秒数（P76，1–15）",
+  },
+  {
     table: "orders",
     column: "place",
     ddl: "VARCHAR(32) NOT NULL DEFAULT 'home'",

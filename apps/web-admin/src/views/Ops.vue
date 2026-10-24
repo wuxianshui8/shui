@@ -22,16 +22,65 @@ async function loadAll() {
 }
 onMounted(loadAll);
 
-/* ---------------- Banner（P72：图片 + 跳转 + 排序） ---------------- */
+/* ---------------- Banner（P72：图片 + 跳转 + 排序；P76：上传图片 + 轮播方式） ---------------- */
 const bannerDlg = ref(false);
-const bannerForm = reactive({ id: 0, title: "", image: "", link: "", sort: 0, status: "on" });
+const bannerForm = reactive({
+  id: 0, title: "", image: "", link: "", sort: 0, status: "on",
+  transition: "slide", autoplay: true, intervalSeconds: 4,
+});
+const uploading = ref(false);
 
 function openBanner(row) {
   Object.assign(bannerForm, row
-    ? { id: row.id, title: row.title || "", image: row.image || "", link: row.link || "", sort: Number(row.sort || 0), status: row.status || "on" }
-    : { id: 0, title: "", image: "", link: "", sort: 0, status: "on" });
+    ? {
+        id: row.id, title: row.title || "", image: row.image || "", link: row.link || "",
+        sort: Number(row.sort || 0), status: row.status || "on",
+        transition: row.transition || "slide",
+        autoplay: row.autoplay === undefined ? true : !!Number(row.autoplay),
+        intervalSeconds: Number(row.interval_seconds || row.intervalSeconds || 4),
+      }
+    : { id: 0, title: "", image: "", link: "", sort: 0, status: "on", transition: "slide", autoplay: true, intervalSeconds: 4 });
   bannerDlg.value = true;
 }
+
+/**
+ * 上传 Banner 图（P76）：本地选图 → 读成 dataURL → POST /upload → 回填 `/uploads/xxx.png`。
+ * 图片落盘在服务端 uploads 卷，DB 只存 URL（与家长头像/教员证件同一套上传通道）。
+ */
+async function onPickImage(file) {
+  const raw = file && (file.raw || file);
+  if (!raw) return;
+  if (!/^image\/(png|jpe?g|webp)$/i.test(raw.type || "")) {
+    ElMessage.warning("只支持 PNG / JPG / WEBP");
+    return;
+  }
+  if (raw.size > 2 * 1024 * 1024) {
+    ElMessage.warning("图片不能超过 2MB");
+    return;
+  }
+  uploading.value = true;
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ""));
+      fr.onerror = () => reject(new Error("读取图片失败"));
+      fr.readAsDataURL(raw);
+    });
+    const r = await api.post("/upload", { dataUrl, filename: raw.name });
+    bannerForm.image = r.url;
+    ElMessage.success("图片已上传");
+  } catch (e) {
+    ElMessage.error(e.message || String(e));
+  } finally {
+    uploading.value = false;
+  }
+}
+
+const TRANSITIONS = [
+  { value: "slide", label: "横向滑动" },
+  { value: "fade", label: "淡入淡出" },
+  { value: "none", label: "不轮播（静态）" },
+];
 
 async function saveBanner() {
   if (!String(bannerForm.title || "").trim()) return ElMessage.warning("请填写标题");
@@ -43,6 +92,9 @@ async function saveBanner() {
       link: String(bannerForm.link || "").trim(),
       sort: Number(bannerForm.sort || 0),
       status: bannerForm.status,
+      transition: bannerForm.transition,
+      autoplay: !!bannerForm.autoplay,
+      intervalSeconds: Number(bannerForm.intervalSeconds || 4),
     };
     if (bannerForm.id) await api.put("/admin/banners/" + bannerForm.id, body);
     else await api.post("/admin/banners", body);
@@ -230,6 +282,16 @@ onMounted(loadAgreements);
             <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
             <el-table-column prop="link" label="跳转" min-width="160" show-overflow-tooltip />
             <el-table-column prop="sort" label="排序" width="80" />
+            <el-table-column label="轮播" width="150">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.transition === 'none' ? 'info' : 'success'">
+                  {{ row.transition === "fade" ? "淡入淡出" : row.transition === "none" ? "不轮播" : "横向滑动" }}
+                </el-tag>
+                <span v-if="row.transition !== 'none'" class="muted" style="margin-left: 6px">
+                  {{ Number(row.autoplay) ? Number(row.interval_seconds) + "s" : "手动" }}
+                </span>
+              </template>
+            </el-table-column>
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag size="small" :type="row.status === 'on' ? 'success' : 'info'">{{ row.status === "on" ? "展示中" : "已停用" }}</el-tag>
@@ -377,11 +439,45 @@ onMounted(loadAgreements);
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="bannerDlg" :title="bannerForm.id ? '编辑 Banner' : '新增 Banner'" width="520px">
-      <el-form label-width="90px">
+    <el-dialog v-model="bannerDlg" :title="bannerForm.id ? '编辑 Banner' : '新增 Banner'" width="560px">
+      <el-form label-width="100px">
         <el-form-item label="标题"><el-input v-model="bannerForm.title" placeholder="如「新用户首单立减」" /></el-form-item>
-        <el-form-item label="图片地址"><el-input v-model="bannerForm.image" placeholder="/uploads/xxx.png 或 https://..." /></el-form-item>
+        <el-form-item label="图片">
+          <div style="width: 100%">
+            <div class="row" style="gap: 10px; margin-bottom: 8px">
+              <el-upload
+                :show-file-list="false"
+                :auto-upload="false"
+                accept="image/png,image/jpeg,image/webp"
+                :on-change="onPickImage"
+              >
+                <el-button :loading="uploading">{{ uploading ? "上传中…" : "上传图片" }}</el-button>
+              </el-upload>
+              <span class="muted">PNG/JPG/WEBP，≤2MB；上传后自动填入地址</span>
+            </div>
+            <el-input v-model="bannerForm.image" placeholder="也可手填 /uploads/xxx.png 或 https://..." />
+            <div v-if="bannerForm.image" style="margin-top: 8px">
+              <el-image :src="bannerForm.image" fit="cover" style="width: 220px; height: 92px; border-radius: 6px; border: 1px solid #eee" />
+              <el-button size="small" text type="danger" style="margin-left: 8px" @click="bannerForm.image = ''">清除</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="跳转链接"><el-input v-model="bannerForm.link" placeholder="/m/pages/parent/index 或 https://..." /></el-form-item>
+        <el-form-item label="轮播方式">
+          <el-radio-group v-model="bannerForm.transition">
+            <el-radio v-for="t in TRANSITIONS" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="自动播放">
+          <el-switch v-model="bannerForm.autoplay" :disabled="bannerForm.transition === 'none'" />
+          <span class="muted" style="margin-left: 8px">
+            {{ bannerForm.transition === "none" ? "「不轮播」时不生效" : "关闭则只显示首张，可手动滑动" }}
+          </span>
+        </el-form-item>
+        <el-form-item label="切换间隔">
+          <el-input-number v-model="bannerForm.intervalSeconds" :min="1" :max="15" :disabled="bannerForm.transition === 'none' || !bannerForm.autoplay" />
+          <span class="muted" style="margin-left: 8px">秒（1–15）</span>
+        </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="bannerForm.sort" :min="0" :max="999" /></el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="bannerForm.status">

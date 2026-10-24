@@ -31,7 +31,7 @@
 | GET | `/api/meta/rules-public` | 公开 | 可公开的规则（等级表、信用表、结算规则等） |
 | GET | `/api/public/agreements` | 公开 | **协议列表**（P75）：`[{key,title,updatedAt}]`，顺序 user / privacy / refund；游客可读 |
 | GET | `/api/public/agreements/:key` | 公开 | **协议正文**（P75）：`{key,title,content,updatedAt}`；未知 key → 404 |
-| GET | `/api/public/banners` | 公开 | 首页 Banner |
+| GET | `/api/public/banners` | 公开 | 首页 Banner（含 `transition` 轮播方式 / `autoplay` / `interval_seconds`） |
 | GET | `/api/public/announcements?audience=` | 公开 | 平台公告 |
 | GET | `/api/public/coupons` | 公开 | 可领优惠券 |
 | POST | `/api/public/promo/:token/scan` | 公开 | 推广码扫码计数 |
@@ -210,8 +210,8 @@ awaiting_payment ──pay──> pending_class ──checkin──> in_class �
 | GET | `/api/admin/complaints` | **投诉工单列表**（P72）：`?status=open|processing|replied|closed&type=&orderId=&page=&pageSize=` → `{list,total,openCount}`，含投诉人（手机号脱敏）/关联单号/片区/处理说明 |
 | POST | `/api/admin/complaints/:id/handle` | **受理 / 回复工单**（P72）：`{status:'processing'\|'replied', note}`；`closed` 只能走上面的 `close`（避免绕过审计） |
 | GET | `/api/admin/banners` | Banner 列表 |
-| POST | `/api/admin/banners` | 新建 Banner `{title,image,link,sort,status}` |
-| PUT | `/api/admin/banners/:id` | **编辑 Banner**（字段局部更新，`status` 仅 `on`/`off`） |
+| POST | `/api/admin/banners` | 新建 Banner `{title,image,link,sort,status,transition:slide\|fade\|none,autoplay,intervalSeconds}`（非法值回落 slide / 15s） |
+| PUT | `/api/admin/banners/:id` | **编辑 Banner**（字段局部更新，`status` 仅 `on`/`off`；轮播三字段同样可改） |
 | POST | `/api/admin/banners/:id/toggle` | **上架 / 停用 Banner** |
 | DELETE | `/api/admin/banners/:id` | 删除 Banner |
 | GET | `/api/admin/announcements` | 公告列表 |

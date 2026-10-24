@@ -82,5 +82,9 @@ export function migrate() {
   // 服务级授课形式（P67）：上门授课 / 在教员家授课，可同时支持
   ensureColumn("teacher_services", "places", "TEXT NOT NULL DEFAULT 'home'");
   ensureColumn("orders", "parent_checkin_distance", "INTEGER");
+  // Banner 轮播（P76）：slide=横向滑动 / fade=淡入淡出 / none=不轮播
+  ensureColumn("banners", "transition", "TEXT NOT NULL DEFAULT 'slide'");
+  ensureColumn("banners", "autoplay", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn("banners", "interval_seconds", "INTEGER NOT NULL DEFAULT 4");
 }
 export { DATA_DIR, DB_FILE, ROOT };

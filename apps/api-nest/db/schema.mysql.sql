@@ -426,6 +426,9 @@ CREATE TABLE IF NOT EXISTS `banners` (
   `link`            VARCHAR(255),
   `sort`            INT NOT NULL DEFAULT 0,
   `status`          VARCHAR(255) NOT NULL DEFAULT 'on',
+  `transition`      VARCHAR(16) NOT NULL DEFAULT 'slide',
+  `autoplay`        INT NOT NULL DEFAULT 1,
+  `interval_seconds` INT NOT NULL DEFAULT 4,
   `created_at`      VARCHAR(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

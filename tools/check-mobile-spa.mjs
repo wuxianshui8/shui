@@ -455,6 +455,38 @@ assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
   const guestHit = await fetch(BASE + "/api/public/agreements/refund");
   assert(guestHit.status === 200, "未登录也能读到退款规则（登录页链接可用）");
 }
+/* ---------- P76 首页 Banner 轮播：三种方式 + 图片产物 ---------- */
+{
+  const homeB = await api("GET", "/public/home?lat=30.262&lng=120.133");
+  const bl = (homeB.body?.data?.banners) || [];
+  assert(homeB.status === 200 && bl.every((x) => ["slide", "fade", "none"].includes(x.transition || "slide")),
+    "首页下发的 Banner 都带轮播方式（移动端按此渲染）", "共 " + bl.length + " 张");
+  // 产物里三种渲染分支都在（swiper / fade 叠层 / 静态）
+  const pages = ["pages/parent/index/index.wxml", "pages/parent/index.wxml"];
+  const fsMod = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const mpRoot = fileURLToPath(new URL("../apps/web-mobile/dist/build/mp-weixin/", import.meta.url));
+  const wxml = pages.map((p) => mpRoot + p).find((p) => fsMod.existsSync(p));
+  if (wxml) {
+    const src = fsMod.readFileSync(wxml, "utf8");
+    assert(/swiper/.test(src) && /banner-layer/.test(src) && /banner-static/.test(src),
+      "小程序产物含三种轮播结构（swiper / 淡入叠层 / 静态）");
+    assert(/bannerStyle|background-image/.test(src), "产物用背景图铺图（cover，不变形）");
+  } else {
+    assert(false, "找不到家长首页小程序产物（pages/parent/index.wxml）");
+  }
+  // H5 侧：轮播相关代码被打进产物
+  const h5Dir = fileURLToPath(new URL("../apps/web-mobile/dist/build/h5/assets/", import.meta.url));
+  const chunk = fsMod.readdirSync(h5Dir).find((f) => /^pages-parent-index\.[\w-]+\.js$/.test(f));
+  assert(!!chunk, "H5 产物含家长首页分包");
+  if (chunk) {
+    const js = fsMod.readFileSync(h5Dir + chunk, "utf8");
+    assert(/banner-layer/.test(js) && /banner-fade/.test(js) && /setInterval/.test(js) && /clearInterval/.test(js) && /transition/.test(js),
+      "H5 产物含轮播逻辑（fade 叠层 + 定时器 + transition 分支）");
+  }
+}
+
+
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {
