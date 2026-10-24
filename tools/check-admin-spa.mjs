@@ -528,6 +528,46 @@ assert(restore.status === 200, "权限矩阵页：可恢复默认矩阵");
   }
 }
 
+/* ---------- P75 协议文案：后台可改用户协议 / 隐私政策 / 退款规则 ---------- */
+{
+  const list = await api("GET", "/admin/agreements", { token });
+  const keys = (list.body.data || []).map((a) => a.key);
+  assert(list.status === 200 && ["user", "privacy", "refund"].every((k) => keys.includes(k)),
+    "运营工具：协议页签能列出三份文案（用户协议/隐私政策/退款规则）", keys.join(","));
+  const before = list.body.data.find((a) => a.key === "refund");
+  assert(!!before && before.content.length > 0, "退款规则已有正文（可编辑）");
+
+  // 修改 → 公开接口立刻能读到 → 再改回原文
+  const stamp = "自动验收标记 " + Date.now();
+  const saved = await api("PUT", "/admin/agreements/refund", {
+    token, body: { title: before.title, content: before.content + "\n" + stamp },
+  });
+  assert(saved.status === 200 && saved.body.data.content.includes(stamp) && !!saved.body.data.updatedAt,
+    "后台保存协议文案成功并刷新 updated_at", saved.body.data && saved.body.data.updatedAt);
+  const pub = await api("GET", "/public/agreements/refund");
+  assert(pub.status === 200 && pub.body.data.content.includes(stamp),
+    "改完立刻生效：公开接口 /public/agreements/refund 读到新正文");
+  const pubList = await api("GET", "/public/agreements");
+  assert(pubList.status === 200 && (pubList.body.data || []).length >= 3 && !!pubList.body.data[0].updatedAt,
+    "公开协议列表带标题与更新时间（前端「其他协议」切换用）");
+
+  const tooShort = await api("PUT", "/admin/agreements/user", { token, body: { content: "短" } });
+  assert(tooShort.status === 400, "正文过短被拒（防手滑清空）", tooShort.text.slice(0, 80));
+  const noTitle = await api("PUT", "/admin/agreements/user", { token, body: { title: "  " } });
+  assert(noTitle.status === 400, "标题为空被拒");
+  const missing = await api("PUT", "/admin/agreements/not-exist", { token, body: { content: "随便写点内容超过十个字" } });
+  assert(missing.status === 404, "不存在的协议 key 返回 404");
+
+  const restore = await api("PUT", "/admin/agreements/refund", { token, body: { content: before.content } });
+  assert(restore.status === 200 && !restore.body.data.content.includes(stamp), "验收后已还原退款规则原文");
+
+  // 普通角色不能改
+  const parent = await api("POST", "/auth/login-password", { body: { phone: "13900000301", password: "a123456" } });
+  const denied = await api("PUT", "/admin/agreements/user", { token: parent.body.data.token, body: { content: "普通家长尝试改协议内容超过十个字" } });
+  assert(denied.status === 403, "家长角色不能改协议（403）", String(denied.status));
+}
+
+
 console.log("\n=================================================");
 console.log("PC 管理后台验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {

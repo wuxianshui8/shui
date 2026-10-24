@@ -196,6 +196,11 @@ function goCoupons() {
   }
   uni.navigateTo({ url: "/pages/parent/coupons/index" });
 }
+
+/** 协议与政策（P75）：用户协议 / 隐私政策 / 退款规则，游客也能看（合规要求可随时查阅） */
+function goAgreement(key) {
+  uni.navigateTo({ url: "/pages/agreements/index?key=" + key });
+}
 </script>
 
 <template>
@@ -218,6 +223,11 @@ function goCoupons() {
       <view class="btn ghost" style="margin-top: 12rpx" @click="goTeachers">找附近教员 · 立即预约</view>
       <view class="btn ghost" style="margin-top: 12rpx" @click="goDemands">我的需求（看报名 / 确认教员）</view>
       <view class="btn ghost" style="margin-top: 12rpx" @click="goCoupons">我的优惠券（领券 / 查看可用）</view>
+      <view class="row" style="margin-top: 18rpx; gap: 16rpx; flex-wrap: wrap">
+        <view class="muted" @click="goAgreement('user')">用户协议</view>
+        <view class="muted" @click="goAgreement('privacy')">隐私政策</view>
+        <view class="muted" @click="goAgreement('refund')">退款规则</view>
+      </view>
       <view class="muted" v-if="guest" style="margin-top: 16rpx">
         不用登录就能填表；点「发布需求」时再登录，登录后自动发布。
       </view>

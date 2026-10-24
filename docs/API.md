@@ -29,7 +29,8 @@
 | POST | `/api/auth/deactivate` | 登录 | **注销账号**（需求第 8 章）：清除手机号/微信/姓名/身份证等身份信息，撤销在招需求与上架服务；有未完结订单或冻结资金时拒绝 |
 | GET | `/api/meta/dictionary` | 公开 | 学段/科目/身份/订单状态/奖励类型字典 |
 | GET | `/api/meta/rules-public` | 公开 | 可公开的规则（等级表、信用表、结算规则等） |
-| GET | `/api/public/agreements/:key` | 公开 | `user` / `privacy` / `refund` 协议文案 |
+| GET | `/api/public/agreements` | 公开 | **协议列表**（P75）：`[{key,title,updatedAt}]`，顺序 user / privacy / refund；游客可读 |
+| GET | `/api/public/agreements/:key` | 公开 | **协议正文**（P75）：`{key,title,content,updatedAt}`；未知 key → 404 |
 | GET | `/api/public/banners` | 公开 | 首页 Banner |
 | GET | `/api/public/announcements?audience=` | 公开 | 平台公告 |
 | GET | `/api/public/coupons` | 公开 | 可领优惠券 |
@@ -223,7 +224,8 @@ awaiting_payment ──pay──> pending_class ──checkin──> in_class �
 | POST | `/api/admin/coupons` | 新建优惠券 `{name,amount,threshold,total,validFrom,validTo,status}` |
 | PUT | `/api/admin/coupons/:id` | **编辑优惠券**（发行总量不得小于已领取数） |
 | POST | `/api/admin/coupons/:id/toggle` | **启用 / 停用优惠券**（停用后家长端领券列表不再出现） |
-| GET / PUT | `/api/admin/agreements`、`/api/admin/agreements/:key` | 协议文案 |
+| GET | `/api/admin/agreements` | **协议文案列表**（P75，带正文）：`[{key,title,content,updatedAt}]` |
+| PUT | `/api/admin/agreements/:key` | **保存协议文案**（P75）：`{title?,content}`；正文少于 10 字 → 400、标题空 → 400、未知 key → 404；改动写审计日志 `admin.agreement.update` |
 | GET | `/api/admin/audit-logs?page=&pageSize=` | 操作日志（分页） |
 | GET / POST | `/api/admin/admins` | 管理员账号（列表已过滤软删除；新建时 `password` 可省，默认 `DEMO_PASSWORD`） |
 | DELETE | `/api/admin/admins/:id` | **删除管理员**：有审计/提现审批/发票受理痕迹 → 软删除并匿名化（返回 `{mode:"soft",kept:[...]}`）；零痕迹 → 物理删除（`{mode:"hard"}`）。护栏：不能删自己（403）、至少保留一个启用管理员（`LAST_ADMIN`）、重复删除 404 |

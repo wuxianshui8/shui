@@ -162,6 +162,52 @@ async function runTask(t) {
     taskBusy.value = "";
   }
 }
+
+/* ---------------- 协议文案（P75）：用户协议 / 隐私政策 / 退款规则 ---------------- */
+const AGREEMENT_LABEL = { user: "用户服务协议", privacy: "隐私政策", refund: "退款规则" };
+const agreements = ref([]);
+const agreeKey = ref("user");
+const agreeForm = reactive({ title: "", content: "", updatedAt: "" });
+const agreeBusy = ref(false);
+
+function pickAgreement(key) {
+  agreeKey.value = key;
+  const row = agreements.value.find((a) => a.key === key);
+  agreeForm.title = row ? row.title : "";
+  agreeForm.content = row ? row.content : "";
+  agreeForm.updatedAt = row ? row.updatedAt || "" : "";
+}
+
+async function loadAgreements() {
+  try {
+    agreements.value = (await api.get("/admin/agreements")) || [];
+    const exists = agreements.value.find((a) => a.key === agreeKey.value);
+    pickAgreement(exists ? agreeKey.value : (agreements.value[0] && agreements.value[0].key) || "user");
+  } catch (e) {
+    ElMessage.error(e.message);
+  }
+}
+
+async function saveAgreement() {
+  if (!String(agreeForm.title || "").trim()) return ElMessage.warning("请填写协议标题");
+  if (String(agreeForm.content || "").trim().length < 10) return ElMessage.warning("正文太短（至少 10 个字）");
+  agreeBusy.value = true;
+  try {
+    const r = await api.put("/admin/agreements/" + agreeKey.value, {
+      title: agreeForm.title.trim(),
+      content: agreeForm.content,
+    });
+    const row = agreements.value.find((a) => a.key === agreeKey.value);
+    if (row) { row.title = r.title; row.updatedAt = r.updatedAt; }
+    agreeForm.updatedAt = r.updatedAt || "";
+    ElMessage.success("已保存，家长/教员端立即生效");
+  } catch (e) {
+    ElMessage.error(e.message || String(e));
+  } finally {
+    agreeBusy.value = false;
+  }
+}
+onMounted(loadAgreements);
 </script>
 
 <template>
@@ -291,6 +337,42 @@ async function runTask(t) {
               </template>
             </el-table-column>
           </el-table>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="协议文案" name="agreement">
+        <div class="card">
+          <div class="muted" style="margin-bottom: 12px">
+            这三份文案同时用于：家长端「我的 → 用户协议 / 隐私政策 / 退款规则」、教员端同入口、以及登录页勾选提示。
+            保存后立即生效（`updated_at` 会刷新，界面会显示最近更新时间）。
+          </div>
+          <div class="row" style="gap: 10px; margin-bottom: 12px">
+            <el-radio-group v-model="agreeKey" @change="pickAgreement">
+              <el-radio-button v-for="a in agreements" :key="a.key" :value="a.key">
+                {{ a.title || AGREEMENT_LABEL[a.key] || a.key }}
+              </el-radio-button>
+            </el-radio-group>
+            <el-button @click="loadAgreements">重新加载</el-button>
+          </div>
+          <el-form label-width="80px">
+            <el-form-item label="标题">
+              <el-input v-model="agreeForm.title" style="max-width: 420px" />
+            </el-form-item>
+            <el-form-item label="正文">
+              <el-input
+                v-model="agreeForm.content"
+                type="textarea"
+                :rows="16"
+                placeholder="协议正文（支持换行，前端按白名单换行渲染）"
+              />
+            </el-form-item>
+            <el-form-item label="最近更新">
+              <span class="muted">{{ agreeForm.updatedAt || "—" }}（保存后自动刷新）</span>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="agreeBusy" @click="saveAgreement">保存文案</el-button>
+              <span class="muted" style="margin-left: 12px">正文少于 10 个字会被拒绝（防手滑清空）</span>
+            </el-form-item>
+          </el-form>
         </div>
       </el-tab-pane>
     </el-tabs>

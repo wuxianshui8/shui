@@ -276,6 +276,17 @@ export class AdminOpsController {
     return ok(await this.svc.toggleCoupon(req, Number(id)));
   }
 
+  /* ---------------- 协议文案（P75）：用户协议 / 隐私政策 / 退款规则 ---------------- */
+  @Get("agreements")
+  async agreements() {
+    return ok(await this.svc.agreements());
+  }
+
+  @Put("agreements/:key")
+  async updateAgreement(@Param("key") key: string, @Body() body: any, @Req() req: any) {
+    return ok(await this.svc.updateAgreement(req, String(key), body));
+  }
+
   /* ---------------- 审计日志 ---------------- */
   @Get("audit-logs")
   async auditLogs(@Query() q: any) {

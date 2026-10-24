@@ -16,7 +16,8 @@
     { "path": "pages/sales/rewards/index", "style": { "navigationBarTitleText": "奖励明细" } },
     { "path": "pages/agent/index", "style": { "navigationBarTitleText": "区域代理端" } },
     { "path": "pages/agent/complaints/index", "style": { "navigationBarTitleText": "客诉工单" } },
-    { "path": "pages/messages/index", "style": { "navigationBarTitleText": "消息中心" } }
+    { "path": "pages/messages/index", "style": { "navigationBarTitleText": "消息中心" } },
+    { "path": "pages/agreements/index", "style": { "navigationBarTitleText": "协议与政策" } }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "white",

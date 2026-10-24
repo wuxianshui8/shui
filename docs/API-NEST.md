@@ -43,11 +43,11 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **165** 个路由，分布在 **19** 个控制器。
+总计 **169** 个路由，分布在 **19** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
-| `admin/admin-ops.controller.ts` | 53 |
+| `admin/admin-ops.controller.ts` | 55 |
 | `teacher/teacher.controller.ts` | 20 |
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
@@ -55,7 +55,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `auth/auth.controller.ts` | 9 |
 | `demand/demands.controller.ts` | 8 |
 | `parent/parent.controller.ts` | 8 |
-| `public/public.controller.ts` | 6 |
+| `public/public.controller.ts` | 8 |
 | `common/addresses.controller.ts` | 5 |
 | `wallet/wallet.controller.ts` | 5 |
 | `sales/sales.controller.ts` | 5 |
@@ -82,6 +82,8 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | PUT | `/api/admin/agents/:id` | admin |  |
 | POST | `/api/admin/agents/:id/deposit` | admin | 200 |
 | POST | `/api/admin/agents/:id/toggle` | admin | 200 |
+| GET | `/api/admin/agreements` | admin |  |
+| PUT | `/api/admin/agreements/:key` | admin |  |
 | GET | `/api/admin/announcements` | admin |  |
 | POST | `/api/admin/announcements` | admin | 200 |
 | DELETE | `/api/admin/announcements/:id` | admin |  |
@@ -269,6 +271,8 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 
 | 方法 | 路径 | 角色 | 说明 |
 | --- | --- | --- | --- |
+| GET | `/api/public/agreements` | 公开 | 无需令牌 |
+| GET | `/api/public/agreements/:key` | 公开 | 无需令牌 |
 | GET | `/api/public/announcements` | 公开 | 无需令牌 |
 | GET | `/api/public/banners` | 公开 | 无需令牌 |
 | GET | `/api/public/coupons` | 公开 | 无需令牌 |

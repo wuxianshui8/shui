@@ -125,6 +125,11 @@ async function changePassword() {
     loading.value = false;
   }
 }
+
+/** 协议阅读（P75）：登录页的《用户协议》《隐私政策》《退款规则》都能点开看 */
+function openAgreement(key) {
+  uni.navigateTo({ url: "/pages/agreements/index?key=" + key });
+}
 </script>
 
 <template>
@@ -146,6 +151,13 @@ async function changePassword() {
           演示：家长 13900000301 / 教员 13900000201 / 业务员 13900000101 / 代理 13900000010，口令均 a123456
         </view>
         <view class="muted" v-if="next" style="margin-top: 12rpx">登录后将回到刚才的页面继续操作。</view>
+        <!-- 合规（P75）：登录即视为同意三份协议，文案可在后台「运营工具 → 协议文案」维护 -->
+        <view class="muted" style="margin-top: 18rpx; line-height: 1.9">
+          登录即表示同意
+          <text class="link" @click="openAgreement('user')">《用户服务协议》</text>
+          <text class="link" @click="openAgreement('privacy')">《隐私政策》</text>
+          <text class="link" @click="openAgreement('refund')">《退款规则》</text>
+        </view>
       </template>
 
       <template v-else>
@@ -175,5 +187,8 @@ async function changePassword() {
   text-align: center;
   font-size: 22rpx;
   color: #9aa3af;
+}
+.link {
+  color: #1f6feb;
 }
 </style>

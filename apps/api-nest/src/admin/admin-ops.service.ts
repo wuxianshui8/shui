@@ -902,10 +902,44 @@ export class AdminOpsService {
 
   async closeComplaint(ctx: any, id: number, note?: string) {
     const c = await this.one("SELECT * FROM `complaints` WHERE `id` = ?", [id]);
+    if (!c) throw notFound("工单不存在");
     await this.ds.query("UPDATE `complaints` SET `status` = 'closed', `handler_id` = ?, `handle_note` = ?, `resolved_at` = ? WHERE `id` = ?",
       [Number(ctx.user.uid), note || "平台终审结案", nowIso(), c.id]);
     await audit(this.ds, ctx, "admin.complaint.close", "complaints:" + c.id);
     return { ok: true };
+  }
+
+  /* ---------------- 协议文案（P75）：用户协议 / 隐私政策 / 退款规则 ---------------- */
+  async agreements() {
+    return this.ds.query(
+      "SELECT `key`, `title`, `content`, `updated_at` AS updatedAt FROM `agreements` " +
+        "ORDER BY FIELD(`key`, 'user', 'privacy', 'refund'), `key`",
+    );
+  }
+
+  /**
+   * 保存协议文案：标题不为空、正文至少 10 个字（防手滑清空），改动进审计日志。
+   * `key` 不可改（对外契约），新增协议走 DB 迁移而不是随手建。
+   */
+  async updateAgreement(ctx: any, key: string, b: any) {
+    const row: any = await this.one("SELECT * FROM `agreements` WHERE `key` = ?", [String(key)]);
+    if (!row) throw notFound("协议不存在");
+    const title = b?.title === undefined ? row.title : String(b.title).trim();
+    if (!title) throw bad("协议标题不能为空");
+    const content = b?.content === undefined ? row.content : String(b.content);
+    if (String(content).trim().length < 10) throw bad("协议正文太短（至少 10 个字），请确认没有误清空");
+    await this.ds.query("UPDATE `agreements` SET `title` = ?, `content` = ?, `updated_at` = ? WHERE `key` = ?", [
+      title, content, nowIso(), row.key,
+    ]);
+    await audit(this.ds, ctx, "admin.agreement.update", "agreements:" + row.key, {
+      titleChanged: title !== row.title,
+      beforeLen: String(row.content || "").length,
+      afterLen: String(content).length,
+    });
+    return (await this.ds.query(
+      "SELECT `key`, `title`, `content`, `updated_at` AS updatedAt FROM `agreements` WHERE `key` = ?",
+      [row.key],
+    ))[0];
   }
 
   /* ---------------- 运营工具 ---------------- */

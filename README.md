@@ -128,10 +128,10 @@ npm run web:mobile:build:mp                              # → apps/web-mobile/d
 
 接口文档、追溯矩阵与汇总门禁：
 ```bash
-npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（142 路由 / 16 控制器）
+npm run api:doc        # 从控制器源码生成 docs/API-NEST.md 的接口总表（169 路由 / 19 控制器）
 npm run api:doc:check  # 文档与代码是否一致（退出码 1 = 已过期）
 npm run trace:check    # 追溯矩阵引用的接口/脚本是否真实存在（143/160 覆盖）
-npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致（后台 20 页 + 移动 16 页）
+npm run ui:check       # UI 说明书 ↔ 新前端页面/路由/菜单是否一致 + 后端能力↔前端入口（后台 21 页 + 移动 18 页）
 npm run docs:check     # 文档 shell 写法（围栏成对、PS 块禁 && 与裸 curl、Windows 文档 && 必须有 PS 提示）
 npm run windows:check  # Windows 脚本（批处理 CRLF/无 BOM/含中文必 chcp 65001；.ps1 含中文必 BOM、禁 &&、PS 5.1 语法解析）
 npm run test:unit      # 单元测试 + 覆盖率门禁（172 用例、23 个模块，行覆盖率 ≥ 90% 否则失败·约 7 秒）

@@ -90,7 +90,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/demands/index", "我的需求页"], ["/m/pages/parent/demand/index", "需求详情（确认教员）页"], ["/m/pages/parent/coupons/index", "我的优惠券页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
+for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/demands/index", "我的需求页"], ["/m/pages/parent/demand/index", "需求详情（确认教员）页"], ["/m/pages/parent/coupons/index", "我的优惠券页"], ["/m/pages/agreements/index", "协议与政策页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -440,6 +440,21 @@ assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
 }
 
 
+/* ---------- P75 协议：移动端阅读入口 + 公开接口 ---------- */
+{
+  const list = await api("GET", "/public/agreements");
+  const keys = (list.body.data || []).map((a) => a.key);
+  assert(list.status === 200 && ["user", "privacy", "refund"].every((k) => keys.includes(k)),
+    "移动端协议页能取到三份协议（/public/agreements）", keys.join(","));
+  const one = await api("GET", "/public/agreements/privacy");
+  assert(one.status === 200 && (one.body.data.content || "").length > 10 && !!one.body.data.title,
+    "隐私政策可单独取正文（阅读页按 key 拉取）");
+  const notFound = await api("GET", "/public/agreements/nope");
+  assert(notFound.status === 404, "未知协议 key 返回 404（前端显示加载失败）");
+  // 游客可读（合规要求随时可查阅）
+  const guestHit = await fetch(BASE + "/api/public/agreements/refund");
+  assert(guestHit.status === 200, "未登录也能读到退款规则（登录页链接可用）");
+}
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {

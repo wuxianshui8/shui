@@ -251,6 +251,11 @@ function goWallet() {
   uni.navigateTo({ url: "/pages/teacher/wallet/index" });
 }
 
+/** 协议阅读（P75）：用户协议 / 隐私政策 / 退款规则 */
+function goAgreement(key) {
+  uni.navigateTo({ url: "/pages/agreements/index?key=" + key });
+}
+
 function goMessages() {
   uni.navigateTo({ url: "/pages/messages/index" });
 }
@@ -391,6 +396,14 @@ function goMessages() {
     </view>
     <view class="card" @tap="goWallet">
       <view class="row"><view>我的钱包（提现 / 流水）</view><view class="tag">进入 →</view></view>
+    </view>
+    <!-- 合规（P75）：教员端同样能查三份协议，文案由后台「运营工具 → 协议文案」维护 -->
+    <view class="card">
+      <view class="row" style="gap: 16rpx; flex-wrap: wrap">
+        <view class="muted" @tap="goAgreement('user')">用户协议</view>
+        <view class="muted" @tap="goAgreement('privacy')">隐私政策</view>
+        <view class="muted" @tap="goAgreement('refund')">退款规则</view>
+      </view>
     </view>
   </view>
 </template>
