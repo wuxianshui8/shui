@@ -34,6 +34,7 @@
 | GET | `/api/public/announcements?audience=` | 公开 | 平台公告 |
 | GET | `/api/public/coupons` | 公开 | 可领优惠券 |
 | POST | `/api/public/promo/:token/scan` | 公开 | 推广码扫码计数 |
+| GET | `/api/metrics` | 本机/令牌 | **Prometheus 文本指标**（P74）：默认只允许 127.0.0.1 抓取，跨机需配 `METRICS_TOKEN` 带 `?token=` 或 `Authorization: Bearer`。指标：`jiajiao_up`/`uptime_seconds`/`db_up`/`cache_up`/`orders{status}`/`escrow_yuan_total`/`risk_events_open`/`complaints_open`/`refunds_pending`/`withdrawals_pending`/`backup_last_success_timestamp` |
 
 ---
 
@@ -64,6 +65,8 @@
 | POST | `/api/messages/:id/read`、`/api/messages/read-all` | 已读 |
 | GET | `/api/my/coupons` | 我的优惠券 |
 | POST | `/api/coupons/:id/claim` | 领取优惠券 |
+| GET | `/api/parent/coupons` | **我的优惠券（Nest 侧，P71）**：`{list:[{id,couponId,name,amount,threshold,used,orderId,claimedAt,validFrom,validTo}], usable}` |
+| POST | `/api/parent/coupons/:id/claim` | **领券（Nest 侧，P71）**：`coupons` 行锁防超发；已领 → 400 `COUPON_CLAIMED`、领完 → 400 `COUPON_EMPTY`；下单传 `couponId` 抵扣 |
 | GET | `/api/my/favorites` | 收藏的教员 |
 | POST | `/api/my/favorites/:teacherId` | 收藏 / 取消收藏（切换） |
 | POST | `/api/complaints` | 发起客诉 `{orderId,title,content,againstUser}` |
@@ -203,6 +206,8 @@ awaiting_payment ──pay──> pending_class ──checkin──> in_class �
 | POST | `/api/admin/risks/:id/handle` | `{action:'close'\|'hold'\|'release'\|'punish', note}` |
 | POST | `/api/admin/appeals/:id/arbitrate` | `{accept,reason}` 差评申诉仲裁 |
 | POST | `/api/admin/complaints/:id/close` | `{note}` 投诉终审 |
+| GET | `/api/admin/complaints` | **投诉工单列表**（P72）：`?status=open|processing|replied|closed&type=&orderId=&page=&pageSize=` → `{list,total,openCount}`，含投诉人（手机号脱敏）/关联单号/片区/处理说明 |
+| POST | `/api/admin/complaints/:id/handle` | **受理 / 回复工单**（P72）：`{status:'processing'\|'replied', note}`；`closed` 只能走上面的 `close`（避免绕过审计） |
 | GET | `/api/admin/banners` | Banner 列表 |
 | POST | `/api/admin/banners` | 新建 Banner `{title,image,link,sort,status}` |
 | PUT | `/api/admin/banners/:id` | **编辑 Banner**（字段局部更新，`status` 仅 `on`/`off`） |

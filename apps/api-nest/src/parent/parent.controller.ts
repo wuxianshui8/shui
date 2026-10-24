@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Put, Body, Query, Req } from "@nestjs/common";
+import { Controller, Get, Param, Post, Put, Body, Query, Req, HttpCode } from "@nestjs/common";
 import { ParentService } from "./parent.service";
 import { OrdersService } from "../order/orders.service";
 import { Roles } from "../common/access";
@@ -51,5 +51,18 @@ export class ParentController {
   @Get("orders")
   async ordersList(@Query("status") status: string, @Req() req: any) {
     return ok(await this.orders.listBy(Number(req.user.uid), "parent", status));
+  }
+
+  /** 我的优惠券（P71）：未用/已用都返回，前端分开展示 */
+  @Get("coupons")
+  async myCoupons(@Req() req: any) {
+    return ok(await this.svc.myCoupons(Number(req.user.uid)));
+  }
+
+  /** 领券（P71）：已领 / 领完分别返回 COUPON_CLAIMED / COUPON_EMPTY */
+  @Post("coupons/:id/claim")
+  @HttpCode(200)
+  async claimCoupon(@Param("id") id: string, @Req() req: any) {
+    return ok(await this.svc.claimCoupon(Number(req.user.uid), Number(id)));
   }
 }

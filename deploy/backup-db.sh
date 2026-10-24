@@ -13,6 +13,8 @@
 #   6. 结果写 /var/backups/jiajiao/LAST_STATUS；失败非零退出 → systemd OnFailure 触发通知
 #
 # 可覆盖的环境变量：BACKUP_DIR / KEEP_DB / KEEP_UP / CONTAINER / DB / MIN_TABLES
+#   BACKUP_RCLONE_REMOTE  异地留存目标（rclone 远端路径，如 oss:jiajiao-backup/db）；不配则只留本机
+#   KEEP_OFFSITE_AGE      远端清理年龄（rclone --min-age，默认 14d）
 # ============================================================
 set -uo pipefail
 
@@ -28,8 +30,8 @@ OUT="$BACKUP_DIR/jiajiao-$STAMP.sql.gz"
 log() { echo "[$(date '+%F %T')] $*"; }
 
 write_status() { # status msg
-  printf '{"status":"%s","at":"%s","msg":"%s","file":"%s"}\n' \
-    "$1" "$(date -Is)" "${2//\"/\'}" "$OUT" > "$BACKUP_DIR/LAST_STATUS"
+  printf '{"status":"%s","at":"%s","msg":"%s","file":"%s","offsite":"%s"}\n' \
+    "$1" "$(date -Is)" "${2//\"/\'}" "$OUT" "${OFFSITE_FILES:-pending}" > "$BACKUP_DIR/LAST_STATUS"
 }
 
 fail() {
@@ -72,7 +74,36 @@ if docker volume inspect jiajiao_app-uploads >/dev/null 2>&1; then
   fi
 fi
 
-# ---------- 4) 保留策略 ----------
+# ---------- 4) 异地留存（P74）----------
+# 本机备份挡不住磁盘损坏 / 误删整机。装了 rclone 并配好远端就直接同步出去；
+# 没配就**明确跳过并记入状态**（不阻断本机备份成功，但看板上能一眼看出「只有本机副本」）。
+OFFSITE_FILES=""
+if [ -n "${BACKUP_RCLONE_REMOTE:-}" ]; then
+  if ! command -v rclone >/dev/null 2>&1; then
+    log "WARN: BACKUP_RCLONE_REMOTE 已配置但未安装 rclone，跳过异地留存"
+    OFFSITE_FILES="rclone-missing"
+  else
+    OFF_OK=1
+    for f in "$OUT" "$UP_OUT"; do
+      [ -f "$f" ] || continue
+      if rclone copy "$f" "$BACKUP_RCLONE_REMOTE" --no-traverse >/dev/null 2>&1; then
+        log "异地留存完成：$(basename "$f") → $BACKUP_RCLONE_REMOTE"
+        OFFSITE_FILES="${OFFSITE_FILES:+$OFFSITE_FILES,}$(basename "$f")"
+      else
+        log "ERROR: 异地留存失败：$(basename "$f") → $BACKUP_RCLONE_REMOTE"
+        OFF_OK=0
+      fi
+    done
+    # 远端只保留最近 N 份（默认与本机一致）
+    rclone delete "$BACKUP_RCLONE_REMOTE" --min-age "${KEEP_OFFSITE_AGE:-14d}" >/dev/null 2>&1 || true
+    [ "$OFF_OK" = 1 ] || fail "异地留存失败（本机备份已完成，但远端副本没更新）"
+  fi
+else
+  log "SKIP: 未配置 BACKUP_RCLONE_REMOTE，本机备份完成但**没有异地副本**"
+  OFFSITE_FILES="none"
+fi
+
+# ---------- 5) 保留策略 ----------
 prune() { # 目录 通配 保留份数
   local dir="$1" pat="$2" keep="$3" n
   n=$(find "$dir" -maxdepth 1 -name "$pat" -type f | wc -l)

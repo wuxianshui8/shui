@@ -397,6 +397,7 @@ function demandCard(d) {
   return '<article class="card demand-card ' + (d.urgent ? "urgent" : "") + '">' +
     '<div class="row between"><div class="row" style="gap:6px;flex-wrap:wrap">' +
     '<b style="font-size:15px">' + esc(d.subject) + '</b><span class="tag">' + esc(d.stage) + "</span>" +
+    '<span class="tag">' + (d.place === "teacher_place" ? "📍 到我这里上课" : "🏠 我上门授课") + "</span>" +
     (d.urgent ? '<span class="badge danger">加急</span>' : "") + "</div>" +
     '<span class="dist">📍 ' + (d.distanceKm ?? "-") + " km</span></div>" +
     '<div class="times">🕒 ' + esc(times || "时间待沟通") + "</div>" +

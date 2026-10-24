@@ -379,6 +379,7 @@ function goMessages() {
       <view v-for="d in demands" :key="d.id" class="row" style="margin-top: 16rpx">
         <view style="flex: 1">
           <view style="font-size: 26rpx">{{ d.subject }} · {{ d.stage }}</view>
+          <view class="muted">{{ d.mode === "teacher_place" ? "📍 到我这里上课" : "🏠 我上门授课" }}</view>
           <view class="muted">{{ d.address }}</view>
           <view class="muted">{{ d.distanceKm }} km · 优先级 {{ d.priority }}</view>
         </view>

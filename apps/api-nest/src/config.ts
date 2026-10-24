@@ -36,4 +36,9 @@ export const config = {
     : join(process.cwd(), "..", "..", "data", "uploads"),
   /** 证件识别通道：mock（默认，从文件名解析）| tencent（腾讯云 IDCardOCR） */
   ocrProvider: String(process.env.OCR_PROVIDER || "mock").toLowerCase(),
+  /**
+   * Prometheus 抓取令牌（P74）：`GET /api/metrics` 默认只允许本机抓取；
+   * 跨机抓取时配置本项，请求带 `?token=` 或 `Authorization: Bearer`。
+   */
+  metricsToken: String(process.env.METRICS_TOKEN || ""),
 };

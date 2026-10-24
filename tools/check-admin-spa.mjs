@@ -390,6 +390,144 @@ assert(grant.status === 200 && (grant.body.data.matrix["order.price"] || []).inc
 const restore = await api("PUT", "/admin/permissions", { token, body: { matrix: perms.body.data.matrix } });
 assert(restore.status === 200, "权限矩阵页：可恢复默认矩阵");
 
+
+/* ---------- P70 需求池授课形式可见 ---------- */
+{
+  const ds = await api("GET", "/admin/demands?pageSize=50", { token });
+  const list = (ds.body.data && ds.body.data.list) || [];
+  assert(ds.status === 200 && list.length > 0, "需求池返回数据（P70）");
+  assert(list.every((d) => d.mode === "home" || d.mode === "teacher_place"),
+    "需求池每条都带授课形式 mode（教员上门 / 到教员处）", "样例：" + (list[0] && list[0].mode));
+}
+
+/* ---------- P71 优惠券：后台建券 → 家长领取 → 下单抵扣 ---------- */
+{
+  const created = await api("POST", "/admin/coupons", {
+    token,
+    body: { name: "P71 后台建券 30", amount: 3000, threshold: 10000, total: 5, status: "on" },
+  });
+  assert(created.status === 200 && Number(created.body.data.amount) === 3000,
+    "运营工具：可新建优惠券（减免/门槛/发行量）", created.text.slice(0, 120));
+  const cid = created.body.data.id;
+  const listAll = await api("GET", "/admin/coupons", { token });
+  assert(listAll.status === 200 && listAll.body.data.some((c) => Number(c.id) === Number(cid)),
+    "新券出现在优惠券列表里");
+  const edit = await api("PUT", "/admin/coupons/" + cid, { token, body: { threshold: 8000, total: 9, validTo: "2027-12-31" } });
+  assert(edit.status === 200 && Number(edit.body.data.threshold) === 8000 && Number(edit.body.data.total) === 9,
+    "可编辑门槛 / 发行量 / 有效期");
+
+  const publicList = await api("GET", "/public/coupons");
+  assert(publicList.status === 200 && publicList.body.data.some((c) => Number(c.id) === Number(cid)),
+    "家长端「领取中心」能看到这张券（/public/coupons）");
+
+  const parent = await api("POST", "/auth/login-password", { body: { phone: "13900000301", password: "a123456" } });
+  const ptoken = parent.body.data.token;
+  const claim = await api("POST", "/parent/coupons/" + cid + "/claim", { token: ptoken });
+  assert(claim.status === 200 && claim.body.data.ok, "家长可领取（POST /parent/coupons/:id/claim）", claim.text.slice(0, 100));
+  const mine = await api("GET", "/parent/coupons", { token: ptoken });
+  assert(mine.status === 200 && mine.body.data.list.some((c) => Number(c.couponId) === Number(cid) && !c.used),
+    "领取后进入「我的优惠券」且未使用");
+  const again = await api("POST", "/parent/coupons/" + cid + "/claim", { token: ptoken });
+  assert(again.status === 400 && again.body.code === "COUPON_CLAIMED", "同一张券不能重复领（COUPON_CLAIMED）");
+  const afterClaim = await api("GET", "/admin/coupons", { token });
+  const row = afterClaim.body.data.find((c) => Number(c.id) === Number(cid));
+  assert(Number(row.claimed) === 1, "领取计数回写到 coupons.claimed（" + row.claimed + "）");
+
+  const ucid = mine.body.data.list.find((c) => Number(c.couponId) === Number(cid)).id;
+  const teacher = await api("POST", "/auth/login-password", { body: { phone: "13900000201", password: "a123456" } });
+  const services = await api("GET", "/teacher/services?teacherId=4", { token: teacher.body.data.token });
+  const svcId = services.body.data[0].id;
+  const svcPrice = Number(services.body.data[0].price);
+  const mk = await api("POST", "/orders/from-service", {
+    token: ptoken,
+    body: { serviceId: svcId, lessonTime: new Date(Date.now() + 18 * 86400000).toISOString(), couponId: ucid, remark: "P71 用券" },
+  });
+  assert(mk.status === 200 && Number(mk.body.data.amount) === svcPrice - 3000,
+    "下单用券后应付金额按面额递减（" + svcPrice + "-3000）", "amount=" + (mk.body.data && mk.body.data.amount));
+  const usedList = await api("GET", "/parent/coupons", { token: ptoken });
+  assert(usedList.body.data.list.find((c) => Number(c.id) === Number(ucid)).used === true,
+    "用过的券标记为已使用（并绑定 orderId）");
+
+  const cheap = await api("POST", "/admin/coupons", {
+    token, body: { name: "P71 高门槛券", amount: 5000, threshold: 100000, total: 0, status: "on" },
+  });
+  const c2 = await api("POST", "/parent/coupons/" + cheap.body.data.id + "/claim", { token: ptoken });
+  const badUse = await api("POST", "/orders/from-service", {
+    token: ptoken,
+    body: { serviceId: svcId, lessonTime: new Date(Date.now() + 19 * 86400000).toISOString(), couponId: c2.body.data.userCouponId },
+  });
+  assert(badUse.status === 400 && /门槛/.test(badUse.body.message || ""), "未达门槛的券下单被拒（不静默放过）", badUse.text.slice(0, 100));
+  await api("POST", "/admin/coupons/" + cid + "/toggle", { token });
+  await api("POST", "/admin/coupons/" + cheap.body.data.id + "/toggle", { token });
+}
+
+/* ---------- P72 Banner 图/链接、公告正文、投诉工单页 ---------- */
+{
+  const b = await api("POST", "/admin/banners", {
+    token, body: { title: "P72 Banner", image: "https://example.com/b.png", link: "/m/pages/parent/index", sort: 3 },
+  });
+  assert(b.status === 200 && b.body.data.image === "https://example.com/b.png" && b.body.data.link === "/m/pages/parent/index",
+    "Banner 可带图片地址与跳转链接（此前只能改标题）");
+  const bEdit = await api("PUT", "/admin/banners/" + b.body.data.id, { token, body: { sort: 7 } });
+  assert(bEdit.status === 200 && Number(bEdit.body.data.sort) === 7, "Banner 排序可改");
+  await api("DELETE", "/admin/banners/" + b.body.data.id, { token });
+
+  const a = await api("POST", "/admin/announcements", {
+    token, body: { title: "P72 公告", content: "正文内容：国庆期间客服轮班", audience: "all", status: "on" },
+  });
+  assert(a.status === 200 && (a.body.data.content || "").includes("国庆期间"),
+    "公告可保存正文（此前 content 恒为空）");
+  const aEdit = await api("PUT", "/admin/announcements/" + a.body.data.id, { token, body: { content: "正文已更新" } });
+  assert(aEdit.status === 200 && aEdit.body.data.content === "正文已更新", "公告正文可编辑");
+  const pubAnn = await api("GET", "/public/announcements?audience=all");
+  assert(pubAnn.status === 200 && pubAnn.body.data.some((x) => x.content === "正文已更新"),
+    "家长/教员端能读到公告正文");
+  await api("DELETE", "/admin/announcements/" + a.body.data.id, { token });
+
+  const parent = await api("POST", "/auth/login-password", { body: { phone: "13900000301", password: "a123456" } });
+  const cp = await api("POST", "/complaints", { token: parent.body.data.token, body: { title: "P72 工单", content: "教员迟到", type: "service" } });
+  assert(cp.status === 200, "家长可提交投诉（前置）");
+  const list = await api("GET", "/admin/complaints?status=open", { token });
+  const row = (list.body.data.list || []).find((c) => c.title === "P72 工单");
+  assert(list.status === 200 && !!row && row.statusText === "待受理", "投诉工单独立列表可按状态筛选（含中文状态）");
+  assert(typeof list.body.data.openCount === "number", "工单页带未结案计数（" + list.body.data.openCount + "）");
+  const accept = await api("POST", "/admin/complaints/" + row.id + "/handle", { token, body: { status: "processing", note: "已联系双方" } });
+  assert(accept.status === 200 && accept.body.data.status === "processing" && accept.body.data.handle_note === "已联系双方",
+    "可受理工单并写入处理说明");
+  const reply = await api("POST", "/admin/complaints/" + row.id + "/handle", { token, body: { status: "replied", note: "已回复家长" } });
+  assert(reply.status === 200 && reply.body.data.status === "replied", "可回复工单");
+  const badStatus = await api("POST", "/admin/complaints/" + row.id + "/handle", { token, body: { status: "closed" } });
+  assert(badStatus.status === 400, "handle 不接受 closed（结案必须走 close，避免绕过审计）");
+  const closed = await api("POST", "/admin/complaints/" + row.id + "/close", { token, body: { note: "结案" } });
+  assert(closed.status === 200, "可结案（沿用既有 close 语义）");
+}
+
+/* ---------- P73 运维任务：此前只有接口没有按钮的 4 个能力 ---------- */
+{
+  const expire = await api("POST", "/admin/applications/expire", { token });
+  assert(expire.status === 200, "运维任务：清理过期报名可用", expire.text.slice(0, 80));
+  const closeExpired = await api("POST", "/admin/orders/close-expired", { token });
+  assert(closeExpired.status === 200, "运维任务：关闭超时未支付订单可用");
+  const reminder = await api("POST", "/admin/reminders/run", { token });
+  assert(reminder.status === 200, "运维任务：手动跑上课提醒可用");
+  const settle = await api("POST", "/admin/rewards/settle", { token });
+  assert(settle.status === 200, "运维任务：结算业务员奖励可用");
+}
+
+/* ---------- P74 Prometheus /metrics ---------- */
+{
+  const m = await api("GET", "/metrics", {});
+  const text = m.text || "";
+  assert(m.status === 200 && text.startsWith("# HELP jiajiao_up"),
+    "/api/metrics 以 Prometheus 文本格式返回（本机可抓）", String(m.status));
+  for (const name of ["jiajiao_up", "jiajiao_db_up", "jiajiao_cache_up", "jiajiao_orders", "jiajiao_escrow_yuan_total",
+    "jiajiao_risk_events_open", "jiajiao_complaints_open", "jiajiao_refunds_pending", "jiajiao_withdrawals_pending",
+    "jiajiao_backup_last_success_timestamp"]) {
+    assert(text.includes("# TYPE " + name) && new RegExp("^" + name + "[ {]", "m").test(text),
+      "metrics 含指标 " + name);
+  }
+}
+
 console.log("\n=================================================");
 console.log("PC 管理后台验收：通过 " + pass + " 项，失败 " + fail + " 项");
 if (fail) {

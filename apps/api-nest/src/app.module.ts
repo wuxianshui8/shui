@@ -5,6 +5,7 @@ import { config } from "./config";
 import { RedisModule } from "./redis/redis.module";
 import { RulesModule } from "./rules/rules.module";
 import { HealthController } from "./health/health.controller";
+import { MetricsController } from "./health/metrics.controller";
 import { MetaController } from "./meta/meta.controller";
 import { AuthController } from "./auth/auth.controller";
 import { AuthService } from "./auth/auth.service";
@@ -57,7 +58,7 @@ import { UploadsService } from "./upload/uploads.service";
     RulesModule,
   ],
   controllers: [
-    HealthController, MetaController, AuthController,
+    HealthController, MetricsController, MetaController, AuthController,
     ParentController, AddressesController, DemandsController,
     AdminController, AgentController,
     TeacherController, WalletController, OrdersController, SalesController,

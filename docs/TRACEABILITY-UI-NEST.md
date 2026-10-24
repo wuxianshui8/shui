@@ -3,11 +3,13 @@
 对应第二份文档《UI 界面设计说明书 V1.0》。参考实现（`web/*.html` + 原生 ESM）的 UI 追溯见 [`docs/TRACEABILITY.md`](TRACEABILITY.md) 第二部分；
 本文件覆盖**按需求书 6.1 选型实现的新前端**：
 
-- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：20**
-- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：16**（家长 7 页含「我的需求 / 需求详情·确认教员 / 附近教员 / 教员详情·立即预约 / 订单详情」，另教员 3 页含入驻认证、业务员 2 页、代理 2 页、登录与消息各 1 页）
+- **PC 管理后台** `apps/web-admin/`：Vue3 + Vite + Element Plus + vue-router，**后台页面：21**
+- **移动四端** `apps/web-mobile/`：uni-app（Vue3 语法），**移动端页面：17**（家长 8 页含「我的需求 / 需求详情·确认教员 / 我的优惠券 / 附近教员 / 教员详情·立即预约 / 订单详情」，另教员 3 页含入驻认证、业务员 2 页、代理 2 页、登录与消息各 1 页）
 
 > 机器校验：`npm run ui:check` —— 断言本文引用的每个 `.vue` 真实存在、每个页面文件都被本文档化、
-> 引用的后台路由都在 `router.js` 注册、侧栏菜单与路由自洽、声明的页面数与实际一致（漏写/写错即失败）。
+> 引用的后台路由都在 `router.js` 注册、侧栏菜单与路由自洽、声明的页面数与实际一致（漏写/写错即失败）；
+> **并做「后端能力 ↔ 前端入口」双向校验**（P73）：Nest 里每条 `/admin/**` 接口都必须在后台前端出现（否则失败，
+> 确不需要就写进 `ADMIN_API_ALLOWLIST` 并注明原因），移动端 19 项家长/教员/业务员/代理关键能力必须能找到调用入口。
 
 ## 1. 移动端（uni-app）— 对应 UI 说明书第 2–4 章
 
@@ -26,6 +28,7 @@
 | 第 2 章 授课地点（教员上门 / 家长到教员处） | `pages/parent/teacher`、`pages/parent/publish`、`pages/parent/order`、`pages/teacher/apply` | `pages/parent/teacher/index.vue`、`pages/parent/publish/index.vue`、`pages/parent/order/index.vue`、`pages/teacher/apply/index.vue` | **P65**：教员在入驻/资料里填「授课地址」后，家长预约页出现「🏠 教员上门 / 📍 我到教员处」两个选项（选后者隐藏家长地址选择、显示教员地址），发布需求也能选上课形式；订单详情显示「授课方式」与「教员授课地址」；下单带 `place`，到教员处时后端自动把订单地点换成教员授课地址，无需家长地址 |
 | 第 3 章 到场打卡 + 双方确认（P66） | `pages/parent/order`、`pages/teacher/index` | `pages/parent/order/index.vue`、`pages/teacher/index.vue` | **P66**：到教员处上课的订单要**双方各打一次卡**——家长在订单详情点「📍 我到场了」（`uni.getLocation` 取 gcj02 高精度定位，拒绝授权时明确提示、不静默放行），教员在订单列表点「教学点打卡」；两边都打卡后订单自动转「上课中」，界面上随时能看到「家长 ✅/⏳ ／教员 ✅/⏳ · 双方已到齐」；教员上门订单仍由教员一次打卡即开课 |
 | 第 2 章 我的需求 + 确认教员（P68） | `pages/parent/demands/index`、`pages/parent/demand/index` | `pages/parent/demands/index.vue`、`pages/parent/demand/index.vue` | 本人需求列表（学段科目 / 地址 / 预算 / **授课形式** / 报名人数 / 状态）→ 可暂停接单 / 恢复 / 撤销；进详情看**报名教员列表**（距离 / 实时优先级 / 状态，已确认排最前）→「确认这位教员」生成订单并跳去支付。补上了「发完需求就看不到报名」的断链 |
+| 第 2 章 我的优惠券（P71） | `pages/parent/coupons/index` | `pages/parent/coupons/index.vue` | 可用 / 已用分栏；「领取中心」列可领券（面额 / 门槛 / 已领数量）→ `POST /parent/coupons/:id/claim`（已领 `COUPON_CLAIMED`、领完 `COUPON_EMPTY`）；预约页在下单面板里按门槛过滤出可用券、选券后实时显示「券立减 / 应付」并带 `couponId` 下单 |
 | （UI 说明书未单列业务员端） | `pages/sales/index` | `pages/sales/index.vue` | 按同规范扩展：本月注册/成交/GMV/待结奖励、双通道推广码、客户 |
 | （同上）奖励明细 | `pages/sales/rewards/index` | `pages/sales/rewards/index.vue` | 六类奖励按类型汇总与筛选、结算状态、钱包可用 |
 | 第 4 章 区域代理端界面（大盘/订单） | `pages/agent/index` | `pages/agent/index.vue` | 片区 GMV/订单/业务员、考核完成度、片区订单 |
@@ -53,7 +56,8 @@ UI 说明书「第 4 章补充：平台管理员界面（两张）」只画了**
 | 权限矩阵 | `/permissions` | `Permissions.vue` | 需求 4.5.9（4 权限点 × 5 角色，admin 列锁定） |
 | 区域管理 | `/regions` | `Regions.vue` + `apps/web-admin/src/components/GeoFenceMap.vue` | 需求 4.5.5（片区/电子围栏）：**两种设置方式**——「按地图设置」在中国地图上直接画多边形/圆（顶点可拖动微调）；「按行政区设置」输入地名 → 勾选候选行政区 → 围栏即所选边界的并集（多环），地图蓝色高亮预览。底图两层自动降级：在线瓦片（默认高德，`VITE_TILE_URL` 可替换）不可达时回落离线省级底图（`apps/web-admin/src/assets/china.geo.json`，34 个省级区划，随包分发）。几何换算抽在 `apps/web-admin/src/geo-fence.js`（Web Mercator + 瓦片坐标，纯函数，被 `tools/check-geo-fence.mjs` 直接 import 断言） |
 | 规则配置中心 | `/rules` | `Rules.vue` + `apps/web-admin/src/components/RuleValueEditor.vue` + `apps/web-admin/src/components/RuleRowsTable.vue` | 需求 4.5.4（17 组规则热更新）：**按字段类型生成表单**（数字框 / 开关 / 标签 / 角色勾选 / 可编辑表格 / 嵌套对象），字段中文名与单位（¥、%、×）来自 `rule-meta.js`；原始 JSON 仅作「高级」只读折叠展示，不提供文本框给运营 |
-| 运营工具 | `/ops` | `Ops.vue` | 需求 4.5.8（Banner / 公告 / 优惠券） |
+| 运营工具 | `/ops` | `Ops.vue` | 需求 4.5.8（Banner / 公告 / 优惠券 / **运维任务**）：**P72** Banner 可配标题 + **图片地址** + **跳转链接** + 排序（表格显示缩略图）；公告可写**正文**（列表显示）、选受众、置顶、可选「同时推送站内消息」；**P71** 优惠券可**新建**（名称/减免/门槛/发行量/有效期起止）与编辑、启停，发行量 0 = 不限量；**P73** 新增「运维任务」页签：清理过期报名、关闭超时未支付订单、手动跑上课提醒、结算业务员奖励（此前这 4 个能力只有接口没有按钮） |
+| 投诉工单（P72） | `/complaints` | `Complaints.vue` | 需求 3.x 客服 / 4.5.7：独立工单页（此前只能从「风控与仲裁」里看到关闭按钮）。状态/类型筛选 + 未结案计数，列表带投诉人（手机号脱敏）、关联订单号、片区、处理说明；「受理（processing）/ 回复（replied）/ 结案（closed）」三个动作，说明写入 `handle_note` 且进审计日志 |
 | 学段 / 科目（运营工具类目） | `/catalog` | `Catalog.vue` | 需求 4.1（发单必填字段的选项维护）：字典落 `rule_configs.catalog`，保存即时生效，前端读 `/api/meta/dictionary` |
 | 风控与仲裁 | `/risks` | `Risks.vue` | 需求 4.5.7 |
 | 操作日志 | `/logs` | `Logs.vue` | 需求 4.5.9 |

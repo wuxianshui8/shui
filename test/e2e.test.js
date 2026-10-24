@@ -1274,6 +1274,55 @@ async function loginPassword(phone) {
       "已支付订单再次 pay 幂等（paidAt 不变，不二次入账）");
   }
 
+  section("27. 授课形式可见性（P70）与优惠券链路（P71）");
+  {
+    // 教员端「附近需求」要能看出是上门还是到教员处
+    const near = await api("GET", "/api/teacher/nearby-demands", { token: teacherToken });
+    const nearList = (near.body.data && near.body.data.list) || [];
+    assert(near.status === 200, "教员端附近需求可拉取");
+    assert(nearList.every((d) => d.place === "home" || d.place === "teacher_place"),
+      "附近需求每条都带授课形式 place（前端据此提示上门 / 到我这里）",
+      "共 " + nearList.length + " 条");
+
+    // 后台需求池能看到授课形式（原始字段 mode 随 d.* 下发）
+    const pool = await api("GET", "/api/admin/demands?pageSize=20", { token: adminToken });
+    const poolList = (pool.body.data && pool.body.data.list) || [];
+    assert(pool.status === 200 && poolList.length > 0 &&
+      poolList.every((d) => d.mode === "home" || d.mode === "teacher_place"),
+      "后台需求池每条带 mode（列表可加「授课形式」列）");
+
+    // 优惠券：建券 → 家长领 → 我的券 → 用券下单抵扣 → 重复领被拒
+    const c = await api("POST", "/api/admin/coupons", {
+      token: adminToken,
+      body: { name: "e2e P71 券 20", amount: 2000, threshold: 5000, total: 3, status: "on" },
+    });
+    assert(c.status === 200 && Number(c.body.data.amount) === 2000, "后台可建券（P71）");
+    const cid = c.body.data.id;
+    const pub = await api("GET", "/api/public/coupons");
+    assert(pub.status === 200 && pub.body.data.some((x) => Number(x.id) === Number(cid)), "可领券出现在公开列表");
+    const claim = await api("POST", "/api/coupons/" + cid + "/claim", { token: parentToken });
+    assert(claim.status === 200 && claim.body.data.ok, "家长领券成功");
+    const claim2 = await api("POST", "/api/coupons/" + cid + "/claim", { token: parentToken });
+    assert(claim2.status === 400 && claim2.body.code === "COUPON_CLAIMED", "重复领取被拒（COUPON_CLAIMED）");
+    const my = await api("GET", "/api/my/coupons", { token: parentToken });
+    // 参考实现的 /api/my/coupons 按 uc.id DESC 返回，最新领的券即列表首条
+    const uc = (my.body.data || [])[0];
+    assert(my.status === 200 && !!uc && !uc.used, "「我的优惠券」能看到这张券且未使用");
+
+    const svcList2 = (await api("GET", "/api/teacher/services", { token: teacherToken })).body.data;
+    const svc2 = svcList2[0];
+    const useOrder = await api("POST", "/api/orders/from-service", {
+      token: parentToken,
+      body: { serviceId: svc2.id, lessonTime: new Date(Date.now() + 22 * 86400000).toISOString(), couponId: uc.id, remark: "e2e P71 用券" },
+    });
+    assert(useOrder.status === 200 && Number(useOrder.body.data.amount) === Number(svc2.price) - 2000,
+      "用券下单后应付金额递减（" + svc2.price + "-2000）", "amount=" + (useOrder.body.data && useOrder.body.data.amount));
+    const my2 = await api("GET", "/api/my/coupons", { token: parentToken });
+    assert(my2.body.data.find((x) => Number(x.id) === Number(uc.id)).used === 1, "用过的券标记为已使用");
+    // 收尾：停用测试券
+    await api("POST", "/api/admin/coupons/" + cid + "/toggle", { token: adminToken });
+  }
+
   /* ---------- 汇总 ---------- */
   console.log("\n=================================================");
   console.log(`测试结果：通过 ${pass} 项，失败 ${fail} 项`);

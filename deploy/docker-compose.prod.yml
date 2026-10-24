@@ -90,6 +90,9 @@ services:
       WECHAT_OAUTH_REDIRECT_ALLOWLIST: ${WECHAT_OAUTH_REDIRECT_ALLOWLIST:-}
       WECHAT_USERINFO: ${WECHAT_USERINFO:-1}
       UPLOAD_DIR: /app/data/uploads
+      # Prometheus 抓取令牌（可选）：不配则 /api/metrics 只允许 127.0.0.1 抓取
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      BACKUP_STATUS_FILE: /backup-status/LAST_STATUS
     depends_on:
       mysql:
         condition: service_healthy
@@ -100,6 +103,8 @@ services:
       - "127.0.0.1:4300:4300"
     volumes:
       - app-uploads:/app/data/uploads
+      # 备份状态（只读）：/api/metrics 的 jiajiao_backup_last_success_timestamp 从这里读 LAST_STATUS
+      - /var/backups/jiajiao:/backup-status:ro
     restart: always
 
   # 一次性演示数据：docker compose -f docker-compose.prod.yml run --rm seed

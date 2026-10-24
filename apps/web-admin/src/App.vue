@@ -24,6 +24,7 @@ const menus = [
   { path: "/ops", title: "运营工具", icon: "Picture" },
   { path: "/catalog", title: "学段 / 科目", icon: "Collection" },
   { path: "/risks", title: "风控与仲裁", icon: "Warning" },
+  { path: "/complaints", title: "投诉工单", icon: "ChatDotRound" },
   { path: "/logs", title: "操作日志", icon: "Document" },
 ];
 

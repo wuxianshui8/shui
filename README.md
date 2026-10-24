@@ -110,8 +110,8 @@ npm run nest:gate:privacy   # 隐私与账号安全（地址·坐标脱敏 / hea
 npm run nest:gate:permissions # 细粒度权限矩阵（授予/撤销即时生效、admin 不可被移除）→ 17/17
 npm run nest:bench          # 性能基线（12 个读接口 + 抢单写路径，输出 p50/p95/p99/QPS）→ docs/PERF.md
 npm run nest:gate:p9        # SQLite → MySQL 迁移 + 迁移后一致性巡检 → 37 表一致 / 12/12
-npm run web:admin:check     # PC 后台（Vue3+Element Plus，20 页，含区域管理地图与自助改密、订单授课方式）→ 84/84
-npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，16 页；含游客浏览、微信一键登录、立即预约与订单详情、授课地点、到场打卡、服务授课形式、家长端 5 入口、支付唤起）→ 144/144
+npm run web:admin:check     # PC 后台（Vue3+Element Plus，21 页，含区域管理地图与自助改密、订单授课方式、投诉工单、优惠券建券、运维任务）→ 124/124
+npm run web:mobile:check    # 移动四端+消息中心（uni-app H5 + 小程序，17 页；含游客浏览、微信一键登录、立即预约与订单详情、授课地点、到场打卡、服务授课形式、家长端 5 入口、支付唤起、我的优惠券）→ 154/154
 ```
 
 前端构建（需联网安装依赖，产物被 `.gitignore` 忽略）：
@@ -140,7 +140,7 @@ npm run pay:recon      # 渠道对账（--self-test 自检；--bill <csv> 与库
 npm run chaos:drill    # 混沌演练：停 MySQL/Redis 验证「不崩溃 + 快失败 + 能恢复」（约 60s，会短暂停容器）
 npm run ci             # 静态门禁：tsc + 单元测试 + 依赖审计 + 接口 + 追溯 + Windows 脚本 + 文档写法（约 26 秒）
 npm run ci:quick       # 加跑 verify-nest + e2e + security + rules（约 8 分钟）
-npm run ci:full        # 全部 30 步门禁（约 5 分钟 = 静态 16 步 + 业务 14 步）
+npm run ci:full        # 全部 32 步门禁（约 5.5 分钟 = 静态 16 步 + 业务 16 步）
 ```
 
 ## 4. 容器化部署与 CI
@@ -159,9 +159,9 @@ npm run ci:full        # 全部 30 步门禁（约 5 分钟 = 静态 16 步 + �
 **CI（GitHub Actions）**：`.github/workflows/ci.yml`
 - `static` job：`node tools/ci-full.mjs --static`（tsc / 接口文档漂移 / 追溯矩阵 / UI 追溯 / 部署配置 / 镜像布局 / 官方 actionlint 与证据映射）
 - `integration` job：GitHub 服务容器起 MySQL 8 + Redis 7 → 建表灌数据 → 起 NestJS → 跑
-e2e 173 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 70 + 109；细粒度权限矩阵 17；镜像运行契约 33；证件识别 20；电子围栏几何 72
+e2e 173 / security 53 / rules 50 / races 27 / privacy 38 / concurrency 23 / 巡检 12 → 再构建两套前端并校验 124 + 154；细粒度权限矩阵 17；支付回调与幂等 32；镜像运行契约 33；证件识别 20；退款审批 15；发票/提醒/注销 23；电子围栏几何 72
 - 触发：push 到 main/master、PR、手动 `workflow_dispatch`
-- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 30 步
+- workflow 本身由**官方 `actionlint v1.7.12` + `shellcheck 0.11.0`** 校验（零告警）；本机 `npm run ci:full` 跑完整 32 步
 - **已在 GitHub Actions 真实执行通过**（[run #3](https://github.com/wuxianshui8/shui/actions/runs/39588034780)，两 job 全绿：static 13s / integration 206s，共用 484 项断言 + 7 次数据重置）
 
 启用方式（需仓库远端与推送凭据）：

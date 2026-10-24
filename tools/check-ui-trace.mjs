@@ -1,9 +1,13 @@
 // ============================================================
 // UI 追溯矩阵校验（《UI 界面设计说明书 V1.0》↔ 新前端页面/路由）
 //   1. 文档里引用的每个 .vue 必须真实存在
-//   2. 后台 18 个页面文件、移动端 9 个页面必须全部被文档引用（漏写即失败）
+//   2. 后台每个页面文件、移动端每个页面必须全部被文档引用（漏写即失败）
 //   3. 文档引用的路由必须在 router.js 注册，菜单标题必须与 App.vue 一致
-//   4. 打印实际数量，便于与文档声明比对
+//   4. 文档声明的页面数必须与实际一致
+//   5. **后端能力 ↔ 前端入口**（P73 升级）：
+//      a) Nest 里每条 `/admin/**` 接口都必须在 web-admin 源码里出现（否则就是「有接口没按钮」）
+//      b) 移动端「家长/教员/业务员/代理」四个角色的关键能力必须能在 pages 里找到调用入口
+//      c) 声明「只在后台」的接口要写进 ALLOWLIST 并写明原因，避免门禁被无声放宽
 // 用法：node tools/check-ui-trace.mjs
 // ============================================================
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -15,6 +19,33 @@ const problems = [];
 const notes = [];
 const fail = (m) => problems.push(m);
 
+/* ---------- 5a 的配置：确实不需要后台按钮的接口（必须写明原因） ---------- */
+const ADMIN_API_ALLOWLIST = new Map([
+  // 例：["/admin/xxx", "由 YYY 页面间接调用 / 仅供运维 CLI 使用"],
+]);
+
+/* ---------- 5b 的配置：移动端四端必须能找到入口的能力 ---------- */
+const MOBILE_CAPABILITIES = [
+  ["家长发需求", "/demands"],
+  ["家长我的需求", "/demands/mine"],
+  ["家长确认教员", '"/confirm"'],
+  ["家长付担保金", '"/pay"'],
+  ["家长到场打卡", '"/checkin"'],
+  ["家长申请退款", '"/refund"'],
+  ["家长紧急求助", '"/sos"'],
+  ["家长投诉工单", '"/complaints"'],
+  ["家长申请开票", '"/invoices"'],
+  ["家长领优惠券", '"/parent/coupons/"'],
+  ["家长看我的券", '"/parent/coupons"'],
+  ["家长找附近教员", "/parent/teachers"],
+  ["家长看教员详情", "/parent/teachers/"],
+  ["教员附近需求", "/teacher/nearby-demands"],
+  ["教员入驻申请", "/teacher/apply"],
+  ["教员我的服务", "/teacher/services"],
+  ["业务员奖励明细", "/sales/rewards"],
+  ["代理客诉工单", "/agent/complaints"],
+  ["四个角色消息中心", '"/messages"'],
+];
 /* ---------- 事实：后台路由 / 菜单 / 视图 / 移动端页面 ---------- */
 const routerSrc = readFileSync(path.join(ROOT, "apps/web-admin/src/router.js"), "utf8");
 const adminRoutes = [...routerSrc.matchAll(/path:\s*"(\/[^"]*)"/g)].map((m) => m[1]).filter((p) => p !== "/");
@@ -103,6 +134,64 @@ if (declaredMobile && Number(declaredMobile[1]) !== mobilePaths.length) {
   fail("文档声明移动端页面 " + declaredMobile[1] + " 个，实际 " + mobilePaths.length + " 个");
 }
 
+/* ---------- 6) 后端能力 ↔ 前端入口（P73） ---------- */
+
+/** 递归收集某目录下的源码文本 */
+function collect(dir, exts) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (["node_modules", "dist", ".git"].includes(e.name)) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...collect(p, exts));
+    else if (exts.some((x) => p.endsWith(x))) out.push(p);
+  }
+  return out;
+}
+
+// 6a) Nest 每条 /admin/** 接口都要在后台前端里出现
+const nestEndpoints = [];
+for (const f of collect(path.join(ROOT, "apps/api-nest/src"), [".ts"])) {
+  const src = readFileSync(f, "utf8");
+  const cm = src.match(/@Controller\(\s*["'`]([^"'`]*)["'`]\s*\)/);
+  if (!cm) continue;
+  for (const m of src.matchAll(/@(Get|Post|Put|Delete|Patch)\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/g)) {
+    nestEndpoints.push({
+      file: path.basename(f),
+      method: m[1].toUpperCase(),
+      path: "/" + [cm[1], m[2] || ""].filter(Boolean).join("/"),
+    });
+  }
+}
+const adminSrcText = collect(path.join(ROOT, "apps/web-admin/src"), [".vue", ".js"])
+  .map((f) => readFileSync(f, "utf8"))
+  .join("\n");
+// 前端大量用字符串拼接（"/admin/coupons/" + id + "/toggle"），因此按「到第一个路径参数为止的前缀」匹配
+const stubOf = (p) => p.split("/:")[0].replace(/\/$/, "");
+const adminEndpoints = nestEndpoints.filter((e) => e.path.startsWith("/admin/"));
+const unreferenced = adminEndpoints.filter(
+  (e) => !adminSrcText.includes(stubOf(e.path)) && !ADMIN_API_ALLOWLIST.has(e.path),
+);
+for (const e of unreferenced) {
+  fail("后台接口没有前端入口：" + e.method + " " + e.path + "（" + e.file + "）；确实不需要就写进 ADMIN_API_ALLOWLIST 并注明原因");
+}
+notes.push(
+  "后端接口 " + nestEndpoints.length + " 条（其中后台 " + adminEndpoints.length + " 条，" +
+  (adminEndpoints.length - unreferenced.length) + " 条有后台入口" +
+  (ADMIN_API_ALLOWLIST.size ? "，" + ADMIN_API_ALLOWLIST.size + " 条在豁免表" : "，无豁免") + "）",
+);
+
+// 6b) 移动端四端关键能力必须有调用入口
+const mobileSrcText = collect(path.join(ROOT, "apps/web-mobile/src"), [".vue", ".js"]).join("\n");
+const mobileSrcAll = collect(path.join(ROOT, "apps/web-mobile/src"), [".vue", ".js"])
+  .map((f) => readFileSync(f, "utf8"))
+  .join("\n");
+for (const [label, stub] of MOBILE_CAPABILITIES) {
+  if (!mobileSrcAll.includes(stub)) fail("移动端缺少入口：" + label + "（未找到对 " + stub + " 的调用）");
+}
+notes.push("移动端关键能力 " + MOBILE_CAPABILITIES.length + " 项已逐项核对入口");
+void mobileSrcText;
+
+
 /* ---------- 输出 ---------- */
 console.log("UI 追溯矩阵校验（UI 说明书 ↔ 新前端）");
 notes.forEach((n) => console.log("  · " + n));
@@ -112,4 +201,4 @@ if (problems.length) {
   problems.forEach((p) => console.log("  - " + p));
   process.exit(1);
 }
-console.log("\n✓ UI 追溯与代码一致：后台 " + viewFiles.length + " 页 / 移动端 " + mobilePaths.length + " 页全部有对应条目，路由与菜单自洽");
+console.log("\n✓ UI 追溯与代码一致：后台 " + viewFiles.length + " 页 / 移动端 " + mobilePaths.length + " 页全部有对应条目，路由与菜单自洽，后端能力均有前端入口");

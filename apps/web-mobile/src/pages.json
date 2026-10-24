@@ -7,6 +7,7 @@
     { "path": "pages/parent/order/index", "style": { "navigationBarTitleText": "订单详情" } },
     { "path": "pages/parent/demands/index", "style": { "navigationBarTitleText": "我的需求" } },
     { "path": "pages/parent/demand/index", "style": { "navigationBarTitleText": "需求详情" } },
+    { "path": "pages/parent/coupons/index", "style": { "navigationBarTitleText": "我的优惠券" } },
     { "path": "pages/login/index", "style": { "navigationBarTitleText": "登录" } },
     { "path": "pages/teacher/index", "style": { "navigationBarTitleText": "教员端" } },
     { "path": "pages/teacher/wallet/index", "style": { "navigationBarTitleText": "我的钱包" } },

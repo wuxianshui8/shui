@@ -394,6 +394,8 @@ export function register(router) {
         id: d.id,
         stage: d.stage,
         subject: d.subject,
+        // 授课形式（P70）：教员接单前要知道是自己上门还是家长到自己这里
+        place: normalizePlace(d.mode),
         address: d.address,
         lessonTimes: d.times ? JSON.parse(d.times) : [],
         budget: d.budget,

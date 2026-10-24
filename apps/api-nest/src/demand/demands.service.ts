@@ -303,6 +303,8 @@ export class DemandsService {
         id: Number(d.id),
         stage: d.stage,
         subject: d.subject,
+        // 授课形式（P70）：教员要看清这单是自己上门还是家长到自己家，接单前就得知道
+        mode: this.normalizeDemandMode(d.mode),
         // 隐私（需求第 2 章）：未报名/未确认前只下发街道级模糊地址与脱敏备注，
         // 完整门牌在家长确认接单生成订单后由订单详情提供
         address: confirmed ? d.address : (String(d.address || "").length > 8 ? String(d.address).slice(0, 8) + "***" : String(d.address || "")),

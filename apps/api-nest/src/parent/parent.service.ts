@@ -4,7 +4,7 @@ import { DataSource } from "typeorm";
 import { haversineKm, maskPhone, resolveRegion } from "../common/geo";
 import { RuleConfigService } from "../rules/rule-config.service";
 import { RuleEngineService } from "../rules/rule-engine.service";
-import { notFound, bad } from "../common/errors";
+import { notFound, bad, biz } from "../common/errors";
 
 @Injectable()
 export class ParentService {
@@ -282,6 +282,51 @@ export class ParentService {
       creditLogs: await this.ds.query("SELECT * FROM `credit_logs` WHERE `user_id` = ? ORDER BY `id` DESC LIMIT 30", [parentId]),
       restricted: !!credit?.restricted,
     };
+  }
+
+  /* ---------------- 优惠券（P71）：家长领券 + 我的券 ---------------- */
+
+  /** 我的优惠券（未用/已用都返回，前端分开展示；带券面额、门槛与有效期） */
+  async myCoupons(userId: number) {
+    const rows = await this.ds.query(
+      "SELECT uc.`id`, uc.`used`, uc.`order_id` AS orderId, uc.`claimed_at` AS claimedAt, " +
+        "c.`id` AS couponId, c.`name`, c.`amount`, c.`threshold`, c.`valid_from` AS validFrom, c.`valid_to` AS validTo " +
+        "FROM `user_coupons` uc JOIN `coupons` c ON c.`id` = uc.`coupon_id` WHERE uc.`user_id` = ? ORDER BY uc.`id` DESC",
+      [userId],
+    );
+    const list = rows.map((r: any) => ({
+      id: Number(r.id),
+      couponId: Number(r.couponId),
+      name: r.name,
+      amount: Number(r.amount),
+      threshold: Number(r.threshold),
+      used: !!r.used,
+      orderId: r.orderId == null ? null : Number(r.orderId),
+      claimedAt: r.claimedAt,
+      validFrom: r.validFrom,
+      validTo: r.validTo,
+    }));
+    return { list, usable: list.filter((c: any) => !c.used).length };
+  }
+
+  /**
+   * 领券：行锁 `FOR UPDATE` 防并发超发（`coupons.claimed` 与 `total` 比对），
+   * 同一用户同一券只能领一张（`user_coupons` 无唯一索引，靠锁内查重）。
+   * 语义与参考实现 `POST /api/coupons/:id/claim` 一致：只校验 `status='on'` + 是否领完 + 是否已领；
+   * **不在领取时校验有效期**（是否可用由下单侧的门槛/期限决定，与参考实现保持同一口径）。
+   */
+  async claimCoupon(userId: number, couponId: number) {
+    return this.ds.transaction(async (m) => {
+      const c: any = (await m.query("SELECT * FROM `coupons` WHERE `id` = ? AND `status` = 'on' FOR UPDATE", [couponId]))[0];
+      if (!c) throw notFound("优惠券不存在");
+      if (Number(c.total) > 0 && Number(c.claimed) >= Number(c.total)) throw biz("COUPON_EMPTY", "优惠券已被领完");
+      const exist: any = (await m.query("SELECT `id` FROM `user_coupons` WHERE `user_id` = ? AND `coupon_id` = ? LIMIT 1", [userId, couponId]))[0];
+      if (exist) throw biz("COUPON_CLAIMED", "您已领取该优惠券");
+      await m.query("INSERT INTO `user_coupons` (`user_id`,`coupon_id`,`used`,`claimed_at`) VALUES (?,?,0,?)", [userId, couponId, new Date().toISOString()]);
+      await m.query("UPDATE `coupons` SET `claimed` = `claimed` + 1 WHERE `id` = ?", [couponId]);
+      const uc: any = (await m.query("SELECT * FROM `user_coupons` WHERE `user_id` = ? AND `coupon_id` = ? LIMIT 1", [userId, couponId]))[0];
+      return { ok: true, userCouponId: Number(uc.id), name: c.name, amount: Number(c.amount), threshold: Number(c.threshold) };
+    });
   }
 }
 

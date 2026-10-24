@@ -229,11 +229,75 @@ jobs:
           REDIS_PORT: "6379"
           PORT: "4300"
           RESTART_API: "1"
-      - name: PC 后台（84）与移动端（144）产物校验
+      - name: PC 后台（124）与移动端（154）产物校验
         run: |
           node tools/check-admin-spa.mjs
           node tools/check-mobile-spa.mjs
           node tools/check-geo-fence.mjs
+
+      # P73：补上此前只在本地跑、没进 CI 的 4 个门禁（此前是「孤儿门禁」）
+      - name: 退款审批与担保释放 refund（P3）
+        run: node tools/check-refund.mjs
+        env:
+          BASE_URL: http://127.0.0.1:4300
+
+      - name: 发票受理 / 上课提醒 / 账号注销 invoice-reminder（P4）
+        run: node tools/check-invoice-reminder.mjs
+        env:
+          BASE_URL: http://127.0.0.1:4300
+
+      - name: 重置演示数据（隔离上一步副作用）
+        working-directory: apps/api-nest
+        run: node ../../tools/ci-reset.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          PORT: "4300"
+          RESTART_API: "1"
+
+      # 这两个门禁会自己起一个独立端口的 API（4391 支付真实验签 / 4392 证件 OCR），复用同一套 MySQL/Redis
+      - name: 支付回调与幂等 pay-flow（32）
+        run: node tools/check-pay-flow.mjs
+        env:
+          GATE_ROOT: ${{ github.workspace }}
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+
+      - name: 入驻证件上传与识别 idcard（20）
+        run: node tools/check-teacher-idcard.mjs
+        env:
+          GATE_ROOT: ${{ github.workspace }}
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+
+      - name: 重置演示数据（隔离上一步副作用）
+        working-directory: apps/api-nest
+        run: node ../../tools/ci-reset.mjs
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ""
+          MYSQL_DATABASE: jiajiao
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          PORT: "4300"
+          RESTART_API: "1"
 
       # 三个 workspace 的 node_modules 此时都已安装（后端 + 两套前端构建），做一次真实依赖审计
       - name: 依赖漏洞审计（全部 workspace）

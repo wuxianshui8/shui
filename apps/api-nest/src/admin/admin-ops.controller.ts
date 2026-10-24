@@ -175,6 +175,18 @@ export class AdminOpsController {
     return ok(await this.svc.arbitrateAppeal(req, Number(id), !!body?.accept, body?.reason));
   }
 
+  /** 投诉工单列表（P72）：独立「投诉工单」页用，按状态/类型筛选 + 分页 */
+  @Get("complaints")
+  async complaints(@Query() q: any) {
+    return ok(await this.svc.complaints(q));
+  }
+
+  /** 受理 / 回复工单（结案仍走 complaints/:id/close） */
+  @Post("complaints/:id/handle")
+  @HttpCode(200)
+  async handleComplaint(@Param("id") id: string, @Body() body: any, @Req() req: any) {
+    return ok(await this.svc.handleComplaint(req, Number(id), body));
+  }
   @Post("complaints/:id/close")
   @HttpCode(200)
   async closeComplaint(@Param("id") id: string, @Body() body: any, @Req() req: any) {

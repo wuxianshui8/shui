@@ -1593,9 +1593,10 @@ async function viewOrders(root) {
       async () => {
         const list = (await api.get("/api/admin/demands", { page: 1, pageSize: 200 })).list || [];
         return tableHtml(
-          ["学段 / 科目", "课时预算", "片区", "家长", "加急", "状态", "发布时间"],
+          ["学段 / 科目", "授课形式", "课时预算", "片区", "家长", "加急", "状态", "发布时间"],
           list.map((d) => [
             "<b>" + esc(d.stage) + "</b> · " + esc(d.subject),
+            d.mode === "teacher_place" ? '<span class="badge gold">到教员处</span>' : '<span class="faint">教员上门</span>',
             '<span class="num bold">' + money(d.budget) + "</span>",
             esc(regionName(d.region_id)),
             esc(d.parentName || "—"),

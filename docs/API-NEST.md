@@ -43,18 +43,18 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 <!-- BEGIN:AUTO-GEN -->
 <!-- 本区块由 tools/gen-api-doc.mjs 自动生成，请勿手工编辑；改接口后执行 npm run api:doc -->
 
-总计 **160** 个路由，分布在 **18** 个控制器。
+总计 **165** 个路由，分布在 **19** 个控制器。
 
 | 控制器 | 路由数 |
 | --- | --- |
-| `admin/admin-ops.controller.ts` | 51 |
+| `admin/admin-ops.controller.ts` | 53 |
 | `teacher/teacher.controller.ts` | 20 |
 | `agent/agent.controller.ts` | 14 |
 | `order/orders.controller.ts` | 10 |
 | `admin/admin.controller.ts` | 9 |
 | `auth/auth.controller.ts` | 9 |
 | `demand/demands.controller.ts` | 8 |
-| `parent/parent.controller.ts` | 6 |
+| `parent/parent.controller.ts` | 8 |
 | `public/public.controller.ts` | 6 |
 | `common/addresses.controller.ts` | 5 |
 | `wallet/wallet.controller.ts` | 5 |
@@ -64,6 +64,7 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | `health/health.controller.ts` | 2 |
 | `meta/meta.controller.ts` | 2 |
 | `pay/pay-notify.controller.ts` | 2 |
+| `health/metrics.controller.ts` | 1 |
 | `upload/uploads.controller.ts` | 1 |
 
 ### `admin/admin-ops.controller.ts`
@@ -95,7 +96,9 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | DELETE | `/api/admin/banners/:id` | admin |  |
 | PUT | `/api/admin/banners/:id` | admin |  |
 | POST | `/api/admin/banners/:id/toggle` | admin | 200 |
+| GET | `/api/admin/complaints` | admin |  |
 | POST | `/api/admin/complaints/:id/close` | admin | 200 |
+| POST | `/api/admin/complaints/:id/handle` | admin | 200 |
 | GET | `/api/admin/coupons` | admin |  |
 | POST | `/api/admin/coupons` | admin | 200 |
 | PUT | `/api/admin/coupons/:id` | admin |  |
@@ -206,6 +209,12 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | GET | `/api/health` | 公开 | 无需令牌 |
 | GET | `/api/health/detail` | admin |  |
 
+### `health/metrics.controller.ts`
+
+| 方法 | 路径 | 角色 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/metrics` | 公开 | 无需令牌 |
+
 ### `message/message.controller.ts`
 
 | 方法 | 路径 | 角色 | 说明 |
@@ -241,6 +250,8 @@ npm run api:doc:check    # 只校验文档是否过期（退出码 1 = 过期，
 | 方法 | 路径 | 角色 | 说明 |
 | --- | --- | --- | --- |
 | PUT | `/api/parent/avatar` | parent |  |
+| GET | `/api/parent/coupons` | parent |  |
+| POST | `/api/parent/coupons/:id/claim` | parent | 200 |
 | GET | `/api/parent/home` | parent |  |
 | GET | `/api/parent/orders` | parent |  |
 | GET | `/api/parent/profile` | parent |  |

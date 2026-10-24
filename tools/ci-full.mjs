@@ -38,11 +38,13 @@ const FULL = [
   { name: "races（27）", cmd: ["node", "tools/gate-races.mjs"] },
   { name: "privacy（38）", cmd: ["node", "tools/gate-privacy.mjs"] },
   { name: "permissions（17）", cmd: ["node", "tools/gate-permissions.mjs"] },
-  { name: "admin SPA（84）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
-  { name: "mobile SPA（144）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
+  { name: "admin SPA（124）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-admin-spa.mjs" } },
+  { name: "mobile SPA（154）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-mobile-spa.mjs" } },
   { name: "支付回调与幂等（32）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-pay-flow.mjs" } },
   { name: "镜像运行契约（33）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-image-runtime.mjs" } },
   { name: "入驻证件上传与识别（20）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-teacher-idcard.mjs" } },
+  { name: "退款审批与担保释放（15）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-refund.mjs" } },
+  { name: "发票 / 提醒 / 注销（23）", cmd: ["node", "tools/gate-p6.mjs"], env: { E2E_SCRIPT: "tools/check-invoice-reminder.mjs" } },
   { name: "迁移 + MySQL 巡检（12）", cmd: ["node", "tools/gate-p9.mjs"] },
 ];
 

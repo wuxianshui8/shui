@@ -187,6 +187,15 @@ function goDemands() {
   }
   uni.navigateTo({ url: "/pages/parent/demands/index" });
 }
+
+/** 我的优惠券（P71）：领券 + 查看可用张数，游客先登录 */
+function goCoupons() {
+  if (guest.value) {
+    goLogin("/pages/parent/coupons/index");
+    return;
+  }
+  uni.navigateTo({ url: "/pages/parent/coupons/index" });
+}
 </script>
 
 <template>
@@ -208,6 +217,7 @@ function goDemands() {
       <view class="btn" style="margin-top: 20rpx" @click="goPublish">发布家教需求</view>
       <view class="btn ghost" style="margin-top: 12rpx" @click="goTeachers">找附近教员 · 立即预约</view>
       <view class="btn ghost" style="margin-top: 12rpx" @click="goDemands">我的需求（看报名 / 确认教员）</view>
+      <view class="btn ghost" style="margin-top: 12rpx" @click="goCoupons">我的优惠券（领券 / 查看可用）</view>
       <view class="muted" v-if="guest" style="margin-top: 16rpx">
         不用登录就能填表；点「发布需求」时再登录，登录后自动发布。
       </view>

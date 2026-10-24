@@ -28,12 +28,26 @@ const draft = reactive({
   start: "19:00",
   end: "20:30",
   remark: "",
+  // 优惠券（P71）：0 = 不用券
+  couponId: 0,
 });
 // 新家长（如微信登录）还没有地址时，就地填一个再约
 const newAddr = reactive({ contact: "", phone: "", address: "", label: "家" });
 
 const services = computed(() => (teacher.value && teacher.value.services) || []);
 const chosenService = computed(() => services.value.find((s) => Number(s.id) === Number(draft.serviceId)) || services.value[0] || null);
+// 优惠券（P71）：预约时可选一张满足门槛的券，下单带 couponId
+const coupons = ref([]);
+const usableCoupons = computed(() => {
+  const price = Number((chosenService.value && chosenService.value.price) || 0);
+  return coupons.value.filter((c) => !c.used && Number(c.threshold) <= price);
+});
+const chosenCoupon = computed(() => usableCoupons.value.find((c) => Number(c.id) === Number(draft.couponId)) || null);
+const payable = computed(() => {
+  const price = Number((chosenService.value && chosenService.value.price) || 0);
+  const off = chosenCoupon.value ? Number(chosenCoupon.value.amount) : 0;
+  return Math.max(0, price - off);
+});
 // 授课形式（P67）：由**所选服务**决定它支持「上门授课 / 在教员家授课」
 const svcPlaces = computed(() => {
   const s = chosenService.value;
@@ -97,6 +111,14 @@ function openBooking() {
     return;
   }
   booking.value = true;
+  // 打开预约面板时顺手拉一下可用券（失败不打扰：没券也能下单）
+  request("GET", "/parent/coupons")
+    .then((r) => {
+      coupons.value = (r && r.list) || [];
+    })
+    .catch(() => {
+      coupons.value = [];
+    });
 }
 
 async function saveAddr() {
@@ -138,6 +160,7 @@ async function submit() {
       addressId: draft.place === "teacher_place" ? undefined : Number(draft.addressId),
       place: draft.place,
       remark: String(draft.remark || "").trim(),
+      couponId: draft.couponId ? Number(draft.couponId) : undefined,
     });
     uni.showToast({ title: "预约已创建，去支付", icon: "none" });
     booking.value = false;
@@ -292,8 +315,31 @@ async function submit() {
         <view class="muted" style="margin: 8rpx 0 10rpx">备注（可选）</view>
         <input v-model="draft.remark" class="input" placeholder="孩子年级、薄弱环节、希望重点提升的内容" />
 
+        <view class="muted" style="margin: 8rpx 0 10rpx">
+          优惠券（{{ usableCoupons.length }} 张可用）
+        </view>
+        <view class="row" style="flex-wrap: wrap; gap: 12rpx">
+          <view
+            class="chip"
+            :style="{ background: !draft.couponId ? '#1f6feb' : '#eef4ff', color: !draft.couponId ? '#fff' : '#1f6feb' }"
+            @click="draft.couponId = 0"
+          >不用券</view>
+          <view
+            v-for="c in usableCoupons"
+            :key="c.id"
+            class="chip"
+            :style="{ background: Number(draft.couponId) === Number(c.id) ? '#1f6feb' : '#eef4ff', color: Number(draft.couponId) === Number(c.id) ? '#fff' : '#1f6feb' }"
+            @click="draft.couponId = c.id"
+          >{{ c.name }} -{{ money(c.amount) }}</view>
+        </view>
+        <view v-if="!usableCoupons.length" class="muted" style="margin-top: 6rpx">
+          暂无可用的券（去「我的优惠券」领一张）
+        </view>
+
         <view class="muted" style="margin-bottom: 14rpx">
-          课时费 {{ chosenService ? money(chosenService.price) : "-" }} 支付后进入平台担保账户；上课确认完成后 T+7 结算给教员。
+          课时费 {{ chosenService ? money(chosenService.price) : "-" }}
+          <text v-if="chosenCoupon">· 券立减 {{ money(chosenCoupon.amount) }}</text>
+          · 应付 {{ money(payable) }}；支付后进入平台担保账户，上课确认完成后 T+7 结算给教员。
         </view>
         <view class="btn" :class="{ ghost: !canBook }" @click="submit">{{ submitting ? "提交中…" : "提交预约并去支付" }}</view>
         <view class="muted" style="margin-top: 14rpx" @click="booking = false">取消</view>
@@ -303,3 +349,12 @@ async function submit() {
     <view v-else class="card muted">教员不存在或已下架。</view>
   </view>
 </template>
+<style scoped>
+/* 授课形式 / 优惠券选择 chip（页面内联色值，这里只管尺寸与间距） */
+.chip {
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+</style>

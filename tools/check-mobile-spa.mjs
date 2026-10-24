@@ -90,7 +90,7 @@ const pages = ["pages-login-index", "pages-parent-index", "pages-teacher-index",
 }
 
 console.log("\n== 2. 角色路由回落（history 模式） ==");
-for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/demands/index", "我的需求页"], ["/m/pages/parent/demand/index", "需求详情（确认教员）页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
+for (const [p, label] of [["/m/", "家长端（游客首页，无需登录）"], ["/m/pages/parent/index", "家长端"], ["/m/pages/login/index", "登录页"], ["/m/pages/parent/publish/index", "发布需求页"], ["/m/pages/parent/demands/index", "我的需求页"], ["/m/pages/parent/demand/index", "需求详情（确认教员）页"], ["/m/pages/parent/coupons/index", "我的优惠券页"], ["/m/pages/parent/teachers/index", "附近教员页"], ["/m/pages/parent/teacher/index", "教员详情（立即预约）"], ["/m/pages/parent/order/index", "订单详情页"], ["/m/pages/teacher/index", "教员端"], ["/m/pages/teacher/wallet/index", "教员钱包页"], ["/m/pages/teacher/apply/index", "教员入驻认证页"], ["/m/pages/sales/index", "业务员端"], ["/m/pages/agent/index", "代理端"], ["/m/pages/sales/rewards/index", "业务员奖励明细页"], ["/m/pages/agent/complaints/index", "代理客诉工单页"], ["/m/pages/messages/index", "消息中心页"]]) {
   const r = await fetch(BASE + p);
   const t = await r.text();
   assert(r.status === 200 && t.includes('id="app"'), label + "路由可直达并回落 index.html");
@@ -392,6 +392,53 @@ assert(wxAuth.status === 400 && wxAuth.body.code === "WECHAT_NOT_CONFIGURED",
   const cleanup = await api("POST", "/teacher/orders/" + oid2 + "/cancel-approve", { token: teacher.body.data.token });
   assert(cleanup.status === 200, "本单教员可以处理自己的取消申请");
 }
+
+/* ---------- P70/P71：教员端授课形式、家长领券与用券 ---------- */
+{
+  // 教员端附近需求带授课形式（P70）
+  const nearby = await api("GET", "/teacher/nearby-demands", { token: teacher.body.data.token });
+  const rows = (nearby.body.data && nearby.body.data.list) || [];
+  assert(nearby.status === 200, "教员端附近需求可拉取（P70）");
+  assert(rows.every((d) => d.mode === "home" || d.mode === "teacher_place"),
+    "附近需求每条都带授课形式 mode（移动端据此提示「到我这里上课 / 我上门授课」）",
+    "共 " + rows.length + " 条");
+
+  // 家长领券（P71）：后台先建一张券
+  const admin = await api("POST", "/auth/login-password", { body: { phone: "13900000001", password: PW } });
+  const coupon = await api("POST", "/admin/coupons", {
+    token: admin.body.data.token,
+    body: { name: "移动端验收券 15", amount: 1500, threshold: 5000, total: 3, status: "on" },
+  });
+  assert(coupon.status === 200, "后台建券（移动端链路前置）");
+  const cid = coupon.body.data.id;
+
+  const pub = await api("GET", "/public/coupons");
+  assert(pub.status === 200 && pub.body.data.some((c) => Number(c.id) === Number(cid)),
+    "「领取中心」列表包含可领券（/public/coupons）");
+  const claim = await api("POST", "/parent/coupons/" + cid + "/claim", { token: parent.body.data.token });
+  assert(claim.status === 200 && claim.body.data.ok, "家长领券成功", claim.text.slice(0, 90));
+  const mine = await api("GET", "/parent/coupons", { token: parent.body.data.token });
+  assert(mine.status === 200 && mine.body.data.usable >= 1, "「我的优惠券」显示可用张数（" + mine.body.data.usable + "）");
+  const claimAgain = await api("POST", "/parent/coupons/" + cid + "/claim", { token: parent.body.data.token });
+  assert(claimAgain.status === 400 && claimAgain.body.code === "COUPON_CLAIMED", "重复领取被拒（COUPON_CLAIMED）");
+
+  // 预约用券：移动端预约面板选券后带 couponId 下单
+  const svc = await api("GET", "/teacher/services?teacherId=4", { token: teacher.body.data.token });
+  const svcRow = svc.body.data[0];
+  const ucid = mine.body.data.list.find((c) => Number(c.couponId) === Number(cid)).id;
+  const order = await api("POST", "/orders/from-service", {
+    token: parent.body.data.token,
+    body: { serviceId: svcRow.id, lessonTime: new Date(Date.now() + 21 * 86400000).toISOString(), couponId: ucid, remark: "移动端 P71 用券" },
+  });
+  const expected = Number(svcRow.price) - 1500;
+  assert(order.status === 200 && Number(order.body.data.amount) === expected,
+    "预约带券下单后应付金额已抵扣（" + svcRow.price + "-1500=" + expected + "）",
+    "amount=" + (order.body.data && order.body.data.amount));
+  assert(Number(order.body.data.amount) > 0, "抵扣后金额仍为正（券不把订单打到 0 元以下）");
+  // 收尾：停用测试券
+  await api("POST", "/admin/coupons/" + cid + "/toggle", { token: admin.body.data.token });
+}
+
 
 console.log("\n=================================================");
 console.log("移动端验收：通过 " + pass + " 项，失败 " + fail + " 项");

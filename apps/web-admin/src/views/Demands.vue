@@ -106,6 +106,13 @@ function onPage(p) {
           <template #default="{ row }">{{ row.stage }} · {{ row.subject }}</template>
         </el-table-column>
         <el-table-column prop="address" label="上课地址" min-width="180" show-overflow-tooltip />
+        <el-table-column label="授课形式" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.mode === 'teacher_place' ? 'warning' : 'info'">
+              {{ row.mode === 'teacher_place' ? '到教员处' : '教员上门' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="预算" width="110">
           <template #default="{ row }">{{ money(row.budget) }}</template>
         </el-table-column>

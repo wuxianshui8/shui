@@ -410,6 +410,7 @@ export class AdminOpsService {
       id: Number(d.id),
       stage: d.stage,
       subject: d.subject,
+      mode: d.mode === "teacher_place" ? "teacher_place" : "home",
       address: d.address,
       lat: Number(d.lat),
       lng: Number(d.lng),
@@ -843,9 +844,64 @@ export class AdminOpsService {
     });
   }
 
-  async closeComplaint(ctx: any, id: number, note?: string) {
+  /** 投诉工单列表（P72：独立页用，按状态/类型筛选 + 分页 + 未结案数） */
+  async complaints(query: any) {
+    const COMPLAINT_TEXT: Record<string, string> = {
+      open: "待受理", processing: "处理中", replied: "已回复", closed: "已结案",
+    };
+    let where = " WHERE 1=1";
+    const params: any[] = [];
+    if (query?.status) { where += " AND c.`status` = ?"; params.push(String(query.status)); }
+    if (query?.type) { where += " AND c.`type` = ?"; params.push(String(query.type)); }
+    if (query?.orderId) { where += " AND c.`order_id` = ?"; params.push(Number(query.orderId)); }
+    const pg = paging(query, { defaultSize: 50 });
+    const total = await this.cnt("SELECT COUNT(*) AS c FROM `complaints` c" + where, params);
+    const rows = await this.ds.query(
+      "SELECT c.*, u.`nickname` AS fromName, u.`phone` AS fromPhone, o.`order_no` AS orderNo, r.`name` AS regionName " +
+        "FROM `complaints` c LEFT JOIN `users` u ON u.id = c.from_user LEFT JOIN `orders` o ON o.id = c.order_id " +
+        "LEFT JOIN `regions` r ON r.id = c.region_id" + where +
+        " ORDER BY c.`status` = 'closed' ASC, c.`id` DESC LIMIT ? OFFSET ?",
+      [...params, pg.pageSize, pg.offset],
+    );
+    const list = rows.map((c: any) => ({
+      id: Number(c.id),
+      orderId: c.order_id == null ? null : Number(c.order_id),
+      orderNo: c.orderNo || null,
+      fromUserId: Number(c.from_user),
+      fromName: c.fromName || null,
+      fromPhone: c.fromPhone ? maskPhone(c.fromPhone) : null,
+      fromRole: c.from_role,
+      type: c.type,
+      title: c.title,
+      content: c.content || "",
+      status: c.status,
+      statusText: COMPLAINT_TEXT[c.status] || c.status,
+      handleNote: c.handle_note || "",
+      handlerId: c.handler_id == null ? null : Number(c.handler_id),
+      regionName: c.regionName || null,
+      createdAt: c.created_at,
+      resolvedAt: c.resolved_at || null,
+    }));
+    const openCount = await this.cnt("SELECT COUNT(*) AS c FROM `complaints` WHERE `status` <> 'closed'");
+    return { list, total, openCount };
+  }
+
+  /** 受理 / 回复工单（结案仍走 closeComplaint，保留原语义） */
+  async handleComplaint(ctx: any, id: number, b: any) {
     const c = await this.one("SELECT * FROM `complaints` WHERE `id` = ?", [id]);
     if (!c) throw notFound("工单不存在");
+    const status = String(b?.status || "processing");
+    if (!["processing", "replied"].includes(status)) throw bad("只能设为处理中或已回复（结案请用结案操作）");
+    await this.ds.query(
+      "UPDATE `complaints` SET `status` = ?, `handler_id` = ?, `handle_note` = ? WHERE `id` = ?",
+      [status, Number(ctx.user.uid), String(b?.note || ""), c.id],
+    );
+    await audit(this.ds, ctx, "admin.complaint.handle", "complaints:" + c.id, { status, note: b?.note || "" });
+    return this.one("SELECT * FROM `complaints` WHERE `id` = ?", [c.id]);
+  }
+
+  async closeComplaint(ctx: any, id: number, note?: string) {
+    const c = await this.one("SELECT * FROM `complaints` WHERE `id` = ?", [id]);
     await this.ds.query("UPDATE `complaints` SET `status` = 'closed', `handler_id` = ?, `handle_note` = ?, `resolved_at` = ? WHERE `id` = ?",
       [Number(ctx.user.uid), note || "平台终审结案", nowIso(), c.id]);
     await audit(this.ds, ctx, "admin.complaint.close", "complaints:" + c.id);
