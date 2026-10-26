@@ -25,6 +25,10 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
       MYSQL_ALLOW_EMPTY_PASSWORD: "no"
       MYSQL_DATABASE: jiajiao
+      # P80：业务账号（首次初始化建号并只授权本库）。root@% 在初始化后应手工删除，
+      # 应用不再用 root 连库 → 即使应用被拿下也拿不到全局权限。
+      MYSQL_USER: ${DB_USER:-jiajiao}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD}}
     volumes:
       - mysql-data:/var/lib/mysql
       # 首次启动自动建表（37 张表）
@@ -38,9 +42,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "no"]
+    # P80：设 requirepass（未设密码的 Redis 是「写文件/主从复制」类利用的经典入口）
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 deploy/.env 设置 REDIS_PASSWORD（>=16 位强口令）}
+    command: ["redis-server", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD:?请在 deploy/.env 设置 REDIS_PASSWORD}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -54,11 +61,12 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?请在 deploy/.env 设置 AUTH_SECRET（>=32 字符）}
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
+      MYSQL_USER: ${DB_USER:-jiajiao}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD}}
       MYSQL_DATABASE: jiajiao
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 deploy/.env 设置 REDIS_PASSWORD}
       DEV_SMS: "0"
       # 前置 Nginx：按 X-Forwarded-For 取真实 IP（否则登录锁定可被伪造 XFF 绕过）
       TRUST_PROXY: "1"
@@ -117,8 +125,8 @@ services:
       DEV_SMS: "0"
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD（>=16 位强口令）}
+      MYSQL_USER: ${DB_USER:-jiajiao}
+      MYSQL_PASSWORD: ${DB_APP_PASSWORD:-${DB_PASSWORD:?请在 deploy/.env 设置 DB_PASSWORD}}
       MYSQL_DATABASE: jiajiao
     depends_on:
       mysql:

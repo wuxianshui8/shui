@@ -10,7 +10,7 @@ const FIXTURE = path.join(import.meta.dirname, "fixtures", "load-config.mjs");
 /** 构造子进程环境：未显式给出的 NODE_ENV / AUTH_SECRET 一律剔除，避免宿主环境影响 */
 function envWith(extra = {}) {
   const env = { ...process.env, ...extra };
-  for (const k of ["NODE_ENV", "AUTH_SECRET", "PORT", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE", "REDIS_HOST", "REDIS_PORT", "REDIS_DB", "WEB_DIR"]) {
+  for (const k of ["NODE_ENV", "AUTH_SECRET", "PORT", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE", "REDIS_HOST", "REDIS_PORT", "REDIS_DB", "REDIS_PASSWORD", "WEB_DIR"]) {
     if (!(k in extra)) delete env[k];
   }
   return env;
@@ -75,6 +75,6 @@ test("config：环境变量覆盖端口与库名", () => {
   assert.equal(c.port, 4399);
   assert.equal(c.authSecret, "unit-secret");
   assert.deepEqual(c.mysql, { host: "db.internal", port: 3399, username: "app", password: "pw", database: "jiajiao_test" });
-  assert.deepEqual(c.redis, { host: "cache.internal", port: 6399, db: 3 });
+  assert.deepEqual(c.redis, { host: "cache.internal", port: 6399, db: 3, password: "" });
   assert.equal(c.webDir, "web-dist");
 });

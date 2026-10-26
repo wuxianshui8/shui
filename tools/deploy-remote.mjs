@@ -223,7 +223,25 @@ for f in "${DIR}"/deploy/systemd/jiajiao-security-integrity.service "${DIR}"/dep
 done
 systemctl daemon-reload 2>/dev/null || true
 systemctl enable --now jiajiao-security-integrity.timer 2>/dev/null || true
-install -m 600 /tmp/jiajiao.env ${DIR}/deploy/.env
+# .env 落地前合并：保留服务器独有键（此前直接覆盖，会清掉服务器上手工加的红线配置）
+cp -a /tmp/jiajiao.env /tmp/jiajiao.env.new
+if [ -f ${DIR}/deploy/.env ]; then
+  cp -a ${DIR}/deploy/.env "${DIR}/deploy/.env.bak-$(date +%Y%m%d%H%M%S)"
+  kept=""
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue ;; esac
+    k=\${line%%=*}
+    case "$k" in *[!A-Za-z0-9_]*) continue ;; esac
+    if ! grep -q "^$k=" /tmp/jiajiao.env.new; then
+      printf '%s\\n' "$line" >> /tmp/jiajiao.env.new
+      kept="$kept $k"
+    fi
+  done < ${DIR}/deploy/.env
+  if [ -n "$kept" ]; then echo "  已保留服务器独有键:$kept"; fi
+  ls -1t ${DIR}/deploy/.env.bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f
+fi
+install -m 600 /tmp/jiajiao.env.new ${DIR}/deploy/.env
+rm -f /tmp/jiajiao.env.new
 rm -f /tmp/jiajiao-app.tar /tmp/jiajiao-src.tgz /tmp/jiajiao.env
 cd ${DIR}/deploy
 DC="docker compose"

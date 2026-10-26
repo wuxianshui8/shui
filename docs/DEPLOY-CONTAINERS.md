@@ -13,7 +13,11 @@
 | --- | --- |
 | `deploy/Dockerfile` | 多阶段构建：① 后端 `npm install` + `tsc` + `prune --omit=dev`；② PC 后台 `vite build`；③ 移动端 `uni build`（H5）；④ 运行镜像（非 root `USER node`，`HEALTHCHECK` 打 `/api/health`） |
 | `deploy/docker-compose.yml` | `mysql`（首启自动执行 37 表建表脚本）/ `redis` / `app`（依赖两者 `service_healthy`）/ `seed`（一次性演示数据，`profiles: ["seed"]`） |
-| `deploy/.env.example` | 必填 `AUTH_SECRET`、`TRUST_PROXY`、`JOBS_ENABLED` |
+| `deploy/.env.example` | 必填 `AUTH_SECRET`、`TRUST_PROXY`、`JOBS_ENABLED`；生产另需 `DB_USER`/`DB_APP_PASSWORD`/`REDIS_PASSWORD`（见 `docs/SECURITY.md` §10.6） |
+
+> **`tools/deploy-remote.mjs` 落 `.env` 是合并而不是覆盖**：先备份服务器旧 `.env` 为 `deploy/.env.bak-<时间戳>`
+> （保留最近 5 份），再把「服务器有、本地没有」的合法键原样追加保留，同名键以本地为准。
+> 所以本地 `.env` 落后于服务器时不会再静默清掉服务器上手工加的键；「已保留服务器独有键: …」这行就是它干的。
 
 镜像内部路径与 `apps/api-nest/src/main.ts` 的静态托管约定一一对应（`WORKDIR=/app/apps/api-nest`）：
 

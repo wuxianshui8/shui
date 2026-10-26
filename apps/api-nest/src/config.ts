@@ -25,6 +25,11 @@ export const config = {
     host: process.env.REDIS_HOST || "127.0.0.1",
     port: Number(process.env.REDIS_PORT || 6380),
     db: Number(process.env.REDIS_DB || 0),
+    /**
+     * 缓存口令（P80）：生产 compose 用 `${REDIS_PASSWORD:?}` 强制非空，
+     * 本地便携 Redis / 门禁用例不设密码 → 空串表示「不认证」（ioredis 不会传 AUTH）。
+     */
+    password: process.env.REDIS_PASSWORD || "",
   },
   webDir: process.env.WEB_DIR || "web",
   /**

@@ -237,6 +237,47 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 2. **MySQL 存在 `root@%`**：官方镜像默认建 `root@'%'`，容器内网可用 root 密码直连；建议改成 `root@localhost` + 单独业务账号。
 3. （环境配置）线上 `.env` 保留 `SMS_MOCK_LOG_CODE=1`，mock 短信会把验证码打进容器日志；生产接真实短信通道后应改回 `0`。
 
+### 10.6 最小权限修复（2026-10-26，P80）
+
+把 §10.5 末尾列出的三个配置弱点实际改掉，全部在线上执行并验证。
+
+| 项 | 改了什么 | 验证 |
+| --- | --- | --- |
+| **Redis 加密码** | ① `config.ts` 新增 `redis.password`（`REDIS_PASSWORD`，空=不认证）；② `redis.module.ts` 有密码才传（`AUTH`），本地便携 Redis/门禁不受影响；③ `docker-compose.prod.yml` 用 `--requirepass ${REDIS_PASSWORD:?}` **强制非空并且 healthcheck 带认证**；④ dev compose 透传 `${REDIS_PASSWORD:-}` 保持本地零影响 | 容器内 `redis-cli ping` → `NOAUTH Authentication required`；`redis-cli -a *** ping` → `PONG`；app 侧 `health.cache.ok=true`、日志 `NOAUTH` 计数 **0** |
+| **MySQL 业务账号** | ① 建 `'jiajiao'@'%'` 并只 `GRANT ALL ON jiajiao.*`；② `.env` 加 `DB_USER=jiajiao` / `DB_APP_PASSWORD`（与 root 口令**不同**）；③ prod compose 把 app 与 seed 的 `MYSQL_USER` 从 `root` 改为 `${DB_USER:-jiajiao}`；④ **删除 `root@%`**（保留 `root@localhost` 供备份/排障） | `information_schema.processlist` 显示应用连接为 **`jiajiao@172.18.0.x`**；`jiajiao` 账号读 `mysql.user` → `SELECT command denied`（最小权限生效）；`backup-db.sh` 仍能用 `root@localhost` dump（14 份备份正常轮转）；业务冒烟 **17/17** |
+| **关闭验证码日志回显** | `.env` 的 `SMS_MOCK_LOG_CODE: 1 → 0` | 发 `send-code` 后容器日志里明文验证码出现 **0** 次 |
+
+**副作用（要知道）**：现在是 mock 短信 + 不回显 → **演示环境收不到也看不到验证码，只能用口令登录**（`a123456`）。
+接真实短信通道（`SMS_PROVIDER=tencent` + 5 项密钥）后这就是标准生产行为。
+
+**踩到的两个坑（值得记录）**
+
+1. 第一次用 `docker exec ... sh -c '...'` 拼 SQL 建账号时，口令在**外层单引号**里没展开，账号建成了空口令；
+   改成 `printf ... | docker exec -i` 用 stdin 传 SQL 才正确。改账号类操作后**必须实测登录**，不能只看 `SHOW GRANTS`。
+2. 改完 `.env` 与 compose 后容器起来了，但 `health` 报 503 / 日志刷 `NOAUTH`——因为**镜像里的 dist 还是旧代码**
+   （不读 `REDIS_PASSWORD`）。按约定「应用代码只能本地改再构建镜像」，重建镜像上传后即恢复。**改环境变量不重建镜像的只有配置项，代码变更必须重建。**
+
+**回滚**
+
+| 改动 | 回滚 |
+| --- | --- |
+| MySQL 业务账号 | 在 MySQL 里 `CREATE USER 'root'@'%' ...; GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION;`；`.env` 去掉 `DB_USER`/`DB_APP_PASSWORD`；prod compose 的 `MYSQL_USER` 改回 `root` |
+| Redis 密码 | prod compose 去掉 `--requirepass` 与 healthcheck 的 `-a`；`.env` 去掉 `REDIS_PASSWORD`（应用侧代码兼容空值，无需改回） |
+| 验证码回显 | `.env` 改回 `SMS_MOCK_LOG_CODE=1`（仅测试环境） |
+
+> 本地 `deploy/.env` 已与服务器同步（含 `DB_USER` / `DB_APP_PASSWORD` / `REDIS_PASSWORD`），
+> 避免下次 `deploy-remote.mjs` 用旧 `.env` 覆盖服务器、把刚设的密码冲掉。
+
+**顺手堵掉根因（`tools/deploy-remote.mjs`）**：此前第 4 步是 `install -m 600 /tmp/jiajiao.env ${DIR}/deploy/.env`
+直接覆盖，只要本地 `.env` 落后于服务器，服务器上手工加的键（本次的 `REDIS_PASSWORD` 就是）会被静默清掉，表现为
+「没改代码，重启后 Redis 却 `NOAUTH`」。现在改为**合并式落盘**：
+
+1. 覆盖前先把服务器旧 `.env` 备份成 `deploy/.env.bak-YYYYmmddHHMMSS`（只留最近 5 份，自动轮转）；
+2. 服务器有、本地没有的合法键（`^[A-Za-z0-9_]+=`，跳过注释与非法行）**原样追加保留**，并打印 `已保留服务器独有键: ...`；
+3. 同名键仍以本地为准（显式部署意图优先），最后 `install -m 600` 落盘。
+
+验证方式：把合并块抽出来在服务器 `/tmp` 沙箱实跑两遍，断言「服务器独有键保留 / 本地键值为准 / 非法行不写入 / 注释不搬运」全部通过，备份文件与 `600` 权限均符合预期。
+
 **仍需你做/注意的**
 
 1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
