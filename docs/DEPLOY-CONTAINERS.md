@@ -90,6 +90,22 @@ docker compose ps
 4. **数据库凭据**：compose 里为便于开箱验证使用 `root` + 空口令，**生产必须改**（`MYSQL_PASSWORD` + 相应应用环境变量），并把 3307/6380 端口映射去掉，只暴露应用端口。
 5. **TLS**：应用只监听 HTTP，生产必须置于 HTTPS 反向代理之后（令牌为 Bearer）。
 6. **迁移已有数据**：容器首次启动只建表；如要把 SQLite 参考实现的数据导入，在宿主机执行 `npm run nest:migrate`（读取 `data/app.db`，写入目标 MySQL）。
+7. **发布版本可回滚**（P81）：`jiajiao-app` 镜像按 git 短 sha 打 tag，compose 写成 `image: jiajiao-app:${APP_IMAGE_TAG:-latest}`，
+   `APP_IMAGE_TAG` 由发布脚本写进 `deploy/.env`。**不要手工 `up -d` 一个没有 tag 的镜像**，那样会失去回滚点。详见下节。
+
+### 3.1 发布、版本台账与回滚
+
+| 环节 | 做法 |
+| --- | --- |
+| 发布 | `tools/deploy-remote.mjs` 载入镜像后 `docker tag jiajiao-app:latest jiajiao-app:<sha>`，写 `.env` 的 `APP_IMAGE_TAG=<sha>`，并向 `/opt/jiajiao/releases.log` 追加 `时间<TAB>deploy<TAB>ok<TAB>tag<TAB>image=<id>` |
+| 保留 | 服务器上留最近 `JIAJIAO_KEEP_IMAGES`（默认 3）个发布 tag，更老的自动 `docker rmi`；**当前版本永不清理** |
+| 回滚 | `sudo bash /opt/jiajiao/bin/rollback.sh --list / --previous / <tag>`；切完轮询 `/api/health`，不健康**自动退回**原版本 |
+| 失败处理 | 发布脚本健康 20 分钟未成就调 `rollback.sh --previous` 再以失败退出，不会把线上留在半死状态 |
+| 首次接入 | 覆盖 `latest` **之前**先把旧镜像留成 `jiajiao-app:legacy-<时间戳>`，接入当天就有回滚目标 |
+
+> 回滚的前提是 **DB 变更向后兼容**（先加列、后删列）。先删列的话，回滚后新镜像读到不存在的列会直接 500，脚本救不了。
+> 门禁 `tools/check-deploy.mjs` 会断言：compose 必须用 `APP_IMAGE_TAG` 变量、`rollback.sh` 必须是 LF 且带
+> `--list/--previous/--prune`、`deploy-remote.mjs` 必须打 tag 且记台账、失败必须触发自动回滚。
 
 ## 4. 反向代理示例（可选）
 

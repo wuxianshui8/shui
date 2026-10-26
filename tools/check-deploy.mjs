@@ -224,7 +224,73 @@ if (!exists(wfPath)) {
   }
 }
 
-/* ---------------- 4. 输出 ---------------- */
+/* ---------------- 4. 发布 tag 与一键回滚（B6） ---------------- */
+{
+  const prodPath = "deploy/docker-compose.prod.yml";
+  if (!exists(prodPath)) {
+    fail("缺少 " + prodPath);
+  } else {
+    const text = readFileSync(path.join(ROOT, prodPath), "utf8");
+    const tagRefs = (text.match(/^\s+image:\s*jiajiao-app:.*$/gm) || []).map((s) => s.trim());
+    if (tagRefs.length < 2) fail("prod compose 应有两处 jiajiao-app 镜像（app + seed），实际 " + tagRefs.length);
+    const pinned = tagRefs.filter((s) => s === "image: jiajiao-app:${APP_IMAGE_TAG:-latest}");
+    if (pinned.length !== tagRefs.length) {
+      fail("prod compose 的 jiajiao-app 镜像必须写成 image: jiajiao-app:${APP_IMAGE_TAG:-latest}（否则无法按 tag 回滚）：" + tagRefs.join(" | "));
+    }
+  }
+
+  const rbPath = "deploy/rollback.sh";
+  if (!exists(rbPath)) {
+    fail("缺少 " + rbPath + "（B6 一键回滚）");
+  } else {
+    const buf = readFileSync(path.join(ROOT, rbPath));
+    if (buf.includes(0x0d)) fail(rbPath + " 含 CRLF（bash 会报错，必须 LF）");
+    const text = buf.toString("utf8");
+    const need = [
+      ["--list", "查看可用 tag 与发布台账"],
+      ["--previous", "回到上一版"],
+      ["--prune", "清理旧镜像（由发布脚本调用）"],
+      ["APP_IMAGE_TAG", "通过 .env 的 APP_IMAGE_TAG 切换版本"],
+      ["/api/health", "切换后做健康校验"],
+      ["reverted", "健康失败自动退回原版本"],
+      ["releases.log", "发布台账（--previous 依赖它）"],
+    ];
+    for (const [needle, why] of need) {
+      if (!text.includes(needle)) fail(rbPath + " 缺少 " + needle + "（" + why + "）");
+    }
+    // 台账第 4 列必须是 tag，否则 --previous 会解析错版本
+    if (!/awk -F'\\t' '\$3=="ok" \{print \$4\}'/.test(text)) {
+      fail(rbPath + " 的 previous_tag 应从台账第 4 列取 tag");
+    }
+  }
+
+  const dep = "tools/deploy-remote.mjs";
+  if (!exists(dep)) {
+    fail("缺少 " + dep);
+  } else {
+    const text = readFileSync(path.join(ROOT, dep), "utf8");
+    const checks = [
+      ["deploy/rollback.sh", "上传 rollback.sh 到服务器"],
+      ["\"${DIR}\"/deploy/rollback.sh", "把 rollback.sh 安装到 bin"],
+      ["APP_IMAGE_TAG=", "给镜像打发布 tag 并写入 .env"],
+      ["releases.log", "每次发布记台账"],
+      ["rollback.sh --previous", "健康失败时自动回滚"],
+      ["rollback.sh --prune", "发布成功后清理旧镜像"],
+      ["APP_IMAGE_TAG", "支持 APP_IMAGE_TAG 覆盖发布 tag"],
+    ];
+    for (const [needle, why] of checks) {
+      if (!text.includes(needle)) fail(dep + " 缺少 " + needle + "（" + why + "）");
+    }
+  }
+
+  const envEx = "deploy/.env.example";
+  if (exists(envEx)) {
+    const text = readFileSync(path.join(ROOT, envEx), "utf8");
+    if (!/APP_IMAGE_TAG/.test(text)) fail(envEx + " 应说明 APP_IMAGE_TAG（由发布脚本写入，别手填）");
+  }
+}
+
+/* ---------------- 5. 输出 ---------------- */
 console.log("部署与 CI 配置校验");
 notes.forEach((n) => console.log("  · " + n));
 if (problems.length) {

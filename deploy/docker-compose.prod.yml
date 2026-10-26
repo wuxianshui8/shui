@@ -54,7 +54,9 @@ services:
     restart: always
 
   app:
-    image: jiajiao-app:latest
+    # 发布镜像按 git sha 打 tag（APP_IMAGE_TAG，由 tools/deploy-remote.mjs 写入 .env）；
+    # 不写则回落 latest。回滚 = 改 APP_IMAGE_TAG + up -d（见 deploy/rollback.sh）
+    image: jiajiao-app:${APP_IMAGE_TAG:-latest}
     environment:
       NODE_ENV: production
       PORT: "4300"
@@ -117,7 +119,7 @@ services:
 
   # 一次性演示数据：docker compose -f docker-compose.prod.yml run --rm seed
   seed:
-    image: jiajiao-app:latest
+    image: jiajiao-app:${APP_IMAGE_TAG:-latest}
     profiles: ["seed"]
     environment:
       NODE_ENV: production

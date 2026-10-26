@@ -87,13 +87,20 @@ $env:SMOKE_BASE = "http://114.132.226.138"; npm run smoke:online
 $env:DEPLOY_HOST = "kd211"; $env:DEPLOY_SUDO = "1"
 $env:IMAGE_TAR = "$env:PI_SCRATCH_DIR\jiajiao-app.tar"
 
-docker save -o $env:IMAGE_TAR jiajiao-app:latest     # 旧包先留一份，这就是回滚点
-npm run ci:full -- --static                          # 静态门禁 16 步
-node tools/deploy-remote.mjs                         # 上传 → load → up -d --no-build → 健康检查
-node tools/deploy-remote.mjs --status                # 复查
+npm run ci:full                                      # 门禁（静态 16 步 + 集成 16 步）
+docker build -f deploy/Dockerfile -t jiajiao-app:latest .   # 应用代码变更必须重建镜像
+docker save -o $env:IMAGE_TAR jiajiao-app:latest     # 本地兜底包（服务器侧回滚用 tag，不依赖它）
+node tools/deploy-remote.mjs                         # 上传 → load → 打发布 tag → up -d → 健康检查
+node tools/deploy-remote.mjs --status                # 复查（含当前 tag、可用 tag、最近发布记录）
 ```
 
-> `deploy-remote.mjs` 只上传 compose + schema + `.env`，不动服务器其它目录。
+发版后服务器上的状态（P81 起）：
+
+- `deploy/.env` 的 `APP_IMAGE_TAG` = 本次发布的 tag（git 短 sha），`docker ps` 里的镜像名也是它；
+- `/opt/jiajiao/releases.log` 多一行 `deploy  ok  <tag>  image=<id>`；
+- 出问题直接 `sudo bash /opt/jiajiao/bin/rollback.sh --previous`（详见 §5.1）；健康不过会被自动回滚。
+
+> `deploy-remote.mjs` 只上传 compose + 运维脚本 + schema + `.env`（`.env` 是**合并**不是覆盖），不动服务器其它目录。
 
 ### 3.2 重启 / 重载
 
@@ -234,7 +241,8 @@ npm run check:server-state     # 复核：仓库与服务器是否一致（不�
 | --- | --- | --- |
 | SSH 加固 | `sudo rm /etc/ssh/sshd_config.d/99-hardening.conf; sudo systemctl reload ssh`（恢复密码登录再加 `PasswordAuthentication yes`） | `/root/sshd-backup-<时间戳>/` |
 | Nginx 站点 | `sudo cp /etc/nginx/jiajiao.conf.bak /etc/nginx/sites-available/jiajiao.conf; sudo nginx -t; sudo systemctl reload nginx` | `/etc/nginx/jiajiao.conf.bak` |
-| 应用镜像 | 本机 `docker load -i <旧 jiajiao-app.tar>` → 上传 → `docker load` → `compose up -d --no-build` | 每次发版前保存的 `jiajiao-app.tar` |
+| 应用镜像（推荐：按 tag 回滚） | `sudo bash /opt/jiajiao/bin/rollback.sh --previous`（或指定 `rollback.sh <tag>`）；健康校验失败会**自动退回**原版本 | 服务器本机保留最近 3 个发布镜像 + `legacy-*`；台账 `/opt/jiajiao/releases.log` |
+| 应用镜像（兜底：本地重灌） | 本机 `docker load -i <旧 jiajiao-app.tar>` → 上传 → `docker load` → `docker tag` 成发布 tag → 改 `.env` 的 `APP_IMAGE_TAG` → `compose up -d --no-build` | 每次发版前保存的 `jiajiao-app.tar` |
 | 防火墙 | `sudo ufw disable`（临时）或 `sudo ufw delete allow <port>` | `/etc/default/ufw`（`DEFAULT_FORWARD_POLICY` 改过） |
 | Nginx 全局加固 | 备份后删 `/etc/nginx/conf.d/00-hardening.conf` 并 reload（会把版本号隐藏与认证限速一并撤掉） | 由 `deploy/harden-server.sh` 或 `tools/switch-domain.mjs` 重新生成（两者写出的文件逐字节一致） |
 | fail2ban | `sudo systemctl stop fail2ban`（临时）；或删 `/etc/fail2ban/jail.local` 后重启 | `/etc/fail2ban/jail.local` |
@@ -245,6 +253,37 @@ npm run check:server-state     # 复核：仓库与服务器是否一致（不�
 | 备份定时任务 | `sudo systemctl disable --now jiajiao-backup.timer`（停用）；重装用 `deploy/install-backup.sh` | `/opt/jiajiao/bin/*.sh` + `/etc/systemd/system/jiajiao-backup*` |
 
 **证书/域名切换失败**：`node tools/switch-domain.mjs` 内部已做「失败自动回滚到 `/etc/nginx/jiajiao.conf.bak`」，重跑即可。
+
+### 5.1 镜像版本与回滚模型（P81 起）
+
+**发布**：`tools/deploy-remote.mjs` 每次发版都会给载入的镜像打一个**不可变 tag**（默认取 git 短 sha，可用
+`APP_IMAGE_TAG` 覆盖），写进 `deploy/.env` 的 `APP_IMAGE_TAG`，并向 `/opt/jiajiao/releases.log` 追加一行
+`时间<TAB>deploy<TAB>ok<TAB>tag<TAB>image=<镜像 id>`。compose 用 `image: jiajiao-app:${APP_IMAGE_TAG:-latest}`，
+所以「当前跑的是哪个版本」永远可由 `.env` 一眼看出。
+
+**回滚**：镜像不可变 → 回滚 = 改 `APP_IMAGE_TAG` 再 `up -d`，不需要重新构建/上传（几十秒）。
+
+```bash
+sudo bash /opt/jiajiao/bin/rollback.sh --list        # 当前版本 / 本机可用 tag / 最近 10 条发布记录
+sudo bash /opt/jiajiao/bin/rollback.sh --previous    # 回到台账里上一次成功的版本
+sudo bash /opt/jiajiao/bin/rollback.sh <tag>         # 回到指定 tag
+```
+
+`rollback.sh` 的语义（已实测，见 §8）：
+
+1. 切换前校验镜像存在（`docker image inspect`），不存在直接报错，**不会**把 `.env` 改坏；
+2. `up -d --no-build` 后轮询 `/api/health` 最多 2 分钟；
+3. **健康失败 → 自动退回原版本**并把 `compose logs --tail 40` 打出来，台账记 `rollback<TAB>reverted`；
+4. 成功则记 `rollback<TAB>ok`，并清理旧镜像（保留最近 `JIAJIAO_KEEP_IMAGES` 个，默认 3；**当前版本永不清理**）。
+
+**发版失败也会自动回滚**：`deploy-remote.mjs` 等健康 20 分钟未成就调 `rollback.sh --previous`，然后以失败退出。
+
+**红线（回滚的前提）**：DB 变更必须**向后兼容的两步法**——先加列/加表并让旧代码也能跑，确认稳定后再删旧列。
+反过来（先删列）回滚时新镜像会读到不存在的列而直接 500，`rollback.sh` 也救不了。
+`schema-guard` 只做「补列」，天然符合这条；手写 DDL 时务必遵守。
+
+**首次接入**：服务器原本只有 `jiajiao-app:latest` 一个 tag，发布脚本会在覆盖 `latest` **之前**把旧镜像留成
+`jiajiao-app:legacy-<时间戳>`，保证接入 tag 策略的这一刻就有回滚目标。
 
 ---
 
@@ -267,7 +306,10 @@ npm run check:server-state     # 复核：仓库与服务器是否一致（不�
 ## 7. 待办（运维侧尚未完成）
 
 1. ~~**备份定时任务**~~：✅ 已完成（2026-10-23，`jiajiao-backup.timer` 每日 03:20、DB 留 14 份、上传卷留 7 份、失败走 `OnFailure` + webhook）。仍缺**异地/对象存储归档**（同一台机器上，机器挂了备份也没了）。
-2. **监控告警**：Prometheus/Grafana + 告警规则（错误率/延迟/担保台账不平/任务卡死）。
+2. ~~**灰度与回滚**~~：✅ 已完成（P81，2026-10-26）——镜像按 git 短 sha 打 tag、`APP_IMAGE_TAG` 落到 `.env`、发布台账 `releases.log`、
+   一键 `rollback.sh`（健康失败自动退回）、发版健康不过自动回滚、只保留最近 3 个发布镜像。见 §5.1。
+   仍缺**灰度**（按比例/按用户分流）：当前是「整体切换 + 秒级回滚」，够用但不是灰度。
+3. **监控告警**：Prometheus/Grafana + 告警规则（错误率/延迟/担保台账不平/任务卡死）。
 3. **日志集中化**：Loki/ELK + `trace_id` 串联（当前只有 `docker logs` 与 Nginx 文件）。
 4. **域名备案**：备案通过后 `node tools/switch-domain.mjs` 切回 `https://www.kd211.com`。
 5. **演示口令替换**：生产前把 `a123456` 全部换掉（后台建号已是一次性强口令 + 首登强制改密）。

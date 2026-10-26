@@ -34,6 +34,22 @@ const SUDO = process.env.DEPLOY_SUDO === "1";
 const DIR = process.env.DEPLOY_DIR || "/opt/jiajiao";
 const PORT = process.env.DEPLOY_PORT || "4300";
 const IMAGE_TAR = process.env.IMAGE_TAR || path.join(os.tmpdir(), "jiajiao-app.tar");
+
+/* 发布 tag：APP_IMAGE_TAG > git 短 sha > 时间戳（永远不空）
+   用途：镜像不可变，回滚 = 切 tag，不需要重新构建/上传（见 deploy/rollback.sh） */
+function releaseTag() {
+  const env = (process.env.APP_IMAGE_TAG || "").trim();
+  if (env) return env;
+  const g = spawnSync("git", ["rev-parse", "--short=7", "HEAD"], { cwd: ROOT, encoding: "utf8" });
+  if (g.status === 0) {
+    const s = (g.stdout || "").trim();
+    if (/^[0-9a-f]{7,40}$/.test(s)) return s;
+  }
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `t${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
+}
+const RELEASE_TAG = releaseTag();
 const MODE = process.argv.includes("--seed")
   ? "seed"
   : process.argv.includes("--status")
@@ -101,6 +117,12 @@ if command -v docker >/dev/null 2>&1; then
   cd ${DIR}/deploy 2>/dev/null && docker compose -f docker-compose.prod.yml ps || true
   echo "--- health ---"
   curl -fsS http://127.0.0.1:${PORT}/api/health || echo "health 不通"
+  if [ -x ${DIR}/bin/rollback.sh ]; then
+    echo "--- 版本与回滚台账 ---"
+    bash ${DIR}/bin/rollback.sh --list || true
+  else
+    echo "（${DIR}/bin/rollback.sh 未安装：先跑一次部署）"
+  fi
 else
   echo "服务器上没有 docker"
 fi
@@ -122,6 +144,7 @@ docker compose -f docker-compose.prod.yml run --rm seed
 /* ---------- 3. 完整部署 ---------- */
 if (!fs.existsSync(IMAGE_TAR)) die(`找不到镜像包：${IMAGE_TAR}（先 docker save -o "${IMAGE_TAR}" jiajiao-app:latest）`);
 
+console.log(`发布 tag: jiajiao-app:${RELEASE_TAG}  （回滚：bash ${DIR}/bin/rollback.sh --previous）`);
 step("0) 远端基本信息");
 ssh(`
 set -e
@@ -146,6 +169,7 @@ const tar = spawnSync("tar", [
   "deploy/backup-notify.sh",
   "deploy/install-backup.sh",
   "deploy/security-integrity.sh",
+  "deploy/rollback.sh",
   "deploy/systemd/jiajiao-security-integrity.service",
   "deploy/systemd/jiajiao-security-integrity.timer",
   "apps/api-nest/db/schema.mysql.sql",
@@ -207,12 +231,19 @@ docker pull redis:7-alpine | tail -2
 step("4) 载入镜像 + 落部署件");
 ssh(`
 set -e
+# 首次接入 tag 策略：必须在 docker load 覆盖 latest 之前留住旧镜像，否则没有回滚目标
+if [ -f ${DIR}/deploy/.env ] && ! grep -q '^APP_IMAGE_TAG=' ${DIR}/deploy/.env \
+   && docker image inspect jiajiao-app:latest >/dev/null 2>&1; then
+  LEG="legacy-$(date +%Y%m%d%H%M%S)"
+  docker tag jiajiao-app:latest "jiajiao-app:$LEG"
+  echo "  首次接入 tag 策略：旧镜像已留为 jiajiao-app:$LEG（回滚退路）"
+fi
 docker load -i /tmp/jiajiao-app.tar
 mkdir -p ${DIR}
 tar xzf /tmp/jiajiao-src.tgz -C ${DIR}
 # 运维脚本同步到 ${DIR}/bin（此前只上传 compose/schema，导致备份脚本在服务器上是旧版）
 mkdir -p ${DIR}/bin
-for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh "${DIR}"/deploy/security-integrity.sh; do
+for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh "${DIR}"/deploy/security-integrity.sh "${DIR}"/deploy/rollback.sh; do
   [ -f "$f" ] || continue
   install -m 755 "$f" "${DIR}/bin/$(basename "$f")"
 done
@@ -242,6 +273,18 @@ if [ -f ${DIR}/deploy/.env ]; then
 fi
 install -m 600 /tmp/jiajiao.env.new ${DIR}/deploy/.env
 rm -f /tmp/jiajiao.env.new
+# --- 发布 tag：镜像不可变，回滚 = 切 tag 重新 up（deploy/rollback.sh）---
+TAG="${RELEASE_TAG}"
+docker image inspect jiajiao-app:latest >/dev/null 2>&1 || { echo "x 载入的镜像包没有 jiajiao-app:latest 标签，无法建发布 tag"; exit 1; }
+docker tag jiajiao-app:latest "jiajiao-app:$TAG"
+if grep -q '^APP_IMAGE_TAG=' ${DIR}/deploy/.env; then
+  sed -i "s|^APP_IMAGE_TAG=.*|APP_IMAGE_TAG=$TAG|" ${DIR}/deploy/.env
+else
+  printf 'APP_IMAGE_TAG=%s\n' "$TAG" >> ${DIR}/deploy/.env
+fi
+echo "  发布 tag：jiajiao-app:$TAG"
+printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" deploy ok "$TAG" "image=$(docker image inspect -f '{{.Id}}' "jiajiao-app:$TAG" | cut -c8-19)" >> ${DIR}/releases.log
+echo "  已记入 ${DIR}/releases.log"
 rm -f /tmp/jiajiao-app.tar /tmp/jiajiao-src.tgz /tmp/jiajiao.env
 cd ${DIR}/deploy
 DC="docker compose"
@@ -251,15 +294,23 @@ $DC -f docker-compose.prod.yml up -d --no-build
 `);
 
 step("5) 等健康");
+let healthy = false;
 for (let i = 0; i < 40; i++) {
   const out = ssh(`curl -fsS http://127.0.0.1:${PORT}/api/health || true`, { quiet: true }).trim();
   if (out.includes('"ok"') || out.includes('"status":"ok"')) {
     console.log("  health ok: " + out.slice(0, 160));
+    healthy = true;
     break;
   }
   await new Promise((r) => setTimeout(r, 3000));
-  if (i === 39) die("health 20 分钟内未就绪，看 `docker compose logs app`");
 }
+if (!healthy) {
+  console.error("\n✗ health 20 分钟未就绪 —— 尝试自动回滚到上一版");
+  ssh(`bash ${DIR}/bin/rollback.sh --previous || true`);
+  die("部署失败已尝试回滚；用 `bash ${DIR}/bin/rollback.sh --list` 看当前版本与 releases.log");
+}
+// 健康后清理旧镜像，只留最近 N 个发布 tag（JIAJIAO_KEEP_IMAGES，默认 3）
+ssh(`bash ${DIR}/bin/rollback.sh --prune || true`, { quiet: true });
 
 step("6) 容器与入口");
 ssh(`
