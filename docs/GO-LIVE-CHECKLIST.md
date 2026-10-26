@@ -30,7 +30,7 @@
 | B3 | 备份自动化与演练 | ✅ **已完成（2026-10-23 起每日自动跑）**：服务器上装了 `jiajiao-backup.timer`（每日 03:20，错峰 ±10 分钟，关机错过开机补跑）→ `backup-db.sh` 容器内 `mysqldump` + 上传卷打包，**防空校验**（gzip 完整性 + 表数 <30 判失败）+ 原子改名，保留 DB 14 份 / 上传 7 份；失败由 `OnFailure=jiajiao-backup-notify.service` 写 journal（error）并可选 POST `BACKUP_WEBHOOK_URL`。本地另有 `npm run db:backup`/`db:restore`（恢复前后双重校验）与保留策略实测。实测：剪枝 18→14 正确、故意造失败 → 退出码 1 + `LAST_STATUS` 记原因 + webhook 收到合法 JSON（HTTP 200）。**仍缺**：异地/对象存储归档（本机备份跟着机器一起没）、RPO/RTO 定义、每月恢复演练排期；`schtasks` 安装段本机权限不足未实测（服务器侧改用 systemd timer，已实测） | 备份推到对象存储（版本化 + 生命周期）+ 写一页 RPO/RTO；每月做一次真实恢复演练 |
 | B4 | 监控与告警 | 🟡 有 `/api/health`（匿名仅可用性）与 `/api/health/detail`（管理员，含用户数/订单/担保额/DB+Redis 延迟） | 接 Prometheus 指标端点 + Grafana 面板 + 告警规则（错误率/延迟/担保台账不平/任务卡死） |
 | B5 | 日志集中化 | 🟡 应用日志走 stdout（容器 `docker logs` 可看） | 接 Loki/ELK：结构化 JSON 日志、保留策略、按 `trace_id` 串联；审计日志已在库内（`audit_logs`） |
-| B6 | 灰度与回滚 | ❌ 无镜像 tag 策略、无一键回滚脚本 | 镜像按 git sha 打 tag，compose 固定 tag；回滚 = 改 tag + `up -d`；DB 变更走向后兼容的两步法 |
+| B6 | 灰度与回滚 | ✅ **已完成（2026-10-26，P81）**：镜像按 git 短 sha 打**不可变 tag**，compose 用 `image: jiajiao-app:${APP_IMAGE_TAG:-latest}`；发布脚本写 `.env` 的 `APP_IMAGE_TAG` + 记 `releases.log` 台账；`/opt/jiajiao/bin/rollback.sh` 支持 `--list / --previous / <tag> / --prune`，切完轮询 `/api/health`，**不健康自动退回原版本**；发版健康 20 分钟不过也自动回滚；只保留最近 3 个发布镜像。**红线**：DB 变更必须向后兼容（先加列后删列） | 仍缺**真正的灰度**（按比例/按用户分流）——当前是「整体切换 + 秒级回滚」 |
 | B7 | 密钥管理 | 🟡 `AUTH_SECRET` 由 `deploy/.env` 注入（`${AUTH_SECRET:?...}` 强制必填，`up.bat` 还会拦占位符） | 接 Vault/KMS 或云密钥托管；轮换流程（`token_version` 机制已可让旧令牌立即失效） |
 | B8 | 镜像瘦身 / SBOM / 签名 | ❌ 三份前端依赖各自 `npm install`，镜像偏大；无 SBOM、无签名 | 改 pnpm workspace + 预构建产物挂载；`syft` 生成 SBOM、`cosign` 签名 |
 
