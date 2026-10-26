@@ -192,6 +192,51 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 > 以上全部固化在 `deploy/harden-server.sh`（第 1b / 2 / 8–11 步）与 `tools/deploy-remote.mjs`
 > （部署时自动同步 `security-integrity.sh` 与 systemd unit），换机或有新服务器时重跑即复现。
 
+### 10.5 取证级复查（2026-10-26 第二轮，结论：仍无中毒）
+
+用户再次要求确认后做的一轮更深检查，比 §10.1 多了「二进制完整性 / 专业扫描器 / 进程内存视图 / 后门位点专查」。
+
+| 检查面 | 方法 | 结果 |
+| --- | --- | --- |
+| **系统二进制是否被替换** | `debsums -c` 全量校验所有已安装 deb 的文件哈希 | **仅 3 条例外**，全在 `/usr/local/qcloud/python/…/cloudinit/`（腾讯云定制 cloud-init 的 `DataSourceTencentCloud.py` 等，厂商补丁，非 deb 管理属正常）；`coreutils`/`procps`/`iproute2`/`bash`/`systemd`/`sudo`/`openssh` 等**零 MISMATCH** |
+| **专业 rootkit 扫描** | `chkrootkit`（全盘）+ `rkhunter --check --rwo`（属性库 137 文件） | **chkrootkit 44 项 `not infected`、`chkproc: nothing detected`、`chkdirs: nothing detected`、wtmp/utmp/lastlog 「nothing deleted」；rkhunter 零告警、退出码 0** |
+| **进程内存视图** | 扫 `/proc/*/exe` 是否指向 `(deleted)`；`/proc/*/environ` 的 `LD_PRELOAD`；`/proc/*/maps` 里 `/tmp`、`/dev/shm`、`(deleted)` 映射 | 无进程跑在已删除二进制上；无 `/tmp`、`/dev/shm` 的可疑 so 映射；`/etc/ld.so.preload` 不存在 |
+| 内核模块 | `lsmod` 105 个 + 按 `hide/root/kit/reptile/diamorphine` 等筛查 | 全是标准 Ubuntu/虚拟化/容器网络模块，无匹配 |
+| SUID/SGID 全量 | `find / -perm -4000/-2000`（35 个）逐个数 dpkg 归属 | 未归属 dpkg 的均属两类正常情况：① usrmerge 后 `/usr/bin/mount` 等实际由 `mount: /bin/mount` 提供；② `/var/lib/containerd/…/snapshots/*/fs/usr/bin/*` 是**容器镜像层内**的 SUID（mysql/redis 镜像自带） |
+| PAM 后门 | 扫 `/etc/pam.d` 的 `pam_exec`/`pam_python`/`pam_tty_audit`/`/tmp` 路径 | 无；模块全为标准集 |
+| SSH 后门位点 | `/etc/ssh/sshrc`、`sshd -T` 的 `ForceCommand`/`AuthorizedKeysCommand`/`PermitUserEnvironment`、`authorized_keys` 的 `command=`/`from=` | 全部无/为 none；`authorized_keys` 仅纯公钥 |
+| 持久化位点 | 非 dpkg 归属的 systemd unit、`/var/spool/cron/crontabs`、`atq`、`~/.ssh/rc`、xdg autostart | unit 全是 dpkg alias/腾讯云 agent/我们自己的备份与完整性 timer；crontab 只有腾讯云 stargate；`atq` 0 条 |
+| 容器内部 | `docker top` 排除预期进程、容器内 `/tmp` 与 uploads、可执行文件 | 三容器只有预期进程；app 容器 `/tmp` 空、uploads 仅 1 张 PNG |
+| nginx 配置 | 全量 grep `proxy_pass`/`root`/`alias`/`fastcgi`/`cgi_pass`/`rewrite` | 除本机 `127.0.0.1:4300` 外无外部反代、无 CGI、无可疑 rewrite；未加载额外模块 |
+| 应用日志 | `docker logs` 24h 内 error/exception/injection/路径穿越 | 只有业务日志与 mock 短信；无异常 |
+| 原始网络视图 | 直接读 `/proc/net/tcp`（绕过 `ss` 被替换的可能） | 监听仍只有 22/80/443 + `127.0.0.1:4300/34851/53` |
+
+**唯一的「可疑发现」与其澄清**：某进程环境里有 `LD_PRELOAD=/lib64/libsgmon.so`，
+对应 PID 是 `/bin/sh -c sleep 100`（云镜探针）。该 `.so` 不属于任何 deb 包，但 `strings` 里全是
+`l.yd.qcloud.com`、`u.yd.qcloud.com`、`metadata.tencentyun.com`、`/usr/local/qcloud/YunJing/`、`/etc/cron.d/yunjing`
+——**腾讯云云镜（主机安全）注入的监控库**，与 `YDService`/`YDEyes` 同源，非后门。
+
+**这轮顺带处理的两件事**
+
+- 之前 `apt-get install rkhunter` 因 `sudo` 重置环境、`postfix` 的 debconf 交互提示卡住，导致 postfix 半装包
+  → 已 `dpkg --remove --force-remove-reinstreq postfix` 并 `dpkg --configure -a`，`dpkg --audit` 归零
+  （**这一步很重要**：半装包会让 `unattended-upgrades` 自动安全更新整条链路失败）。
+- 装上 `chkrootkit` 与 `rkhunter`（`--no-install-recommends`，不拉 postfix）供后续定期复查。
+
+**结论的边界（诚实说明）**
+
+- 能确定：**没有已知 rootkit、没有隐藏进程/目录、系统二进制未被替换、无持久化后门、无异常外联、无 webshell、容器干净**。
+- 不能 100% 确定：**纯内存型的无文件攻击（无落盘、无持久化）**需要 EDR 或内存取证才能排除；本机没有部署 EDR，
+  但这类攻击在重启后即消失，且本次已确认无任何持久化位点与异常进程，实际风险极低。
+- 若仍不放心，可做的下一步是**冷启动一次**（`reboot`）：重启后内存痕迹全部清空，再跑一次
+  `security-integrity.sh --check` 与 `rkhunter --check` 即为干净的基线状态。
+
+**顺带发现的两个配置弱点（不是中毒，但建议修）**
+
+1. **Redis 未设 `requirepass`**：`bind` 是容器网络，宿主未映射 6379（外网不可达），但 app 容器被拿下后可直连无密码 Redis 做写文件/主从复制利用。
+2. **MySQL 存在 `root@%`**：官方镜像默认建 `root@'%'`，容器内网可用 root 密码直连；建议改成 `root@localhost` + 单独业务账号。
+3. （环境配置）线上 `.env` 保留 `SMS_MOCK_LOG_CODE=1`，mock 短信会把验证码打进容器日志；生产接真实短信通道后应改回 `0`。
+
 **仍需你做/注意的**
 
 1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
