@@ -278,6 +278,37 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 
 验证方式：把合并块抽出来在服务器 `/tmp` 沙箱实跑两遍，断言「服务器独有键保留 / 本地键值为准 / 非法行不写入 / 注释不搬运」全部通过，备份文件与 `600` 权限均符合预期。
 
+### 10.7 第三次复查（2026-10-26 深夜，结论：仍无中毒；清掉两个自己留下的明文口令文件）
+
+看完前面几轮仍然被问「再查一次」，这次按「发现面 → 威胁面」重新走了一遍，全部只读（清理项除外）。
+
+| 面 | 做法 | 结果 |
+| --- | --- | --- |
+| 进程 | `ps` 全量 + 用户名解析失败 + `exe` 带 `(deleted)` + 从 `/tmp`、`/dev/shm` 运行 + 矿池/黑客常见串 | 126 进程 / 324 线程；**四类异常全空**；CPU 前几名是 `systemd --user`、`barad_agent`、`YDService`、`mysqld`、`redis-server`、`containerd`、`node dist/main.js`；负载 0.01/0.11/0.12 |
+| 网络 | `ss -ltnp` + `ss -tnp state established` + DNS + ufw | 监听仅 22/80/443 + `127.0.0.1:4300`(docker-proxy) + `127.0.0.1:34851`(containerd) + `127.0.0.53:53`(systemd-resolved)；外联仅**我自己的 SSH**（14.19.50.228）与腾讯云内网 agent（169.254.x）；ufw 仅放行 22/80/443 |
+| 持久化 | 所有 crontab、`/etc/cron.d`、systemd timer/enabled 单元、近 10 天 `/etc /usr/local /opt /root` 新文件、`ld.so.preload`、`rc.local`/profile/bashrc、SSH 配置、PAM | cron 只有腾讯云 `stargate`/`YunJing` 与我们自己的备份/完整性 timer；`ld.so.preload` **不存在**；bashrc/profile **无可疑行**（无 curl/wget/base64//dev/tcp/LD_PRELOAD）；`PermitRootLogin no`、`PasswordAuthentication no`、`AuthenticationMethods publickey` 均在位；PAM 只有发行版标准行（`pam_permit.so` 是 Debian 惯例的收尾行），**无 `pam_exec`/`pam_python`** |
+| 账号 | `/etc/passwd` 全表 + UID 0 + 可登录 shell + `passwd-`/`group-` 差异 + sudoers 全文 | UID 0 仅 `root`；可登录 shell 仅 `root`/`ubuntu`；**`lighthouse` 是 `/usr/sbin/nologin`**；与 `passwd-` 的差异**只有 lighthouse 那一行**（`/bin/bash`→`/usr/sbin/nologin`，正好 8 字节，与文件大小 1993→2001 吻合）；`group-` 差异只多 `ssl-cert:x:121`（rkhunter 依赖的 snakeoil 证书包建的）；sudoers 里**已没有 lighthouse 的 NOPASSWD** |
+| 二进制 | `debsums -c`（排除 `/usr/local/qcloud`）+ `dpkg -V libpam-modules{,-bin}` + 我们的 52 项完整性基线 | 三者**全部 0 差异**；`security-integrity.sh --check` → `完整性校验通过（0 处差异，监控 52 个文件）` |
+| rootkit | `rkhunter --check --sk --nocolors --rwo`、`chkrootkit chkproc/chkdirs/chkutmp` | rkhunter **退出码 0、零告警**；chkrootkit 三项**均无输出**（即 not infected / nothing detected） |
+| SUID/SGID | 全盘 `-perm -4000/-2000` + `dpkg -S` 归属 | 非包文件的只有两类：① usrmerge 的 `/usr/bin/{mount,umount,su,fusermount}`、`/usr/sbin/{unix_chkpwd,pam_extrausers_chkpwd}`（`dpkg -S` 记的是 `/bin/…`、`/sbin/…`，`dpkg -V` 证明内容未改）；② `/var/lib/containerd/...snapshots/*` 里的容器镜像层文件（mysql/redis 基础镜像自带） |
+| 内存映射 | 扫所有进程 `maps` 里 `/tmp`、`/dev/shm`、`(deleted)` 的库 | **零命中**（上轮那个 `LD_PRELOAD=/lib64/libsgmon.so` 是腾讯云云镜自己的监控库，本轮已不再出现） |
+| 审计 | `auditctl -l`、`ausearch` 查模块加载与管理动作、`aureport --auth` | 19 条规则在位；**无 `init_module`/`finit_module` 事件**；认证汇总无异常 |
+| 容器 | `docker ps -a`、镜像清单 | 只有 `jiajiao-app`/`mysql:8.0`/`redis:7-alpine`，**无陌生容器或镜像** |
+| 应用层 | 查 `audit_logs`（近 3 天动作分布）+ 管理员清单 | 动作全是我们自己的验收/运维流水（`order.fromService` 23、`order.pay` 22、`admin.risk.close` 19、`admin.banner.*`…）；管理员只有 id=1 在用，15/17/19 是测试建的、**已停用并匿名化**（`已删除用户#N`），不是入侵者 |
+| 爆破面 | `lastb`、fail2ban | 失败登录用户名 `frappe`/`devika`/`admin`/`ADMIN`/`test`（典型扫描字典），**全部失败**；sshd jail 已 ban 10 个 IP（累计 13），recidive 0 |
+
+**顺手修掉的真问题（我自己造成的）**：`P80` 建 MySQL/Redis 账号时把口令写进了 `/tmp/.app_pw` 和 `/tmp/.redis_pw`，
+两个文件一直留在机器上（`/tmp` 是 `1777`，任何本地用户可读）。已 `rm` 掉，并顺手清了 `/tmp` 里我们历次上传的运维脚本与
+`deploy-backup.tgz`；复查 `/tmp`、`/var/tmp`、`/dev/shm`、`/home/ubuntu` 已无 `*pw*`/`*pass*`/`*secret*`/`*.cnf` 类残留。
+**教训**：往服务器传口令一律走 `printf … | docker exec -i` 这类不落盘的方式，或落到 `600` 的目录里，绝不能写 `/tmp` 明文。
+
+**结论与边界（重要）**：本次仍然**没有发现任何中毒迹象**——没有挖矿进程、没有可疑外联、没有 rootkit、
+没有包文件被替换、没有持久化后门、没有陌生账号或容器。
+但要说清能力边界：`debsums`/`rkhunter`/`chkrootkit` 都只能发现**磁盘上有痕迹**的篡改；
+**纯内存驻留、无文件落地**的高级攻击它们查不出来（需要 EDR 或云端主机安全产品的运行时行为检测），
+内核级 rootkit 若改的是内核内存也同理。这台机器装了腾讯云云镜（`YDService`，有运行时行为检测与木马扫描，
+上轮查过无告警），可以作为那层的补充。要更彻底的结论只能冷启动复核（重置到干净镜像后比对）。
+
 **仍需你做/注意的**
 
 1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
