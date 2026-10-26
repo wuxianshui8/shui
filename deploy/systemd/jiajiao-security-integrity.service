@@ -1,0 +1,13 @@
+[Unit]
+Description=jiajiao 关键文件完整性检查（账号/SSH/定时任务/systemd/nginx 配置）
+Documentation=https://github.com/wuxianshui8/shui/blob/master/docs/SECURITY.md
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/jiajiao/bin/security-integrity.sh --check
+# 有人工修改导致的差异属预期告警，不因退出码 1 让 systemd 标 failed 反复重试；
+# 结果一律写 /var/lib/jiajiao-security/LAST_CHECK（status=changed）并尝试 webhook 告警。
+SuccessExitStatus=1
+Nice=10
+IOSchedulingClass=idle

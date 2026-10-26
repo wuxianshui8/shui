@@ -145,6 +145,9 @@ const tar = spawnSync("tar", [
   "deploy/backup-db.sh",
   "deploy/backup-notify.sh",
   "deploy/install-backup.sh",
+  "deploy/security-integrity.sh",
+  "deploy/systemd/jiajiao-security-integrity.service",
+  "deploy/systemd/jiajiao-security-integrity.timer",
   "apps/api-nest/db/schema.mysql.sql",
   "apps/api-nest/db/seed-min.mjs",
 ], { encoding: "utf8" });
@@ -209,10 +212,17 @@ mkdir -p ${DIR}
 tar xzf /tmp/jiajiao-src.tgz -C ${DIR}
 # 运维脚本同步到 ${DIR}/bin（此前只上传 compose/schema，导致备份脚本在服务器上是旧版）
 mkdir -p ${DIR}/bin
-for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh; do
+for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh "${DIR}"/deploy/security-integrity.sh; do
   [ -f "$f" ] || continue
   install -m 755 "$f" "${DIR}/bin/$(basename "$f")"
 done
+# 完整性校验 unit：服务端常驻排程（不存在则跳过，装好后由 harden-server.sh 启用）
+for f in "${DIR}"/deploy/systemd/jiajiao-security-integrity.service "${DIR}"/deploy/systemd/jiajiao-security-integrity.timer; do
+  [ -f "$f" ] || continue
+  install -m 644 "$f" /etc/systemd/system/
+done
+systemctl daemon-reload 2>/dev/null || true
+systemctl enable --now jiajiao-security-integrity.timer 2>/dev/null || true
 install -m 600 /tmp/jiajiao.env ${DIR}/deploy/.env
 rm -f /tmp/jiajiao-app.tar /tmp/jiajiao-src.tgz /tmp/jiajiao.env
 cd ${DIR}/deploy

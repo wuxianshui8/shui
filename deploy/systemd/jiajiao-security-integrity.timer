@@ -1,0 +1,12 @@
+[Unit]
+Description=每日关键文件完整性检查（jiajiao）
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+RandomizedDelaySec=300
+# 开机 10 分钟后先跑一次，避免装好后到第二天之间是盲区
+OnBootSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -108,10 +108,13 @@ command -v fail2ban-client >/dev/null 2>&1 || apt-get install -y fail2ban >/dev/
 cat > /etc/fail2ban/jail.local <<'CONF'
 [DEFAULT]
 backend  = auto
-bantime  = 2h
-findtime = 10m
-maxretry = 5
+bantime  = 24h
+findtime = 1h
+maxretry = 3
 ignoreip = 127.0.0.1/8 ::1
+# 递增封禁：屡犯者封得更久（最长 4 周），而不是每 24h 重新给机会
+bantime.increment = true
+bantime.maxtime   = 4w
 
 [sshd]
 enabled  = true
@@ -119,12 +122,21 @@ mode     = aggressive
 port     = 22
 logpath  = /var/log/auth.log
 maxretry = 3
-bantime  = 4h
+bantime  = 24h
+
+# 反复被 sshd jail 封住的 IP（一周内再犯 3 次）直接封一周
+[recidive]
+enabled  = true
+logpath  = /var/log/fail2ban.log
+findtime = 1w
+bantime  = 1w
+maxretry = 3
 CONF
 systemctl enable --now fail2ban >/dev/null 2>&1
-fail2ban-client reload >/dev/null 2>&1 || true
+fail2ban-client -t >/dev/null 2>&1 || bad "fail2ban 配置校验失败"
+systemctl restart fail2ban >/dev/null 2>&1 || true
 sleep 1
-ok "fail2ban 运行中（$(fail2ban-client status sshd 2>/dev/null | grep -c 'Currently banned' >/dev/null && echo 'sshd jail 已加载')）"
+ok "fail2ban 运行中（$(fail2ban-client status 2>/dev/null | grep 'Jail list' | sed 's/.*Jail list:[[:space:]]*//')）"
 
 say "3) 防火墙 ufw"
 sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
@@ -224,6 +236,98 @@ PY
   ok "Nginx 已加固"
 else
   ok "未装 Nginx，跳过"
+fi
+
+say "8) 内核安全参数（信息泄露 / 本地提权面）"
+cat > /etc/sysctl.d/99-security-extra.conf <<'CONF'
+# P78 加固（2026-10-26）：限制内核信息泄露与本地提权面
+# 特意不动 net.ipv4.conf.*.rp_filter 与 unprivileged_bpf_disabled：前者会打断 Docker 转发，
+# 后者 Ubuntu 22.04 默认已是 2，再改回 1 反而放宽。
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+kernel.yama.ptrace_scope = 1
+kernel.perf_event_paranoid = 3
+fs.suid_dumpable = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.conf.all.log_martians = 1
+CONF
+sysctl --system >/dev/null 2>&1
+ok "内核参数已应用（kptr_restrict=$(sysctl -n kernel.kptr_restrict) dmesg_restrict=$(sysctl -n kernel.dmesg_restrict) ptrace_scope=$(sysctl -n kernel.yama.ptrace_scope)）"
+
+say "9) 关掉云主机上无用的本地设备服务"
+for s in ModemManager upower udisks2 packagekit; do
+  if systemctl is-enabled "$s" >/dev/null 2>&1; then
+    systemctl disable --now "$s" >/dev/null 2>&1 && ok "已停用 $s" || bad "停用 $s 失败"
+  else
+    ok "$s 本就不启用"
+  fi
+done
+
+say "10) auditd 关键文件审计"
+if ! command -v auditctl >/dev/null 2>&1; then
+  command -v apt-get >/dev/null 2>&1 && apt-get install -y auditd >/dev/null 2>&1 </dev/null || true
+fi
+if command -v auditctl >/dev/null 2>&1; then
+  cat > /etc/audit/rules.d/99-jiajiao.rules <<'RULES'
+## P78 安全加固：关键文件与提权路径审计（2026-10-26）
+-D
+-b 8192
+--backlog_wait_time 60000
+-f 1
+
+# 账号与口令
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+# 提权配置
+-w /etc/sudoers -p wa -k privilege
+-w /etc/sudoers.d/ -p wa -k privilege
+# SSH 与登录凭据
+-w /etc/ssh/sshd_config -p wa -k sshd
+-w /root/.ssh/ -p wa -k authkeys
+-w /home/ubuntu/.ssh/ -p wa -k authkeys
+# 持久化
+-w /etc/crontab -p wa -k cron
+-w /etc/cron.d/ -p wa -k cron
+-w /etc/cron.daily/ -p wa -k cron
+-w /etc/systemd/system/ -p wa -k systemd
+-w /etc/rc.local -p wa -k boot
+# 内核模块加载
+-a always,exit -F arch=b64 -S init_module -S finit_module -k module
+# 时间/主机名篡改常见后门手法
+-a always,exit -F arch=b64 -S clock_settime -k time
+-w /etc/hosts -p wa -k hosts
+-w /etc/hostname -p wa -k hosts
+RULES
+  sed -i 's/^max_log_file .*/max_log_file = 20/; s/^num_logs .*/num_logs = 5/; s/^max_log_file_action .*/max_log_file_action = ROTATE/' /etc/audit/auditd.conf 2>/dev/null || true
+  systemctl enable auditd >/dev/null 2>&1 || true
+  systemctl restart auditd >/dev/null 2>&1 || true
+  sleep 1
+  # auditd 只读 rules.d 里经 augenrules 合成的 audit.rules，必须显式 load 一次
+  augenrules --load >/dev/null 2>&1 || true
+  ok "auditd 运行中（规则 $(auditctl -l 2>/dev/null | wc -l) 条，含账号/提权/SSH/定时任务/内核模块）"
+else
+  bad "auditd 不可用（apt 源不可达？），跳过审计规则"
+fi
+
+say "11) 关键文件完整性基线 + 每日校验"
+if [ -x /opt/jiajiao/bin/security-integrity.sh ]; then
+  install -m 644 "$(dirname "$0")/systemd/jiajiao-security-integrity.service" /etc/systemd/system/ 2>/dev/null || true
+  install -m 644 "$(dirname "$0")/systemd/jiajiao-security-integrity.timer" /etc/systemd/system/ 2>/dev/null || true
+  systemctl daemon-reload
+  if [ -f /var/lib/jiajiao-security/baseline.sha256 ]; then
+    ok "已有基线（$(wc -l < /var/lib/jiajiao-security/baseline.sha256) 条），不覆盖"
+  else
+    /opt/jiajiao/bin/security-integrity.sh --init >/dev/null 2>&1 && ok "已生成基线（$(wc -l < /var/lib/jiajiao-security/baseline.sha256 2>/dev/null) 条）"
+  fi
+  systemctl enable --now jiajiao-security-integrity.timer >/dev/null 2>&1 || true
+  ok "每日 04:20 校验已排程（结果写 /var/lib/jiajiao-security/LAST_CHECK）"
+else
+  bad "未找到 /opt/jiajiao/bin/security-integrity.sh（先跑 deploy-remote.mjs 部署）"
 fi
 
 say "完成：复查要点"

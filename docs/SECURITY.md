@@ -154,6 +154,44 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 - 容器内身份 `uid=1000(node)`（非 root），三容器 `privileged=false`；`ubuntu` 用户**不在 docker 组**（只能经 sudo 用 docker）
 - 脚本幂等：重复执行两次，容器 uptime 不中断、站点仍 200
 
+### 9.1 二次加固（2026-10-26，P78）
+
+第一轮加固后仍留了三类缺口：① 主 `sshd_config` 写着 `PermitRootLogin yes` / `PasswordAuthentication yes`，
+只是被 drop-in 覆盖（一旦有人删掉 drop-in 就直接退回不安全状态）；② 爆破只封 2h，屡犯者每两小时就能重试；
+③ **没有"变化检测"**——真被改了关键文件（新增账号、改 sudoers、塞 cron）没人会知道。
+
+| # | 措施 | 配置位置 | 为什么 |
+| --- | --- | --- | --- |
+| 1 | **主 sshd_config 对齐**为 `PermitRootLogin no` / `PasswordAuthentication no`；drop-in 增加 `AuthenticationMethods publickey`（只认公钥）、`MaxStartups 10:30:60`（限制并发未认证连接，抗爆破占资源）、`LogLevel VERBOSE`（记录密钥指纹） | `/etc/ssh/sshd_config` + `99-hardening.conf` | 消除"两处矛盾"，让安全状态不依赖 drop-in 是否还在 |
+| 2 | **fail2ban 收紧**：`bantime 24h` / `findtime 1h` / `maxretry 3`；新增 `recidive` jail（一周内再犯 3 次封一周）；`bantime.increment`（屡犯递增，最长 4 周） | `/etc/fail2ban/jail.local` | 原配置 2h/4h 太松，扫描器换窗口就能回来 |
+| 3 | **内核信息/提权面**：`kptr_restrict=2`、`dmesg_restrict=1`、`yama.ptrace_scope=1`、`perf_event_paranoid=3`、`fs.suid_dumpable=0`、拒绝 ICMP 重定向/源路由、`log_martians` | `/etc/sysctl.d/99-security-extra.conf` | 限制内核地址泄露与本地调试/追踪类提权手法；**刻意不动 `rp_filter` 与 `unprivileged_bpf_disabled`**（前者断 Docker 转发，后者 22.04 默认已是 2） |
+| 4 | **auditd 关键审计**（19 条规则）：`/etc/{passwd,shadow,group,gshadow}`、`sudoers*`、`sshd_config`、`~/.ssh/`、`crontab`/`cron.d`/`cron.daily`、`systemd/system`、`rc.local`、`init_module/finit_module`、`clock_settime`、`/etc/hosts` | `/etc/audit/rules.d/99-jiajiao.rules`（`augenrules --load` 生效） | 事后能回答"谁在什么时候改了提权配置"；实测 append 与 `sed -i` 换 inode 都能留痕 |
+| 5 | **关键文件完整性基线 + 每日校验**：52 个关键文件的 `sha256 + 权限 + 属主` 存基线，每日 04:20（+开机 10 分钟）比对；差异写 `LAST_CHECK`（JSON）并留 `last-diff.txt`，同时尝试走 webhook 告警 | `deploy/security-integrity.sh` + `jiajiao-security-integrity.{service,timer}` | 这是**唯一能主动发现"被改过"的机制**——auditd 有日志但要人看，这个会把差异摆到 `LAST_CHECK` |
+| 6 | 关掉云主机无用的本地设备服务（`ModemManager` / `upower` / `udisks2`） | systemd | 少一个进程少一份攻击面（`packagekit` 由 dbus 按需唤醒，保持原样） |
+
+**实测验证（2026-10-26，线上机）**
+
+- `sshd -T`：`authenticationmethods publickey`、`passwordauthentication no`、`permitrootlogin no`、`maxstartups 10:30:60`；改动后**当前 SSH 会话未断**，新连接正常
+- `fail2ban-client status`：`Jail list: recidive, sshd`；sshd jail 当前封 3 个 IP
+- `sysctl`：五项内核参数均为目标值
+- `auditd`：active，规则 19 条；`audit.log` 已记录 1000+ 条事件，`/etc/hosts` 的 append 与 `sed -i` 均留下 `PATH name="/etc/hosts"` 记录
+- **完整性校验实测**：往 `/etc/hosts` 加一行 → `--check` 输出 `⚠️ 完整性变化 1 处：/etc/hosts`、`LAST_CHECK` 变 `{"status":"changed",...,"files":["/etc/hosts"]}`、`last-diff.txt` 含新旧 sha256 → 还原后复检 `status":"ok"`、退出码 0
+- 业务未受影响：`api health 200`、站点 200、三容器 healthy
+
+**回滚方式**
+
+| 改动 | 回滚 |
+| --- | --- |
+| sshd | `cp -a /root/sshd_config.bak-<日期> /etc/ssh/sshd_config` + `sshd -t` + `systemctl reload ssh` |
+| fail2ban | `cp -a /root/jail.local.bak-<日期> /etc/fail2ban/jail.local` + `systemctl restart fail2ban` |
+| 内核参数 | 删 `/etc/sysctl.d/99-security-extra.conf` + `sysctl --system` |
+| 审计 | `rm /etc/audit/rules.d/99-jiajiao.rules` + `augenrules --load` |
+| 完整性校验 | `systemctl disable --now jiajiao-security-integrity.timer`（脚本与基线可留） |
+| `lighthouse` 账号 | `usermod -s /bin/bash lighthouse` 恢复 shell；sudo 需手工加回 |
+
+> 以上全部固化在 `deploy/harden-server.sh`（第 1b / 2 / 8–11 步）与 `tools/deploy-remote.mjs`
+> （部署时自动同步 `security-integrity.sh` 与 systemd unit），换机或有新服务器时重跑即复现。
+
 **仍需你做/注意的**
 
 1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
@@ -212,3 +250,5 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 2. 若确认永不使用 `lighthouse`，可 `userdel -r lighthouse`（**未执行**，保留作云控制台 VNC 兜底）。
 3. 可选装 `rkhunter` / `debsums` 做二进制完整性校验（当前未装，排查靠人工清单 + 云镜 agent）。
 4. 若收到腾讯云「主机安全」告警，请把**告警条目截图/时间**给我按项复核——本次云镜日志里没有任何木马/入侵告警。
+5. 主 `sshd_config` 的 `PermitRootLogin yes` / `PasswordAuthentication yes` **已在 P78 修正为 `no`**（见 §9.1），
+   drop-in 仍是唯一"强制公钥"的落点，但主文件不再写反。
