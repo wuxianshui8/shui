@@ -161,3 +161,54 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 3. **备份**：`npm run db:backup` 已可用，但服务器上还没排进定时任务（B3 缺口），建议挂 `cron`/`systemd timer`。
 4. 生产前把演示口令 `a123456` 全部换掉（后台建号走一次性强口令，首登强制改密）。
 5. 若将来多实例/加 CDN，`TRUST_PROXY` 与 `X-Forwarded-For` 可信链要一起复核（见 §8 第 11 条）。
+
+## 10. 入侵排查记录（2026-10-26，结论：未发现入侵）
+
+怀疑服务器被入侵时的完整排查清单与结论。每一项都在线上机（kd211 / 腾讯云 2C3.6G / Ubuntu 22.04）实跑过。
+
+### 10.1 检查项与结果
+
+| 检查面 | 命令要点 | 结果 |
+| --- | --- | --- |
+| 负载/算力异常 | `uptime`、`ps -eo pcpu,args --sort=-pcpu` | 负载 **0.08 / 0.04 / 0.07**（2 核），无高 CPU 进程；`check-new-release` 瞬时 27% 属系统定时任务 |
+| 挖矿特征 | `grep -iE "xmrig\|kdevtmpfsi\|kinsing\|minerd\|stratum\|cpuminer"`；`find /tmp /dev/shm -name "*xmr*"` | 进程、文件、矿池外联**均为 0** |
+| 监听端口 | `ss -tulpn` | 仅 **22/80/443** 对外；`4300` 只绑 `127.0.0.1` |
+| 出站连接 | `ss -tnp state established` | 仅腾讯云内网元数据（`169.254.0.138` / `169.254.0.55`，`tat_agent` / `YDService`）+ 我的 SSH 会话，**无陌生外联** |
+| 持久化 | 全用户 `crontab -l`、`/etc/cron.d`、`systemctl list-timers` | 只有腾讯云 `stargate`/`yunjing` + 我们自己的 `jiajiao-backup.timer` + `certbot`，**无可疑定时任务** |
+| 启动项 | `find /etc/systemd/system -newermt`、`/etc/init.d`、`/etc/ld.so.preload` | 仅 cloud-init/腾讯云 agent/我们的备份 unit；`ld.so.preload` **不存在**（rootkit 常用位点干净） |
+| 账号 | `awk -F: '$3==0'`、`passwd` 变更时间、`sudoers.d`、`authorized_keys` | UID 0 仅 `root`；`authorized_keys` 只有部署公钥；`/etc/passwd` 最近变更 = 10-23 装 Docker（`dnsmasq` 用户 + `docker` 组，auth.log 有记录） |
+| 登录审计 | `last -a`、`grep "Accepted" /var/log/auth.log` | 成功登录**全部**是 `ubuntu` + **publickey** 从我的出口 IP 与控制台 `orcaterm`，无密码登录成功 |
+| 暴力破解 | `grep "Failed password" \| awk '{from}' \| sort \| uniq -c` | 有攻击（单 IP 最高 470 次），**全部失败**；fail2ban 累计封 39 个 IP，当前封 3 个 |
+| Web 入口 | nginx access.log 的 `.php` / `eval-stdin` / `.env` 探测、`uploads`、`/opt/jiajiao` 脚本 | **430 个 404 + 132 个 301**，无 200 命中；系统**未安装 PHP**（`dpkg -l php*` 为空），`.php` 探测客观上无法执行；`uploads` 只有 1 张 PNG |
+| 容器 | `docker ps -a`、`docker images` | 只有我们的 3 容器 / 3 镜像，无陌生镜像与特权容器 |
+| SSH 生效配置 | `sshd -T` | `passwordauthentication no` / `permitrootlogin no` / `maxauthtries 3` |
+| 主机安全 agent | 云镜日志 `grep -iE "trojan\|malware\|webshell\|mining"` | **无木马/入侵告警**；唯一 `WRN Malware open_fail: /tmp/runc-process*` 是扫描 Docker runc 临时进程的正常噪声 |
+
+### 10.2 排查中澄清的两个「疑似」
+
+1. **`/tmp/nvenc_ai_sdk_install.sh` + `/tmp/gpudirect_rdma_setup.sh`** —— 名字像 GPU 挖矿木马，实际是
+   **腾讯云官方镜像自带的 GPU 实例初始化脚本**：从 `metadata.tencentyun.com` 取机型，只有 `gn7vi` /
+   `HCCPNV4H` 等 RDMA/GPU 规格才装 `tscsdk-center`；本机是 CPU 机型 → 脚本 `exitlog` 直接退出，无进程、无外联。
+   mtime 是镜像构建时间（2023-06-27 / 2026-08-13）而非本次开机（10-22），可排除「运行期投放」。已删除。
+2. **`/tmp/2af7c071b686bc94776078e2ebe35b8a`**（root 700 哈希目录）—— 空目录，创建于开机后 1 分钟，
+   与 `cvm_init` 同批，属云初始化临时目录。
+
+### 10.3 已做的处置（加固；没有恶意对象可「杀」）
+
+| 处置 | 命令 | 回滚方式 |
+| --- | --- | --- |
+| 移除云镜像默认账号 `lighthouse` 的 `NOPASSWD: ALL` | 删 `/etc/sudoers` 中该行 + `visudo -c` 校验 | `cp -a /etc/sudoers.bak-2026-10-26 /etc/sudoers` |
+| 锁定 `lighthouse` 登录 shell（账号保留） | `usermod -s /usr/sbin/nologin lighthouse` | `usermod -s /bin/bash lighthouse` |
+| 清掉镜像残留的 GPU 初始化脚本 | `rm -f /tmp/nvenc_ai_sdk_install.sh /tmp/gpudirect_rdma_setup.sh` | 无需回滚（CPU 机型永远用不到） |
+| 固化为可复现加固 | `deploy/harden-server.sh` 新增「1b) 云镜像自带账号收窄」 | — |
+
+处置后复检：`sudo -l -U lighthouse` → **not allowed to run sudo**；`passwd -S lighthouse` → `L`（锁定）；
+`api health 200`、站点 200、三容器 healthy、SSH 仍仅公钥可登。
+
+### 10.4 遗留建议（非紧急）
+
+1. 主 `sshd_config` 仍写 `PermitRootLogin yes` / `PasswordAuthentication yes`，被 `99-hardening.conf` 覆盖为 `no`
+   ——**生效值安全**，但两处矛盾易误判；建议改为 `no`（需 `sshd -t` + reload）。
+2. 若确认永不使用 `lighthouse`，可 `userdel -r lighthouse`（**未执行**，保留作云控制台 VNC 兜底）。
+3. 可选装 `rkhunter` / `debsums` 做二进制完整性校验（当前未装，排查靠人工清单 + 云镜 agent）。
+4. 若收到腾讯云「主机安全」告警，请把**告警条目截图/时间**给我按项复核——本次云镜日志里没有任何木马/入侵告警。

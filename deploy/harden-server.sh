@@ -82,6 +82,26 @@ fi
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
 ok "SSH 已收紧（备份：$BK）"
 
+# 云镜像自带账号收尾（2026-10-26 入侵排查发现）：
+#   腾讯云轻量镜像会预置 `lighthouse` 账号并给 `NOPASSWD: ALL`，即使密码锁定、无 key 也属多余攻击面。
+#   这里移除其 sudo 并锁 shell（账号保留，需要时 `usermod -s /bin/bash lighthouse` 可恢复）。
+say "1b) 云镜像自带账号（lighthouse）收窄"
+if id lighthouse >/dev/null 2>&1; then
+  cp -a /etc/sudoers /etc/sudoers.bak-$(date +%F) 2>/dev/null || true
+  sed -i '/^lighthouse[[:space:]]\+ALL=(ALL)[[:space:]]\+NOPASSWD:[[:space:]]*ALL$/d' /etc/sudoers
+  if visudo -c >/dev/null 2>&1; then
+    usermod -s /usr/sbin/nologin lighthouse 2>/dev/null || true
+    ok "lighthouse：已移除 NOPASSWD sudo，shell 锁为 nologin"
+  else
+    bad "sudoers 语法校验失败，恢复备份"
+    cp -a /etc/sudoers.bak-$(date +%F) /etc/sudoers
+  fi
+else
+  ok "无 lighthouse 账号（非腾讯云轻量镜像）"
+fi
+# 镜像残留：非 GPU 机型上的 GPU 初始化脚本会自己退出，留着只是噪音
+rm -f /tmp/nvenc_ai_sdk_install.sh /tmp/gpudirect_rdma_setup.sh 2>/dev/null || true
+
 say "2) fail2ban"
 export DEBIAN_FRONTEND=noninteractive
 command -v fail2ban-client >/dev/null 2>&1 || apt-get install -y fail2ban >/dev/null 2>&1 </dev/null
