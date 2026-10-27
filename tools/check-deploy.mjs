@@ -277,6 +277,7 @@ if (!exists(wfPath)) {
       ["rollback.sh --previous", "健康失败时自动回滚"],
       ["rollback.sh --prune", "发布成功后清理旧镜像"],
       ["APP_IMAGE_TAG", "支持 APP_IMAGE_TAG 覆盖发布 tag"],
+      ["-perm -0002 -exec chmod 644", "解包后收紧全局可写文件权限"],
     ];
     for (const [needle, why] of checks) {
       if (!text.includes(needle)) fail(dep + " 缺少 " + needle + "（" + why + "）");

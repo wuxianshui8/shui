@@ -241,6 +241,9 @@ fi
 docker load -i /tmp/jiajiao-app.tar
 mkdir -p ${DIR}
 tar xzf /tmp/jiajiao-src.tgz -C ${DIR}
+# 上传包在 Windows 上打包，解出来的文件可能带 666：这些文件会被 root 的定时任务与 compose 使用，
+# 一律收紧到 644（.env 是 600 不会命中；bin/ 下的安装副本单独 755）
+find ${DIR}/deploy -xdev -type f -perm -0002 -exec chmod 644 {} + 2>/dev/null || true
 # 运维脚本同步到 ${DIR}/bin（此前只上传 compose/schema，导致备份脚本在服务器上是旧版）
 mkdir -p ${DIR}/bin
 for f in "${DIR}"/deploy/backup-db.sh "${DIR}"/deploy/backup-notify.sh "${DIR}"/deploy/security-integrity.sh "${DIR}"/deploy/rollback.sh; do

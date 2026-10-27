@@ -309,6 +309,41 @@ XSS 实测（`scripts/browser-check.mjs`）：把 `<img src=x onerror=...><scrip
 内核级 rootkit 若改的是内核内存也同理。这台机器装了腾讯云云镜（`YDService`，有运行时行为检测与木马扫描，
 上轮查过无告警），可以作为那层的补充。要更彻底的结论只能冷启动复核（重置到干净镜像后比对）。
 
+### 10.8 第四次复查（2026-10-27，换角度：内核 / eBPF / 权限 / Web 扫描面）
+
+上一轮（§10.7）刚查完又被问了一次。这次不重复同样的面，改查**之前没覆盖的角度**，另外把一天的扫描流量摊开看。
+结论：**仍然没有中毒**，但查出两个真实的权限问题（已修，且已在发布脚本里堵住复发）。
+
+| 新角度 | 做法 | 结果 |
+| --- | --- | --- |
+| 内核完整性 | `/proc/sys/kernel/tainted` + `dmesg` 里的 taint 原因 + 逐个核对 `lsmod` 的模块是否有对应 `.ko` | **`tainted=0`**（无树外模块、无强制卸载）；111 个模块**全部**能在内核树里找到对应文件 |
+| eBPF / 调试面 | `mount` 里的 bpffs、debugfs、tracefs；`bpftool`（未安装） | bpffs/debugfs/tracefs 均按系统默认挂载且 `noexec`；没有异常 pin；本轮未见任何 eBPF 程序（上轮 `LD_PRELOAD=libsgmon.so` 也未再出现） |
+| systemd 深挖 | `/etc/systemd/system/*.d/*.conf` drop-in、`run-*` 瞬态单元、近 24h error 级日志 | 只有 1 个 drop-in（`sshd-keygen@.service.d`，发行版自带，无 `Exec*`）；无常驻恶意瞬态单元；error 日志全是 SSH 扫描导致的 `kex_exchange_identification: Connection closed by remote host` |
+| 隐藏进程 | `ps` 计数 vs `/proc/<pid>` 目录数、cmdline 为空的用户态进程、cwd 已删除 | **127 = 127**，无差值；cmdline 空的都是内核线程 + 短暂进程；cwd 已删除的**零命中** |
+| 包管理可信性 | apt 源、`apt.conf.d` 里的代理/钩子、`dpkg --audit`、近 7 天安装清单 | 源全是腾讯云镜像；钩子只有 `20apt-esm-hook`(发行版) 与 `70debconf`(标准)；`dpkg --audit` 无输出；近期装的都是我们自己的（docker/certbot/fail2ban/auditd/rkhunter/debsums/nginx 模块） |
+| 容器加固面 | `HostConfig.Privileged` / `CapAdd` / `PidMode` / 挂载、容器内 crontab 与进程、上传目录内容 | 三个容器**全部 `privileged=false`、`capAdd=[]`、默认 bridge**，没有挂 `docker.sock`；app 容器内只有发行版自带 cron 文件、无用户 crontab；上传目录**只有 1 个 png**，无 php/jsp/sh/js/html/exe，也无 `<?php`/`<script` 特征 |
+| Web 扫描面（关键） | 两天 access.log 全量：可疑路径的**状态码**、`CONNECT` 代理探测、「域名:端口」形态请求、对写接口的 POST、IP 排行 | 2305 + 2221 条请求里，可疑路径命中 **579 + 530 次**，状态码全是 **301/404/499/400**，**唯一那条 200 是首页**（`.asp` 只出现在 `Referer` 里，路径就是 `/`）；`CONNECT` **40 次全部 400**（nginx 直接拒，不是开放代理）；**对 `/api/upload` 等写接口的 POST 为 0**；扫描主力 `195.178.110.94` 打了 364 次全是 `wp-config.php`/`terraform.tfstate`/`.env` 类探测，全部 301 |
+| 为什么扫描全是 301 | 带 `Host: www.kd211.com` 的请求命中域名 vhost 的 `return 301 https://$host$request_uri`；带 `Host: <IP>` 的命中 `default_server` 走应用 → **404** | 实测四种 Host 组合确认：域名 80→301、IP 80→404、443→404；`/.git/config`、`.env`、`terraform.tfstate` 在容器里**根本不存在** |
+
+**查出并修掉的两个权限问题**（不是中毒，但是真实风险）：
+
+1. **`/opt/jiajiao/deploy/` 下 11 个文件是 `666`（全局可写）** —— 上传包在 Windows 上打包，
+   `tar xzf` 解出来的文件带着 `rw-rw-rw-`。这些文件里的 `docker-compose.prod.yml`、`backup-db.sh`、
+   `rollback.sh` 会被 **root 的定时任务与回滚脚本**使用，本地任何用户都能改 → 提权面。已 `chmod 644`，
+   并在 `tools/deploy-remote.mjs` 解包后加 `find … -perm -0002 -exec chmod 644 {} +`，门禁 `check-deploy.mjs`
+   断言这一行必须存在（防复发）。
+2. **`/etc/uuid` 是 `666`** —— 腾讯云镜像初始化留下的文件（内容 `uuid = 8a97957c-…`），
+   任何本地用户可改写机器 uuid。已改 `444`。
+
+**留着没动的三处（要不要处理你说）**：
+
+- `cosfs` 把 `lhcos-3d92c-1257155420:/lhcos-data` 挂到 `/lhcos-data`（`allow_other`、`public_bucket=1`），
+  这是腾讯云镜像自带的 COS 挂载，**我们没用到**；不用的话 `umount /lhcos-data` 可减少一个外部数据面。
+- nginx 接受**绝对 URI** 请求（实测 `GET http://checkip.amazonaws.com/` → 200 首页）。不是代理，
+  但会让「开放代理探测」误判；要挡可在 `00-hardening.conf` 加 `if ($request_uri ~* "^https?://") { return 400; }`。
+- `upower`（dbus 按需拉起，`enabled=disabled`）、`packagekit`（`static`）又处于 active——装 rkhunter 时被 apt 拉起来的，
+  开机不会自启，纯噪音。
+
 **仍需你做/注意的**
 
 1. **只在腾讯云控制台保留必要的安全组规则**（22/80/443），主机层 ufw 已是一道，云安全组是更外一道。
